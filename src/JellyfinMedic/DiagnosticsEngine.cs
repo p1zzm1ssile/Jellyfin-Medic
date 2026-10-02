@@ -1058,7 +1058,7 @@ public sealed class DiagnosticsEngine
         return null;
     }
 
-    private static string Shorten(string text) => text.Length <= 220 ? text : text[..220] + "…";
+    private static string Shorten(string text) => text.Length <= 600 ? text : text[..600] + "…";
 
     /// <summary>Heavy maintenance scheduled during the day, when people are likely to be watching.</summary>
     private void CheckDaytimeTasks(List<IScheduledTaskWorker> workers)

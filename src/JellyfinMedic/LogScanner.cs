@@ -146,6 +146,6 @@ public static class LogScanner
         text = Ids.Replace(text, "…");
         text = Numbers.Replace(text, "#");
         text = SettingsReader.MaskSecrets(text).Trim();
-        return text.Length > 180 ? text[..180] + "…" : text;
+        return text.Length > 600 ? text[..600] + "…" : text;
     }
 }

@@ -405,12 +405,28 @@ public class MedicController : ControllerBase
         return Ok(new { Success = true, Stopped = stopped.Count, Names = stopped });
     }
 
-    /// <summary>Checks whether a port answers from the open internet. Sends only the port number.</summary>
+    /// <summary>The address, port and protocol to offer in the exposure check (your public IP and domain, if known).</summary>
+    [HttpGet("ExposureDefaults")]
+    public async Task<ActionResult<ExposureDefaults>> GetExposureDefaults(CancellationToken cancellationToken) =>
+        Ok(await ExposureChecker.DefaultsAsync(TryNetwork(), cancellationToken).ConfigureAwait(false));
+
+    /// <summary>Checks whether Jellyfin answers from the internet at a host/port/protocol. Sends only that address.</summary>
     [HttpPost("ExposureCheck")]
-    public async Task<ActionResult<ExposureResult>> ExposureCheck([FromQuery] int? port, CancellationToken cancellationToken)
+    public async Task<ActionResult<ExposureResult>> ExposureCheck([FromQuery] string host, [FromQuery] int port = 443, [FromQuery] string protocol = "https", CancellationToken cancellationToken = default)
     {
-        int target = port ?? (int)(SettingsReader.Number(_config.GetConfiguration("network"), "PublicPort") ?? SettingsReader.Number(_config.GetConfiguration("network"), "HttpServerPortNumber") ?? 8096);
-        return Ok(await ExposureChecker.CheckAsync(target, cancellationToken).ConfigureAwait(false));
+        return Ok(await ExposureChecker.CheckAsync(host, port, protocol, cancellationToken).ConfigureAwait(false));
+    }
+
+    private object? TryNetwork()
+    {
+        try
+        {
+            return _config.GetConfiguration("network");
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>Disk space that can usually be freed safely.</summary>

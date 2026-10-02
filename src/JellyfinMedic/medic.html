@@ -85,11 +85,26 @@
                             </div>
                             <div class="md-maint-col">
                                 <strong>Is your server open to the internet?</strong>
-                                <p class="so-muted so-small">Checks whether your Jellyfin port answers from outside. Only the port number is sent.</p>
-                                <div class="md-row md-wrap">
-                                    <button type="button" id="md-expose" class="so-btn so-btn-plain">Check now</button>
-                                    <span id="md-expose-result" role="status"></span>
+                                <p class="so-muted so-small">Checks whether Jellyfin answers from outside at an address you give. Only that address is sent. The boxes start from what Medic found; change any of them.</p>
+                                <div class="md-expose-form">
+                                    <label class="md-field"><span>Protocol</span>
+                                        <select id="md-expose-protocol" class="so-input">
+                                            <option value="https">https</option>
+                                            <option value="http">http</option>
+                                        </select>
+                                    </label>
+                                    <label class="md-field md-grow"><span>Domain or IP</span>
+                                        <input type="text" id="md-expose-host" class="so-input" placeholder="e.g. jellyfin.example.com">
+                                    </label>
+                                    <label class="md-field"><span>Port</span>
+                                        <input type="number" id="md-expose-port" class="so-input md-num" min="1" max="65535" value="443">
+                                    </label>
                                 </div>
+                                <div class="md-row md-wrap" style="margin-top:8px">
+                                    <button type="button" id="md-expose" class="so-btn so-btn-plain">Check now</button>
+                                    <button type="button" id="md-expose-use-ip" class="so-btn so-btn-plain">Use my IP + 8096</button>
+                                </div>
+                                <p id="md-expose-result" class="so-small" role="status"></p>
                             </div>
                             <div class="md-maint-col">
                                 <strong>Running tasks</strong>
@@ -479,6 +494,12 @@
         #JellyfinMedicPage .md-bar i { display: block; height: 100%; background: #6aa8ff; }
         #JellyfinMedicPage .md-maint { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
         #JellyfinMedicPage .md-maint-col { display: flex; flex-direction: column; gap: 8px; }
+        #JellyfinMedicPage .md-expose-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+        #JellyfinMedicPage .md-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8em; color: #a7adb8; }
+        #JellyfinMedicPage .md-field.md-grow { flex: 1 1 200px; }
+        #JellyfinMedicPage .md-field .so-input { min-width: 90px; }
+        #JellyfinMedicPage .md-field.md-grow .so-input { width: 100%; box-sizing: border-box; }
+        #JellyfinMedicPage .md-fulltext { margin-top: 6px; padding: 8px 10px; background: #15171b; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 0.82em; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; }
         #JellyfinMedicPage .md-warn-text { color: #ffd27a; }
         #JellyfinMedicPage .md-ok-text { color: #7fe0b5; }
         #JellyfinMedicPage .md-bad-text { color: #ff9a9e; }
@@ -629,7 +650,19 @@
                         const kv = el('dl', 'so-kv');
                         if (current) {
                             kv.appendChild(el('dt', null, 'Now'));
-                            kv.appendChild(el('dd', null, fmtTimes(current)));
+                            const dd = el('dd', null, null);
+                            const text = fmtTimes(current);
+                            if (text.length > 180) {
+                                const details = el('details');
+                                const summary = el('summary', null, text.slice(0, 160) + '…');
+                                details.appendChild(summary);
+                                const full = el('div', 'md-fulltext', text);
+                                details.appendChild(full);
+                                dd.appendChild(details);
+                            } else {
+                                dd.textContent = text;
+                            }
+                            kv.appendChild(dd);
                         }
                         if (recommended) {
                             kv.appendChild(el('dt', null, sev === 'Good' ? 'Note' : 'Suggested'));
@@ -797,7 +830,7 @@
                             details.appendChild(table);
                             panel.appendChild(details);
                         } else if (pick(p, 'Status') !== 'Not installed') {
-                            panel.appendChild(el('p', 'so-muted so-small', 'No settings file found for this plugin.'));
+                            panel.appendChild(el('p', 'so-muted so-small', 'This plugin doesn\'t store any settings to check.'));
                         }
                         box.appendChild(panel);
                     });
@@ -2100,17 +2133,44 @@
                     }
                 }
 
+                let exposeIp = null;
+                async function loadExposureDefaults() {
+                    try {
+                        const d = await getJson('/JellyfinMedic/ExposureDefaults');
+                        exposeIp = pick(d, 'PublicIp');
+                        if ($('md-expose-host') && !$('md-expose-host').value) {
+                            $('md-expose-host').value = pick(d, 'Domain') || exposeIp || '';
+                        }
+                        if (pick(d, 'Port')) $('md-expose-port').value = String(pick(d, 'Port'));
+                        if (pick(d, 'Protocol')) $('md-expose-protocol').value = pick(d, 'Protocol');
+                    } catch (e) { /* leave the boxes blank */ }
+                }
+
+                $('md-expose-use-ip').addEventListener('click', function () {
+                    if (exposeIp) $('md-expose-host').value = exposeIp;
+                    $('md-expose-port').value = '8096';
+                    $('md-expose-protocol').value = 'http';
+                });
+
                 $('md-expose').addEventListener('click', async function () {
                     const btn = $('md-expose');
                     const out = $('md-expose-result');
+                    const host = $('md-expose-host').value.trim();
+                    if (!host) { out.textContent = 'Enter a domain or IP address first.'; out.className = 'so-muted so-small'; return; }
                     btn.disabled = true;
-                    out.textContent = 'Checking…';
+                    out.textContent = 'Checking ' + host + '…';
                     out.className = 'so-muted so-small';
                     try {
-                        const r = await postJson('/JellyfinMedic/ExposureCheck');
+                        const r = await postJson('/JellyfinMedic/ExposureCheck', {
+                            host: host,
+                            port: parseInt($('md-expose-port').value, 10) || 443,
+                            protocol: $('md-expose-protocol').value
+                        });
+                        const where = pick(r, 'Host') + ':' + pick(r, 'Port');
                         if (pick(r, 'Error')) { out.textContent = pick(r, 'Error'); out.className = 'so-muted so-small'; }
-                        else if (pick(r, 'Reachable')) { out.textContent = 'Reachable from the internet on port ' + pick(r, 'Port') + '. Make sure it\'s behind HTTPS and strong passwords.'; out.className = 'md-bad-text so-small'; }
-                        else { out.textContent = 'Not reachable from the internet on port ' + pick(r, 'Port') + '. Only people on your network or VPN can reach it.'; out.className = 'md-ok-text so-small'; }
+                        else if (pick(r, 'Reachable') && pick(r, 'RespondedAsJellyfin')) { out.textContent = 'Jellyfin answered from the internet at ' + where + '. If that\'s your HTTPS reverse proxy, that\'s expected — keep HTTPS on and use strong passwords. If it\'s the raw Jellyfin port, close it and use the proxy instead.'; out.className = 'md-warn-text so-small'; }
+                        else if (pick(r, 'Reachable')) { out.textContent = 'Something answered at ' + where + ', but it didn\'t look like Jellyfin. It may be your reverse proxy or another service.'; out.className = 'md-warn-text so-small'; }
+                        else { out.textContent = 'Nothing answered at ' + where + ' from the internet. Only people on your network or VPN can reach it there (or your ISP uses CGNAT, which blocks this test).'; out.className = 'md-ok-text so-small'; }
                     } catch (e) {
                         out.textContent = 'Couldn\'t run the check.';
                     } finally {
@@ -2154,6 +2214,7 @@
                         if (name === 'dashboard') {
                             startNowTimer();
                             loadCleanup();
+                            loadExposureDefaults();
                             if (!cal || calWeek !== 0) { calWeek = 0; await loadCalendar(); } else { renderToday(); }
                             if (!history) await loadHistory();
                         } else if (name === 'schedule') {
