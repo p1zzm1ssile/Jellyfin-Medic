@@ -714,12 +714,51 @@ public sealed class DiagnosticsEngine
 
     private void CheckLiveTv(object? liveTv)
     {
+        CheckOrphanChannels();
+
         long? guideDays = SettingsReader.Number(liveTv, "GuideDays");
         if (guideDays > 7)
         {
             Add(AreaLiveTv, Sev.Tip, "A long TV guide is downloaded", $"{guideDays} days", "3–4 days",
                 "The guide is downloaded for every channel; with a big IPTV list, extra days make Refresh Guide much slower and the database bigger.",
                 "Dashboard → Live TV → Guide data");
+        }
+    }
+
+    /// <summary>
+    /// Live TV channels left behind after a source or categories were removed. Jellyfin doesn't always
+    /// clear these itself. Read-only: Medic never edits the database; it points at the safe fix.
+    /// </summary>
+    private void CheckOrphanChannels()
+    {
+        int channels;
+        try
+        {
+            var query = new InternalItemsQuery { Recursive = true };
+            var prop = typeof(InternalItemsQuery).GetProperty("IncludeItemTypes");
+            var element = prop?.PropertyType.GetElementType();
+            if (prop is null || element is null || !element.IsEnum || !Enum.IsDefined(element, "LiveTvChannel"))
+            {
+                return;
+            }
+
+            var kinds = Array.CreateInstance(element, 1);
+            kinds.SetValue(Enum.Parse(element, "LiveTvChannel"), 0);
+            prop.SetValue(query, kinds);
+            channels = _library.GetCount(query);
+        }
+        catch
+        {
+            return;
+        }
+
+        // Only worth raising on a big list, where deselected categories leave thousands behind.
+        if (channels >= 2000)
+        {
+            Add(AreaLiveTv, Sev.Tip, "A very large number of Live TV channels", $"{channels:N0} channels",
+                "If you've deselected categories, clear the leftovers the safe way (below)",
+                "After you deselect IPTV categories, Jellyfin can leave the old channels behind in its database. The supported ways to clear them are: let Xtream Library's own cleanup remove them on its next sync (it has a 'clean up orphans' option), or remove and re-add the Live TV source in Dashboard → Live TV, which rebuilds the channel list. Medic can clear leftover stream files on disk (see the Dashboard maintenance panel), but it never edits Jellyfin's database — a hand-written database delete risks corrupting the whole server.",
+                "Dashboard → Live TV, and Xtream Library settings");
         }
     }
 
@@ -1120,14 +1159,14 @@ public sealed class DiagnosticsEngine
             if (link.Kind == "repository")
             {
                 bool paradox = link.Url.Contains("iamparadox.dev/jellyfin/manifest.json", StringComparison.OrdinalIgnoreCase);
-                Add("Plugins", Sev.Improve, $"Plugin repository \"{link.Name}\" isn't working", $"{link.Url} ({result})",
-                    paradox ? "https://www.iamparadox.dev/jellyfin/plugins/manifest.json" : "Find the current address on the plugin's install page, or remove the repository",
-                    "Plugins installed from it won't get updates. Removing or fixing a repository doesn't uninstall anything.",
+                Add("Plugins", Sev.Tip, $"Plugin repository \"{link.Name}\" didn't respond when checked", $"{link.Url} ({result})",
+                    paradox ? "The address is missing /plugins/ — use https://www.iamparadox.dev/jellyfin/plugins/manifest.json" : "If this keeps happening, check the address on the plugin's install page, or whether your server can reach the site",
+                    "This may just be a temporary outage, so it's only worth acting on if it keeps happening. While it's down, plugins from this repository won't get updates. Fixing or removing a repository doesn't uninstall anything.",
                     "Dashboard → Plugins → Repositories");
             }
             else
             {
-                Add("Plugins", Sev.Improve, $"JavaScript Injector script \"{link.Name}\" loads a file that isn't working", $"{link.Url} ({result})",
+                Add("Plugins", Sev.Improve, $"JavaScript Injector script \"{link.Name}\" couldn't load a file it needs", $"{link.Url} ({result})",
                     "Update the address from the add-on's install instructions, or delete the script",
                     "The browser tries to load it on every page and fails, so whatever it adds doesn't work.",
                     "Dashboard → Plugins → JavaScript Injector");

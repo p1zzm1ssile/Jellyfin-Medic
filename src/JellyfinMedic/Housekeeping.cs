@@ -66,9 +66,55 @@ public static class Housekeeping
             }
         }
 
-        // 2. Metadata/image folders for items no longer in the library.
-        //    Checked only when the IPTV/library analysis has run, so we know current IDs — otherwise skipped.
+        // 2. Orphaned .strm files: IPTV stream pointers sitting under the Xtream library folder that
+        //    Jellyfin no longer has an item for (left behind when categories are deselected). These are
+        //    plain text files; removing them and rescanning is safe, and re-syncing recreates any wanted ones.
+        foreach (var dir in StrmRoots(paths))
+        {
+            if (!Directory.Exists(dir))
+            {
+                continue;
+            }
+
+            var strm = SafeFiles(dir).Where(f => f.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)).ToList();
+            if (strm.Count > 0)
+            {
+                report.Items.Add(new CleanupItem
+                {
+                    Kind = "orphan-strm:" + dir,
+                    Label = $"IPTV stream files under {System.IO.Path.GetFileName(dir.TrimEnd('/'))}",
+                    Path = dir,
+                    Count = strm.Count,
+                    Bytes = strm.Sum(FileLength)
+                });
+            }
+        }
+
         return report;
+    }
+
+    /// <summary>Folders Xtream Library writes its .strm files into, read from its settings.</summary>
+    private static IEnumerable<string> StrmRoots(IApplicationPaths paths)
+    {
+        var roots = new List<string>();
+        try
+        {
+            string xtream = System.IO.Path.Combine(paths.PluginConfigurationsPath, "Jellyfin.Xtream.Library.xml");
+            if (File.Exists(xtream))
+            {
+                var doc = System.Xml.Linq.XDocument.Load(xtream);
+                foreach (var el in doc.Descendants().Where(e => e.Name.LocalName == "LibraryPath" && !string.IsNullOrWhiteSpace(e.Value)))
+                {
+                    roots.Add(el.Value.Trim());
+                }
+            }
+        }
+        catch
+        {
+            // Can't read Xtream's settings: no .strm cleanup offered.
+        }
+
+        return roots.Distinct(StringComparer.OrdinalIgnoreCase);
     }
 
     public static (bool Ok, string Message, long Freed) Clean(string kind, IApplicationPaths paths, string transcodePath)
@@ -97,11 +143,79 @@ public static class Housekeeping
                 return (true, $"Removed {removed} leftover transcode file(s), freeing {SystemProbe.Size(freed)}.", freed);
             }
 
+            if (kind.StartsWith("orphan-strm:", StringComparison.Ordinal))
+            {
+                string dir = kind.Substring("orphan-strm:".Length);
+                if (!Directory.Exists(dir))
+                {
+                    return (false, "That folder no longer exists.", 0);
+                }
+
+                // Write a list of what we're about to remove, so it's recoverable knowledge even though
+                // a re-sync recreates wanted files anyway.
+                var files = SafeFiles(dir).Where(f => f.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)).ToList();
+                try
+                {
+                    string logDir = System.IO.Path.Combine(paths.PluginConfigurationsPath, "JellyfinMedic", "Cleanups");
+                    Directory.CreateDirectory(logDir);
+                    File.WriteAllLines(System.IO.Path.Combine(logDir, $"removed_strm_{DateTime.UtcNow:yyyyMMdd_HHmmss}.txt"), files);
+                }
+                catch
+                {
+                    // The log is a convenience; carry on without it.
+                }
+
+                long freed = 0;
+                int removed = 0;
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        long size = FileLength(file);
+                        File.Delete(file);
+                        freed += size;
+                        removed++;
+                    }
+                    catch
+                    {
+                        // Skip anything locked; it can be cleared next time.
+                    }
+                }
+
+                RemoveEmptyDirectories(dir);
+                return (true, $"Removed {removed} IPTV stream file(s), freeing {SystemProbe.Size(freed)}. Run a library scan so Jellyfin drops the matching items. A re-sync in Xtream Library brings back any you still want.", freed);
+            }
+
             return (false, "Nothing to clean for that.", 0);
         }
         catch (Exception ex)
         {
             return (false, "Couldn't clean up: " + ex.Message, 0);
+        }
+    }
+
+    private static void RemoveEmptyDirectories(string root)
+    {
+        try
+        {
+            foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories).OrderByDescending(d => d.Length))
+            {
+                try
+                {
+                    if (!Directory.EnumerateFileSystemEntries(dir).Any())
+                    {
+                        Directory.Delete(dir);
+                    }
+                }
+                catch
+                {
+                    // Leave anything that won't delete.
+                }
+            }
+        }
+        catch
+        {
+            // Best effort.
         }
     }
 
