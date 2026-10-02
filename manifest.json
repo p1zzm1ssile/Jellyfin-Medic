@@ -1,0 +1,13 @@
+[
+  {
+    "guid": "8d1f5c2e-6b4a-4f7e-9c3d-2a7b5e1f0c94",
+    "name": "Jellyfin Medic",
+    "description": "Health checks, performance tests and usage-aware task scheduling for your Jellyfin server.",
+    "overview": "Keeps a busy Jellyfin server healthy: checks, tests and smart scheduling.",
+    "owner": "P1zzm1ssile",
+    "category": "General",
+    "imageUrl": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/src/JellyfinMedic/thumb.png",
+    "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/src/JellyfinMedic/thumb.png",
+    "versions": []
+  }
+]

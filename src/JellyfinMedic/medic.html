@@ -1,0 +1,2290 @@
+<div id="JellyfinMedicPage" data-role="page" class="page type-interior pluginConfigurationPage">
+    <div data-role="content">
+        <div class="content-primary">
+
+            <div class="so-topbar">
+                <h2 class="so-title"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7cc0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"></path></svg>Jellyfin Medic</h2>
+                <div class="so-top-actions">
+                    <div class="so-clock" role="group" aria-label="Clock format">
+                        <button type="button" class="so-seg" data-clock="24" aria-pressed="true">24-hour</button>
+                        <button type="button" class="so-seg" data-clock="12" aria-pressed="false">12-hour</button>
+                    </div>
+                    <button id="so-rerun" type="button" class="so-btn so-btn-accent">Run checks</button>
+                    <button id="so-download" type="button" class="so-btn so-btn-plain">Download report</button>
+                </div>
+            </div>
+
+            <div class="so-tabs" role="tablist" aria-label="Jellyfin Medic sections">
+                <button type="button" role="tab" class="so-tab" data-tab="dashboard" aria-selected="true">Dashboard</button>
+                <button type="button" role="tab" class="so-tab" data-tab="schedule" aria-selected="false" tabindex="-1">Schedule</button>
+                <button type="button" role="tab" class="so-tab" data-tab="history" aria-selected="false" tabindex="-1">History</button>
+                <button type="button" role="tab" class="so-tab" data-tab="recs" aria-selected="false" tabindex="-1">Checks</button>
+                <button type="button" role="tab" class="so-tab" data-tab="iptv" aria-selected="false" tabindex="-1">IPTV</button>
+                <button type="button" role="tab" class="so-tab" data-tab="tests" aria-selected="false" tabindex="-1">Tests</button>
+                <button type="button" role="tab" class="so-tab" data-tab="plugins" aria-selected="false" tabindex="-1">Plugins</button>
+                <button type="button" role="tab" class="so-tab" data-tab="settings" aria-selected="false" tabindex="-1">Settings</button>
+            </div>
+
+            <div id="so-status" class="so-status" role="status" hidden></div>
+
+            <!-- Dashboard -->
+            <section class="so-tabpanel" data-panel="dashboard" role="tabpanel">
+                <p id="md-checked" class="so-muted so-small md-checked"></p>
+                <div class="md-tiles">
+                    <section class="md-tile" aria-labelledby="md-t-health">
+                        <h3 id="md-t-health" class="md-tile-head">Health</h3>
+                        <p id="md-health-big" class="md-big">Checking…</p>
+                        <div id="so-counts" class="md-counts"></div>
+                        <button type="button" class="so-btn so-btn-plain md-goto" data-goto="recs">See all checks</button>
+                    </section>
+                    <section class="md-tile" aria-labelledby="md-t-today">
+                        <h3 id="md-t-today" class="md-tile-head">Today's tasks</h3>
+                        <p id="md-today-big" class="md-big">Loading…</p>
+                        <div id="md-today" class="md-mini"></div>
+                        <div id="md-today-axis" class="md-axis"></div>
+                        <button type="button" class="so-btn so-btn-plain md-goto" data-goto="schedule">Open the schedule</button>
+                    </section>
+                    <section class="md-tile" aria-labelledby="md-t-now">
+                        <h3 id="md-t-now" class="md-tile-head">Right now</h3>
+                        <div class="md-now-top">
+                            <div><p id="md-cpu" class="md-big">–</p><span class="so-muted so-small">Jellyfin CPU</span></div>
+                            <svg id="md-spark" width="150" height="46" viewBox="0 0 150 46" aria-hidden="true"><polyline id="md-spark-line" points="" fill="none" stroke="#5fd0b3" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline></svg>
+                        </div>
+                        <dl id="md-now" class="so-kv"></dl>
+                    </section>
+                    <section class="md-tile md-wide" aria-labelledby="md-t-issues">
+                        <div class="md-row md-space">
+                            <h3 id="md-t-issues" class="md-tile-head">Top issues</h3>
+                            <button type="button" class="so-btn so-btn-plain md-goto" data-goto="recs">All checks</button>
+                        </div>
+                        <ul id="md-issues" class="md-issues"></ul>
+                    </section>
+                    <section class="md-tile" aria-labelledby="md-t-last">
+                        <h3 id="md-t-last" class="md-tile-head">Last 24 hours</h3>
+                        <p id="md-last-big" class="md-big">Loading…</p>
+                        <div id="md-last"></div>
+                        <button type="button" class="so-btn so-btn-plain md-goto" data-goto="history">Open history</button>
+                    </section>
+                    <section class="md-tile" aria-labelledby="md-t-users">
+                        <h3 id="md-t-users" class="md-tile-head">Users and access</h3>
+                        <p id="md-users-big" class="md-big">–</p>
+                        <ul id="md-users" class="md-list"></ul>
+                    </section>
+                    <section class="md-tile" aria-labelledby="md-t-updates">
+                        <h3 id="md-t-updates" class="md-tile-head">Updates</h3>
+                        <p id="md-updates-big" class="md-big">–</p>
+                        <ul id="md-updates" class="md-list"></ul>
+                    </section>
+                    <section class="md-tile md-wide" aria-labelledby="md-t-maint">
+                        <h3 id="md-t-maint" class="md-tile-head">Maintenance</h3>
+                        <div class="md-maint">
+                            <div class="md-maint-col">
+                                <strong>Free up disk space</strong>
+                                <p id="md-cleanup-text" class="so-muted so-small">Checking…</p>
+                                <div id="md-cleanup-actions" class="md-row md-wrap"></div>
+                            </div>
+                            <div class="md-maint-col">
+                                <strong>Is your server open to the internet?</strong>
+                                <p class="so-muted so-small">Checks whether your Jellyfin port answers from outside. Only the port number is sent.</p>
+                                <div class="md-row md-wrap">
+                                    <button type="button" id="md-expose" class="so-btn so-btn-plain">Check now</button>
+                                    <span id="md-expose-result" role="status"></span>
+                                </div>
+                            </div>
+                            <div class="md-maint-col">
+                                <strong>Running tasks</strong>
+                                <p id="md-running-text" class="so-muted so-small">None running.</p>
+                                <button type="button" id="md-stop2" class="so-btn so-btn-plain">Stop running tasks</button>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+                <details class="so-panel md-details">
+                    <summary>Your setup</summary>
+                    <div id="so-specs" class="so-specs"></div>
+                </details>
+            </section>
+
+            <!-- Schedule -->
+            <section class="so-tabpanel" data-panel="schedule" role="tabpanel" hidden>
+                <div class="md-row md-space md-wrap">
+                    <div class="md-row">
+                        <button type="button" id="md-prev" class="md-icon-btn" aria-label="Previous week"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></button>
+                        <span id="md-range" class="md-range"></span>
+                        <button type="button" id="md-next" class="md-icon-btn" aria-label="Next week"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg></button>
+                    </div>
+                    <div class="md-row md-wrap">
+                        <div class="md-seg" role="group" aria-label="Time range">
+                            <button type="button" data-range="full" aria-pressed="true">Full day</button>
+                            <button type="button" data-range="night" aria-pressed="false">Night</button>
+                        </div>
+                        <button type="button" id="md-backup" class="so-btn so-btn-plain">Back up</button>
+                        <button type="button" id="md-preview" class="so-btn so-btn-plain">Preview changes</button>
+                        <button type="button" id="md-stop" class="so-btn so-btn-plain">Stop running tasks</button>
+                        <button type="button" id="md-apply" class="so-btn so-btn-accent">Apply recommended</button>
+                    </div>
+                </div>
+                <p id="md-busy-note" class="so-muted so-small"></p>
+                <div id="md-banner" class="md-banner" hidden></div>
+                <div class="md-legend">
+                    <span><i class="md-sw" style="background:#6aa8ff"></i>Library and guide</span>
+                    <span><i class="md-sw" style="background:#c4a8ff"></i>Media analysis</span>
+                    <span><i class="md-sw" style="background:#5fd0b3"></i>Clean-up and upkeep</span>
+                    <span><i class="md-sw" style="background:#ffb648"></i>Monthly, run by Medic</span>
+                    <span><i class="md-sw" style="background:#a3a9b3"></i>Other plugins, left alone</span>
+                    <span><i class="md-sw md-hatch"></i>Moved after a failure</span>
+                    <span><i class="md-sw md-failed"></i>Last run failed</span>
+                    <span><i class="md-sw md-busy-sw"></i>Busy hours (people usually watching)</span>
+                </div>
+                <div class="md-sched-body">
+                    <section class="md-timeline-card" aria-label="Week timeline">
+                        <div class="so-scroll"><div id="md-timeline" class="md-timeline"></div></div>
+                        <p id="md-range-note" class="so-muted so-small"></p>
+                    </section>
+                    <aside id="md-detail" class="md-detail" aria-label="Selected task"></aside>
+                </div>
+                <div id="md-preview-box" class="so-panel" hidden></div>
+                <div class="so-panel">
+                    <h3>Restore a backup</h3>
+                    <p class="so-muted so-small">A backup is made before every Apply and every Restore, so any change can be undone.</p>
+                    <div class="md-row md-wrap">
+                        <select id="md-backups" class="so-input" aria-label="Backup to restore"></select>
+                        <button type="button" id="md-restore" class="so-btn so-btn-plain">Restore</button>
+                    </div>
+                </div>
+                <details class="so-panel md-details">
+                    <summary>When people watch</summary>
+                    <p id="so-usage-summary" class="so-muted"></p>
+                    <div class="so-scroll"><table id="so-heatmap" class="so-heatmap"></table></div>
+                </details>
+                <details class="so-panel md-details">
+                    <summary>Schedule changes</summary>
+                    <div class="so-scroll"><table class="so-table"><thead><tr><th>When</th><th>Task</th><th>Change</th><th>Why</th></tr></thead><tbody id="md-audit"></tbody></table></div>
+                </details>
+            </section>
+
+            <!-- History -->
+            <section class="so-tabpanel" data-panel="history" role="tabpanel" hidden>
+                <div class="so-panel">
+                    <h3>By task</h3>
+                    <div class="so-scroll">
+                        <table class="so-table">
+                            <thead><tr><th>Task</th><th>Schedule</th><th>Last finished</th><th>Result</th><th>Took</th><th>Average</th><th>Fails</th></tr></thead>
+                            <tbody id="md-hist-summary"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="so-panel">
+                    <div class="md-row md-space md-wrap">
+                        <h3 class="md-inline-head">Recent runs</h3>
+                        <label class="md-check"><input type="checkbox" id="md-errors-only"> Show errors only</label>
+                    </div>
+                    <div class="so-scroll">
+                        <table class="so-table">
+                            <thead><tr><th>Finished</th><th>Task</th><th>Result</th><th>Took</th><th>Error</th></tr></thead>
+                            <tbody id="md-hist-runs"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Checks -->
+            <section class="so-tabpanel" data-panel="recs" role="tabpanel" hidden>
+                <div class="so-filters" role="group" aria-label="Show">
+                    <button type="button" class="so-filter" data-filter="all" aria-pressed="true">All</button>
+                    <button type="button" class="so-filter" data-filter="Problem" aria-pressed="false">Problems</button>
+                    <button type="button" class="so-filter" data-filter="Improve" aria-pressed="false">Improvements</button>
+                    <button type="button" class="so-filter" data-filter="Tip" aria-pressed="false">Tips</button>
+                    <button type="button" class="so-filter" data-filter="Good" aria-pressed="false">All good</button>
+                    <button type="button" class="so-filter" data-filter="Ignored" aria-pressed="false">Ignored</button>
+                </div>
+                <div id="so-recs"></div>
+            </section>
+
+            <!-- IPTV -->
+            <section class="so-tabpanel" data-panel="iptv" role="tabpanel" hidden>
+                <div class="so-panel">
+                    <h3>What's in your IPTV libraries</h3>
+                    <p class="so-muted">Counts your IPTV films and series by genre and country, shows how much of each gets watched, and finds live channels that appear several times in different qualities. It reads a lot, so it only runs when you ask. Run it when nobody's watching.</p>
+                    <button type="button" id="md-run-iptv" class="so-btn so-btn-accent">Analyse IPTV</button>
+                    <div id="md-iptv"></div>
+                </div>
+            </section>
+
+            <!-- Tests -->
+            <section class="so-tabpanel" data-panel="tests" role="tabpanel" hidden>
+                <p class="so-muted">These tests use your GPU, CPU and internet connection for a minute or two. Run them when nobody's watching.</p>
+                <div class="so-panel">
+                    <h3>Playback test</h3>
+                    <p class="so-muted">Plays two of your films through Jellyfin's transcoder for up to a minute each, exactly as an app would, then checks how fast it ran and whether your GPU did the decoding, encoding and HDR tone mapping.</p>
+                    <p id="so-test-films" class="so-small"></p>
+                    <button id="so-run-playback" type="button" class="so-btn so-btn-accent">Run playback test</button>
+                    <div id="so-playback-results"></div>
+                </div>
+                <div class="so-panel">
+                    <h3>Image extraction test (trickplay and chapter images)</h3>
+                    <p class="so-muted">Scans the first 20 minutes of a film the way trickplay and chapter images do, once on your GPU and once on the CPU, and times both. Nothing is saved.</p>
+                    <button id="so-run-decode" type="button" class="so-btn so-btn-accent">Run image extraction test</button>
+                    <div id="so-decode-results"></div>
+                </div>
+                <div class="so-panel">
+                    <h3>Internet speed test</h3>
+                    <p class="so-muted">Measures your server's own connection, not this device's, because that's what people watching away from home depend on. Uses Cloudflare's public speed-test service, takes about 20 seconds, and uses up to a few hundred MB on a fast connection.</p>
+                    <button id="so-run-speed" type="button" class="so-btn so-btn-accent">Run speed test</button>
+                    <div id="so-speed-results"></div>
+                </div>
+            </section>
+
+            <!-- Plugins -->
+            <section class="so-tabpanel" data-panel="plugins" role="tabpanel" hidden>
+                <div class="so-panel">
+                    <h3>Help improve Jellyfin Medic (optional)</h3>
+                    <p class="so-muted">Medic's advice is only as good as the plugins it knows about, and no one person can install every Jellyfin plugin to learn them all. If you'd like to help, you can send your plugin settings so support for the plugins you use can be improved.</p>
+                    <p class="so-muted">Before anything leaves your server, Medic replaces the personal data it can identify — passwords, API keys, tokens, usernames and any credentials inside web addresses — with ****. <strong>This masking covers the common cases but can't be guaranteed to catch everything, so it's your responsibility to read the file before you send it.</strong></p>
+                    <p class="so-muted">Personal data isn't wanted. If any does reach the maintainer, it's removed and not used, as a matter of integrity. Nothing is sent automatically; emailing the file is your choice. If you do, email it to <a href="mailto:jellyfinmedic@anglernook.com">jellyfinmedic@anglernook.com</a>, where it's used only to improve the plugin and deleted once that's done.</p>
+                    <label class="md-check"><input type="checkbox" id="md-export-system"> Also include an anonymous summary of my hardware and libraries (CPU and GPU make and model, memory, OS, disk space, library sizes and installed plugins — no serial numbers, names, paths or addresses). This helps tune Medic's advice.</label>
+                    <div class="md-row" style="margin-top:12px">
+                        <button type="button" id="md-export" class="so-btn so-btn-plain">Build the file</button>
+                    </div>
+                    <div id="md-export-box" hidden>
+                        <p class="so-muted so-small">Read through before sharing, in case anything private slipped through.</p>
+                        <textarea id="md-export-text" class="so-input md-export" readonly aria-label="Plugin settings for support"></textarea>
+                        <div class="md-row md-wrap">
+                            <button type="button" id="md-export-download" class="so-btn so-btn-accent">Download</button>
+                            <a id="md-export-email" class="so-btn so-btn-plain" href="mailto:jellyfinmedic@anglernook.com?subject=Jellyfin%20Medic%20plugin%20settings" style="text-decoration:none; display:inline-flex; align-items:center">Open email</a>
+                        </div>
+                    </div>
+                </div>
+                <p class="so-muted">Every installed plugin, its status and its settings. Passwords, keys and usernames are hidden.</p>
+                <div id="so-plugins"></div>
+            </section>
+
+            <!-- Settings -->
+            <section class="so-tabpanel" data-panel="settings" role="tabpanel" hidden>
+                <div class="so-panel">
+                    <h3>Medic settings</h3>
+                    <div class="md-form">
+                        <div class="md-row md-wrap">
+                            <label class="md-check"><input type="checkbox" id="md-avoid"> Never schedule tasks between</label>
+                            <select id="md-avoid-from" class="so-input" aria-label="From"></select>
+                            <span>and</span>
+                            <select id="md-avoid-to" class="so-input" aria-label="Until"></select>
+                        </div>
+                        <p class="so-muted so-small">Normally Medic finds quiet times from your viewing pattern. Use this if you know a time should always be kept free.</p>
+                        <div class="md-row md-wrap">
+                            <label for="md-inactive">Report accounts unused for</label>
+                            <input type="number" id="md-inactive" class="so-input md-num" min="7" max="3650">
+                            <span>days</span>
+                        </div>
+                        <div class="md-row">
+                            <button type="button" id="md-save-settings" class="so-btn so-btn-accent">Save</button>
+                            <span id="md-settings-saved" class="so-muted so-small" role="status"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="so-panel">
+                    <h3>Jellyfin's settings</h3>
+                    <p class="so-muted so-small">Every Jellyfin and library setting, read-only. Passwords and keys are hidden.</p>
+                    <div class="so-settings-tools">
+                        <input id="so-settings-search" class="so-input" type="search" placeholder="Search settings" aria-label="Search settings">
+                        <select id="so-settings-section" class="so-input" aria-label="Section"></select>
+                    </div>
+                    <p id="so-settings-count" class="so-muted so-small"></p>
+                    <div class="so-scroll">
+                        <table class="so-table">
+                            <thead><tr><th>Section</th><th>Setting</th><th>Value</th></tr></thead>
+                            <tbody id="so-settings-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <style>
+        /* Every rule is scoped to this page so nothing leaks into the rest of the Jellyfin dashboard. */
+        #JellyfinMedicPage [hidden] { display: none !important; }
+        #JellyfinMedicPage { color: #fff; }
+        #JellyfinMedicPage .so-muted { color: #aaa; }
+        #JellyfinMedicPage .so-small { font-size: 0.85em; }
+        #JellyfinMedicPage .so-intro { margin: 0 0 14px; }
+
+        #JellyfinMedicPage .so-topbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; }
+        #JellyfinMedicPage .so-title { margin: 0; display: flex; align-items: center; gap: 10px; }
+        #JellyfinMedicPage .so-top-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        #JellyfinMedicPage .so-btn { color: #fff; min-height: 40px; padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer; font: inherit; }
+        #JellyfinMedicPage .so-btn:disabled { opacity: 0.45; cursor: default; }
+        #JellyfinMedicPage .so-btn-accent { background: #1f6fd1; }
+        #JellyfinMedicPage .so-btn-plain { background: transparent; border: 1px solid #3a3e46 !important; }
+        #JellyfinMedicPage .so-seg, #JellyfinMedicPage .so-filter { background: #333; color: #ccc; border: 1px solid #555; padding: 6px 12px; font: inherit; cursor: pointer; }
+        #JellyfinMedicPage .so-seg:first-child { border-radius: 4px 0 0 4px; }
+        #JellyfinMedicPage .so-seg:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+        #JellyfinMedicPage .so-seg[aria-pressed="true"], #JellyfinMedicPage .so-filter[aria-pressed="true"] { background: #00a4dc; border-color: #00a4dc; color: #fff; }
+        #JellyfinMedicPage .so-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+        #JellyfinMedicPage .so-filter { border-radius: 4px; }
+        #JellyfinMedicPage button:focus-visible, #JellyfinMedicPage .so-input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+        #JellyfinMedicPage .so-tabs { display: flex; gap: 4px; border-bottom: 1px solid #444; margin-bottom: 16px; flex-wrap: wrap; }
+        #JellyfinMedicPage .so-tab { background: none; border: none; color: #aaa; font: inherit; padding: 10px 14px; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+        #JellyfinMedicPage .so-tab[aria-selected="true"] { color: #fff; border-bottom-color: #00a4dc; }
+
+        #JellyfinMedicPage .so-status { padding: 12px; border-radius: 4px; margin-bottom: 14px; font-weight: 500; }
+        #JellyfinMedicPage .so-status.info { background: #134e6f; }
+        #JellyfinMedicPage .so-status.error { background: #7a1f1f; }
+
+        #JellyfinMedicPage .so-panel { background: #1b1d22; padding: 16px 20px; border-radius: 12px; border: 1px solid #2a2d34; margin-bottom: 18px; }
+        #JellyfinMedicPage .so-panel h3 { margin: 0 0 12px; }
+        #JellyfinMedicPage .so-scroll { overflow-x: auto; }
+
+        #JellyfinMedicPage .so-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+        #JellyfinMedicPage .so-count { background: rgba(0, 0, 0, 0.3); border: 1px solid #3a3a3a; border-left: 5px solid #555; border-radius: 8px; padding: 14px 16px; text-align: left; color: #fff; font: inherit; cursor: pointer; }
+        #JellyfinMedicPage .so-count strong { display: block; font-size: 1.9em; line-height: 1.1; }
+        #JellyfinMedicPage .so-count.sev-Problem { border-left-color: #ff6b6b; }
+        #JellyfinMedicPage .so-count.sev-Improve { border-left-color: #f0b429; }
+        #JellyfinMedicPage .so-count.sev-Tip { border-left-color: #4fb3ff; }
+        #JellyfinMedicPage .so-count.sev-Good { border-left-color: #52b788; }
+
+        #JellyfinMedicPage .so-area-title { margin: 18px 0 8px; color: #00a4dc; }
+        #JellyfinMedicPage .so-card { background: #1b1d22; border: 1px solid #2a2d34; border-left: 5px solid #555; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
+        #JellyfinMedicPage .so-card.sev-Problem { border-left-color: #ff6b6b; }
+        #JellyfinMedicPage .so-card.sev-Improve { border-left-color: #f0b429; }
+        #JellyfinMedicPage .so-card.sev-Tip { border-left-color: #4fb3ff; }
+        #JellyfinMedicPage .so-card.sev-Good { border-left-color: #52b788; }
+        #JellyfinMedicPage .so-card h4 { margin: 4px 0 8px; font-size: 1.02em; }
+        #JellyfinMedicPage .so-badge { display: inline-block; font-size: 0.75em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 10px; background: #444; margin-right: 8px; }
+        #JellyfinMedicPage .sev-Problem .so-badge { background: #7a1f1f; }
+        #JellyfinMedicPage .sev-Improve .so-badge { background: #6b4e00; }
+        #JellyfinMedicPage .sev-Tip .so-badge { background: #134e6f; }
+        #JellyfinMedicPage .sev-Good .so-badge { background: #1f642a; }
+        #JellyfinMedicPage .so-area { font-size: 0.8em; color: #aaa; }
+        #JellyfinMedicPage .so-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 8px; font-size: 0.92em; }
+        #JellyfinMedicPage .so-kv dt { color: #aaa; }
+        #JellyfinMedicPage .so-kv dd { margin: 0; word-break: break-word; }
+        #JellyfinMedicPage .so-suggest { color: #52b788; }
+        #JellyfinMedicPage .so-why { margin: 0 0 6px; color: #ddd; font-size: 0.92em; }
+        #JellyfinMedicPage .so-where { margin: 0; color: #aaa; font-size: 0.85em; }
+
+        #JellyfinMedicPage .so-specs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+        #JellyfinMedicPage .so-spec-group h4 { margin: 0 0 6px; color: #00a4dc; }
+
+        #JellyfinMedicPage .so-table { width: 100%; border-collapse: collapse; text-align: left; }
+        #JellyfinMedicPage .so-table th, #JellyfinMedicPage .so-table td { padding: 7px 10px; border-bottom: 1px solid #333; font-size: 0.9em; vertical-align: top; word-break: break-word; }
+        #JellyfinMedicPage .so-table th { color: #00a4dc; white-space: nowrap; }
+
+        #JellyfinMedicPage .so-plugin-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+        #JellyfinMedicPage .so-plugin-head h3 { margin: 0; }
+        #JellyfinMedicPage details summary { cursor: pointer; color: #00a4dc; margin-top: 8px; }
+
+        #JellyfinMedicPage .so-settings-tools { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+        #JellyfinMedicPage .so-input { background: #222; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 8px; font: inherit; }
+        #JellyfinMedicPage #so-settings-search { flex: 1; min-width: 200px; }
+
+        #JellyfinMedicPage .so-heatmap { border-collapse: separate; border-spacing: 3px; font-size: 0.8em; }
+        #JellyfinMedicPage .so-heatmap th { color: #aaa; font-weight: 500; padding: 2px 4px; white-space: nowrap; }
+        #JellyfinMedicPage .so-heatmap td { width: 26px; height: 22px; border-radius: 3px; background: #262626; }
+        #JellyfinMedicPage .so-test-result { margin-top: 12px; }
+        #JellyfinMedicPage .so-advice { margin: 6px 0 0; padding-left: 18px; color: #ddd; font-size: 0.92em; }
+        #JellyfinMedicPage .so-speed-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
+        #JellyfinMedicPage .so-speed-grid div { background: rgba(0, 0, 0, 0.3); border: 1px solid #3a3a3a; border-radius: 6px; padding: 10px 12px; }
+        #JellyfinMedicPage .so-speed-grid strong { display: block; font-size: 1.5em; }
+        #JellyfinMedicPage .so-viewers { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+        #JellyfinMedicPage .so-card.is-ignored { opacity: 0.6; }
+        #JellyfinMedicPage .so-ignore-btn { float: right; background: #333; color: #ccc; border: 1px solid #555; border-radius: 4px; padding: 4px 10px; font: inherit; font-size: 0.8em; cursor: pointer; margin-left: 10px; }
+        #JellyfinMedicPage .so-ignore-btn:hover { color: #fff; border-color: #888; }
+        #JellyfinMedicPage .so-ignored-note { margin: 8px 0 0; font-size: 0.85em; color: #aaa; }
+
+        /* ---------- Jellyfin Medic layout ---------- */
+        #JellyfinMedicPage .md-row { display: flex; align-items: center; gap: 10px; }
+        #JellyfinMedicPage .md-space { justify-content: space-between; }
+        #JellyfinMedicPage .md-wrap { flex-wrap: wrap; }
+        #JellyfinMedicPage .md-checked { margin: 0 0 12px; }
+        #JellyfinMedicPage .md-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 18px; }
+        #JellyfinMedicPage .md-tile { background: #1b1d22; border: 1px solid #2a2d34; border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+        #JellyfinMedicPage .md-wide { grid-column: 1 / -1; }
+        #JellyfinMedicPage .md-tile-head { margin: 0; font-size: 0.75em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #a7adb8; }
+        #JellyfinMedicPage .md-big { margin: 0; font-size: 1.7em; font-weight: 600; line-height: 1.2; }
+        #JellyfinMedicPage .md-goto { align-self: flex-start; }
+        #JellyfinMedicPage .md-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+        #JellyfinMedicPage .md-count { display: flex; flex-direction: column; gap: 2px; padding: 10px; background: #15171b; border-radius: 8px; border: none; color: #c4c9d2; font: inherit; text-align: left; cursor: pointer; }
+        #JellyfinMedicPage .md-count strong { font-family: ui-monospace, monospace; font-size: 1.4em; }
+        #JellyfinMedicPage .md-count.sev-Problem strong { color: #ff8a8e; }
+        #JellyfinMedicPage .md-count.sev-Improve strong { color: #ffc766; }
+        #JellyfinMedicPage .md-count.sev-Tip strong { color: #8cc8ff; }
+        #JellyfinMedicPage .md-count.sev-Ignored strong { color: #a3a9b3; }
+        #JellyfinMedicPage .md-mini { position: relative; height: 36px; background: #15171b; border-radius: 6px; overflow: hidden; }
+        #JellyfinMedicPage .md-mini-block { position: absolute; top: 7px; height: 22px; border-radius: 4px; }
+        #JellyfinMedicPage .md-axis { position: relative; height: 14px; font-family: ui-monospace, monospace; font-size: 0.72em; color: #8e95a1; }
+        #JellyfinMedicPage .md-axis span { position: absolute; top: 0; white-space: nowrap; }
+        #JellyfinMedicPage .md-now-line { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #ff4040; }
+        #JellyfinMedicPage .md-now-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+        #JellyfinMedicPage .md-issues { list-style: none; margin: 0; padding: 0; }
+        #JellyfinMedicPage .md-issues li { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid #262930; flex-wrap: wrap; }
+        #JellyfinMedicPage .md-issue-text { flex: 1 1 340px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        #JellyfinMedicPage .md-pill { display: inline-flex; justify-content: center; min-width: 96px; padding: 3px 10px; border-radius: 12px; font-size: 0.72em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        #JellyfinMedicPage .md-pill.sev-Problem { background: #4a1f22; color: #ff9a9e; }
+        #JellyfinMedicPage .md-pill.sev-Improve { background: #4a3a14; color: #ffd27a; }
+        #JellyfinMedicPage .md-pill.sev-Tip { background: #16324d; color: #9fd0ff; }
+        #JellyfinMedicPage .md-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+        #JellyfinMedicPage .md-list li { display: flex; justify-content: space-between; gap: 12px; }
+        #JellyfinMedicPage .md-num-ok { color: #7fe0b5; }
+        #JellyfinMedicPage .md-num-warn { color: #ffd27a; }
+        #JellyfinMedicPage .md-num-bad { color: #ff9a9e; }
+        #JellyfinMedicPage .md-fail-box { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; background: #2a1a1c; border-radius: 8px; margin-bottom: 6px; }
+        #JellyfinMedicPage .md-details summary { color: #e6e8ec; font-weight: 600; margin: 0; }
+        #JellyfinMedicPage .md-details[open] summary { margin-bottom: 12px; }
+        #JellyfinMedicPage .md-icon-btn { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid #3a3e46; border-radius: 8px; color: #c4c9d2; cursor: pointer; }
+        #JellyfinMedicPage .md-icon-btn:disabled { opacity: 0.35; cursor: default; }
+        #JellyfinMedicPage .md-range { color: #c4c9d2; }
+        #JellyfinMedicPage .md-seg { display: inline-flex; background: #1f2228; border: 1px solid #30343c; border-radius: 10px; padding: 3px; }
+        #JellyfinMedicPage .md-seg button { min-height: 34px; padding: 0 14px; border: none; border-radius: 8px; background: transparent; color: #b9bfc9; font: inherit; cursor: pointer; }
+        #JellyfinMedicPage .md-seg button[aria-pressed="true"] { background: #3a4150; color: #fff; }
+        #JellyfinMedicPage .md-banner { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 10px; background: #2b2412; border: 1px solid #5a4716; color: #ffd78a; flex-wrap: wrap; margin: 10px 0; }
+        #JellyfinMedicPage .md-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85em; color: #c4c9d2; margin: 10px 0 14px; }
+        #JellyfinMedicPage .md-legend span { display: inline-flex; align-items: center; gap: 8px; }
+        #JellyfinMedicPage .md-sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; }
+        #JellyfinMedicPage .md-hatch { background: repeating-linear-gradient(135deg, #ffb648 0 4px, #c97a18 4px 8px); }
+        #JellyfinMedicPage .md-failed { width: 12px; height: 12px; background: #2a2d34; box-shadow: 0 0 0 2px #ff5a5f; }
+        #JellyfinMedicPage .md-busy-sw { background: rgba(255, 120, 80, 0.35); }
+        #JellyfinMedicPage .md-sched-body { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 18px; }
+        #JellyfinMedicPage .md-timeline-card { flex: 1 1 720px; min-width: 0; background: #1b1d22; border: 1px solid #2a2d34; border-radius: 12px; padding: 12px 14px; }
+        #JellyfinMedicPage .md-timeline { position: relative; min-width: 700px; }
+        #JellyfinMedicPage .md-tl-head { position: relative; height: 26px; margin-left: 84px; font-family: ui-monospace, monospace; font-size: 0.72em; color: #8e95a1; }
+        #JellyfinMedicPage .md-tl-head span { position: absolute; top: 4px; white-space: nowrap; }
+        #JellyfinMedicPage .md-tl-row { display: flex; border-top: 1px solid #262930; }
+        #JellyfinMedicPage .md-tl-row.is-today { background: #1f232a; }
+        #JellyfinMedicPage .md-tl-row.is-past { opacity: 0.6; }
+        #JellyfinMedicPage .md-tl-day { width: 84px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 6px; box-sizing: border-box; }
+        #JellyfinMedicPage .md-tl-day strong { font-weight: 600; }
+        #JellyfinMedicPage .md-tl-day span { font-size: 0.78em; color: #9aa1ac; }
+        #JellyfinMedicPage .md-tl-row.is-today .md-tl-day strong { color: #7cc0ff; }
+        #JellyfinMedicPage .md-tl-track { position: relative; flex-grow: 1; }
+        #JellyfinMedicPage .md-tl-busy { position: absolute; top: 0; bottom: 0; background: rgb(255, 120, 80); pointer-events: none; }
+        #JellyfinMedicPage .md-tl-avoid { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 6px, transparent 6px 12px); pointer-events: none; }
+        #JellyfinMedicPage .md-tl-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #2a2d34; pointer-events: none; }
+        #JellyfinMedicPage .md-tl-block { position: absolute; height: 26px; box-sizing: border-box; border: none; border-radius: 5px; padding: 0 6px; font-size: 0.72em; line-height: 26px; font-weight: 500; font-family: inherit; color: #111317; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+        #JellyfinMedicPage .md-tl-note { font-size: 0.72em; color: #9aa1ac; }
+        #JellyfinMedicPage .md-tl-now { position: absolute; top: 20px; bottom: 0; width: 2px; margin-left: -1px; background: #ff4040; pointer-events: none; }
+        #JellyfinMedicPage .md-tl-now-label { position: absolute; top: 0; transform: translateX(-50%); background: #c62828; color: #fff; font: 600 0.72em/18px ui-monospace, monospace; padding: 0 6px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
+        #JellyfinMedicPage .md-detail { flex: 0 1 320px; min-width: 260px; background: #1b1d22; border: 1px solid #2a2d34; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; }
+        #JellyfinMedicPage .md-detail h4 { margin: 0; font-size: 1.15em; }
+        #JellyfinMedicPage .md-detail-type { display: flex; align-items: center; gap: 8px; color: #a7adb8; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.06em; }
+        #JellyfinMedicPage .md-note { margin: 0; padding: 10px 12px; background: #23262d; border-radius: 8px; color: #d3d7de; font-size: 0.9em; line-height: 1.5; }
+        #JellyfinMedicPage .md-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+        #JellyfinMedicPage .md-inline-head { margin: 0; }
+        #JellyfinMedicPage .md-form { display: flex; flex-direction: column; gap: 12px; }
+        #JellyfinMedicPage .md-num { width: 90px; }
+        #JellyfinMedicPage .md-export { width: 100%; min-height: 280px; font-family: ui-monospace, monospace; font-size: 0.8em; box-sizing: border-box; margin: 8px 0; }
+        #JellyfinMedicPage .md-bar { height: 8px; background: #2a2d34; border-radius: 4px; overflow: hidden; min-width: 80px; }
+        #JellyfinMedicPage .md-bar i { display: block; height: 100%; background: #6aa8ff; }
+        #JellyfinMedicPage .md-maint { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+        #JellyfinMedicPage .md-maint-col { display: flex; flex-direction: column; gap: 8px; }
+        #JellyfinMedicPage .md-warn-text { color: #ffd27a; }
+        #JellyfinMedicPage .md-ok-text { color: #7fe0b5; }
+        #JellyfinMedicPage .md-bad-text { color: #ff9a9e; }
+    </style>
+
+    <script>
+        (function () {
+            const CLOCK_KEY = 'jellyfinMedicClock';
+            const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            const SEV_LABEL = { Problem: 'Problem', Improve: 'Improvement', Tip: 'Tip', Good: 'All good' };
+            const CATEGORY = {
+                library: { label: 'Library and guide', bg: '#6aa8ff' },
+                analysis: { label: 'Media analysis', bg: '#c4a8ff' },
+                upkeep: { label: 'Clean-up and upkeep', bg: '#5fd0b3' },
+                monthly: { label: 'Monthly, run by Medic', bg: '#ffb648' },
+                plugin: { label: 'Other plugins, left alone', bg: '#a3a9b3' },
+                interval: { label: 'Repeats through the day', bg: '#a3a9b3' }
+            };
+            const HATCH = 'repeating-linear-gradient(135deg, #ffb648 0 6px, #c97a18 6px 12px)';
+
+            let clock = '24';
+            try { clock = window.localStorage.getItem(CLOCK_KEY) === '12' ? '12' : '24'; } catch (e) { /* keep 24-hour */ }
+
+            function pick(obj, name) {
+                if (!obj) return undefined;
+                const camel = name.charAt(0).toLowerCase() + name.slice(1);
+                return obj[name] !== undefined ? obj[name] : obj[camel];
+            }
+
+            function el(tag, className, text) {
+                const node = document.createElement(tag);
+                if (className) node.className = className;
+                if (text !== undefined && text !== null) node.textContent = text;
+                return node;
+            }
+
+            // Rewrites HH:mm times in text for the chosen clock.
+            function fmtTimes(text) {
+                if (text === null || text === undefined) return '';
+                const str = String(text);
+                if (clock === '24') return str;
+                return str.replace(/\b([01]\d|2[0-3]):([0-5]\d)\b/g, function (m, hh, mm) {
+                    const h = parseInt(hh, 10);
+                    return (h % 12 === 0 ? 12 : h % 12) + ':' + mm + (h < 12 ? ' am' : ' pm');
+                });
+            }
+
+            function hourLabel(h) {
+                if (clock === '24') return (h < 10 ? '0' : '') + h;
+                return (h % 12 === 0 ? 12 : h % 12) + (h < 12 ? 'a' : 'p');
+            }
+
+            function hm(minutes) {
+                const m = ((Math.round(minutes) % 1440) + 1440) % 1440;
+                const h = Math.floor(m / 60);
+                return fmtTimes((h < 10 ? '0' : '') + h + ':' + (m % 60 < 10 ? '0' : '') + (m % 60));
+            }
+
+            function fmtDateTime(value) {
+                const d = new Date(value);
+                if (isNaN(d.getTime())) return '';
+                return d.toLocaleString('en-GB', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                    hour: clock === '12' ? 'numeric' : '2-digit', minute: '2-digit',
+                    hourCycle: clock === '12' ? 'h12' : 'h23'
+                });
+            }
+
+            function fmtShort(value) {
+                const d = new Date(value);
+                if (isNaN(d.getTime())) return '';
+                return d.toLocaleString('en-GB', {
+                    weekday: 'short', day: 'numeric', month: 'short',
+                    hour: clock === '12' ? 'numeric' : '2-digit', minute: '2-digit',
+                    hourCycle: clock === '12' ? 'h12' : 'h23'
+                });
+            }
+
+            function fmtDuration(seconds) {
+                if (seconds === null || seconds === undefined) return '–';
+                const s = Math.max(0, Math.round(seconds));
+                if (s < 60) return s + ' s';
+                if (s < 3600) return Math.round(s / 60) + ' min';
+                return Math.floor(s / 3600) + ' h ' + Math.round((s % 3600) / 60) + ' min';
+            }
+
+            function getJson(path, params) {
+                return ApiClient.getJSON(ApiClient.getUrl(path, params));
+            }
+
+            function postJson(path, params) {
+                return ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl(path, params), dataType: 'json' });
+            }
+
+            function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+
+            function init(page) {
+                const $ = function (id) { return page.querySelector('#' + id); };
+                const status = $('so-status');
+                let report = null;
+                let usage = null;
+                let plugins = null;
+                let settings = null;
+                let filter = 'all';
+                let activeTab = 'dashboard';
+                let cal = null;
+                let calWeek = 0;
+                let range = 'full';
+                let selKey = null;
+                let history = null;
+                let nowData = null;
+                let nowTimer = null;
+                let iptv = null;
+                let exportText = '';
+
+                function showStatus(text, type) {
+                    status.className = 'so-status ' + type;
+                    status.textContent = text;
+                    status.hidden = false;
+                }
+
+                function hideStatus() { status.hidden = true; }
+
+                // ---------- Finding cards ----------
+
+                function findingCard(f) {
+                    const sev = pick(f, 'Severity');
+                    const ignored = !!pick(f, 'Ignored');
+                    const card = el('div', 'so-card sev-' + sev + (ignored ? ' is-ignored' : ''));
+                    const head = el('div');
+                    if (sev !== 'Good' && pick(f, 'Key')) {
+                        const button = el('button', 'so-ignore-btn', ignored ? 'Show again' : 'Ignore');
+                        button.type = 'button';
+                        button.title = ignored
+                            ? 'Put this back in the counts and lists'
+                            : 'You have checked this and it is fine: leave it out of the counts and lists';
+                        button.addEventListener('click', function () { toggleIgnore(f, button); });
+                        head.appendChild(button);
+                    }
+                    head.appendChild(el('span', 'so-badge', ignored ? 'Ignored' : (SEV_LABEL[sev] || sev)));
+                    head.appendChild(el('span', 'so-area', pick(f, 'Area')));
+                    card.appendChild(head);
+                    card.appendChild(el('h4', null, fmtTimes(pick(f, 'Title'))));
+
+                    const current = pick(f, 'Current');
+                    const recommended = pick(f, 'Recommended');
+                    if (current || recommended) {
+                        const kv = el('dl', 'so-kv');
+                        if (current) {
+                            kv.appendChild(el('dt', null, 'Now'));
+                            kv.appendChild(el('dd', null, fmtTimes(current)));
+                        }
+                        if (recommended) {
+                            kv.appendChild(el('dt', null, sev === 'Good' ? 'Note' : 'Suggested'));
+                            kv.appendChild(el('dd', 'so-suggest', fmtTimes(recommended)));
+                        }
+                        card.appendChild(kv);
+                    }
+
+                    if (pick(f, 'Why')) card.appendChild(el('p', 'so-why', fmtTimes(pick(f, 'Why'))));
+                    if (pick(f, 'Where')) card.appendChild(el('p', 'so-where', 'Where: ' + pick(f, 'Where')));
+                    return card;
+                }
+
+                // ---------- Ignoring findings ----------
+
+                function isIgnored(f) { return !!pick(f, 'Ignored'); }
+
+                function allFindings() {
+                    const list = (pick(report, 'Findings') || []).slice();
+                    (plugins || []).forEach(function (p) { (pick(p, 'Findings') || []).forEach(function (f) { list.push(f); }); });
+                    return list;
+                }
+
+                async function toggleIgnore(f, button) {
+                    const key = pick(f, 'Key');
+                    const ignore = !isIgnored(f);
+                    button.disabled = true;
+                    try {
+                        await postJson('/JellyfinMedic/Ignore', { key: key, ignored: ignore });
+                        // The same finding can appear on the Recommendations and Plugins tabs.
+                        allFindings().forEach(function (item) {
+                            if (pick(item, 'Key') === key) {
+                                if (item.Ignored !== undefined) item.Ignored = ignore; else item.ignored = ignore;
+                            }
+                        });
+                        if (report) { renderDashboard(); renderRecs(); }
+                        if (plugins) renderPlugins();
+                    } catch (err) {
+                        console.error('Jellyfin Medic: could not update ignored finding', err);
+                        showStatus('Couldn\'t save that change. Check the Jellyfin log for Jellyfin Medic errors.', 'error');
+                        button.disabled = false;
+                    }
+                }
+
+                // ---------- Recommendations ----------
+
+                function setFilter(value) {
+                    filter = value;
+                    page.querySelectorAll('.so-filter').forEach(function (b) {
+                        b.setAttribute('aria-pressed', b.getAttribute('data-filter') === value ? 'true' : 'false');
+                    });
+                    renderRecs();
+                }
+
+                function renderRecs() {
+                    const box = $('so-recs');
+                    box.innerHTML = '';
+                    if (!report) return;
+                    const findings = (pick(report, 'Findings') || []).filter(function (f) {
+                        if (filter === 'Ignored') return isIgnored(f);
+                        if (isIgnored(f)) return false;
+                        return filter === 'all' || pick(f, 'Severity') === filter;
+                    });
+                    if (findings.length === 0) {
+                        box.appendChild(el('p', 'so-muted', 'Nothing in this category.'));
+                        return;
+                    }
+                    const areas = [];
+                    const byArea = {};
+                    findings.forEach(function (f) {
+                        const a = pick(f, 'Area');
+                        if (!byArea[a]) { byArea[a] = []; areas.push(a); }
+                        byArea[a].push(f);
+                    });
+                    areas.forEach(function (a) {
+                        box.appendChild(el('h3', 'so-area-title', a));
+                        byArea[a].forEach(function (f) { box.appendChild(findingCard(f)); });
+                    });
+                }
+
+                page.querySelectorAll('.so-filter').forEach(function (b) {
+                    b.addEventListener('click', function () { setFilter(b.getAttribute('data-filter')); });
+                });
+
+                // ---------- Usage ----------
+
+                function renderUsage() {
+                    const summary = $('so-usage-summary');
+                    const table = $('so-heatmap');
+                    table.innerHTML = '';
+                    if (!usage) return;
+
+                    const hours = pick(usage, 'HoursCollected') || 0;
+                    if (!pick(usage, 'Ready')) {
+                        summary.textContent = 'Still learning: ' + Math.round(hours) + ' hours recorded. Busy and quiet times appear after about 3 days; a week gives the best picture.';
+                    } else if (!pick(usage, 'MaxStreams')) {
+                        summary.textContent = 'No playback recorded yet in ' + Math.round(hours) + ' hours.';
+                    } else {
+                        const share = pick(usage, 'TranscodeShare');
+                        summary.textContent = fmtTimes('Busiest: ' + pick(usage, 'BusiestHours') + ' (most on ' + pick(usage, 'BusiestDay') + '). ' +
+                            'Quietest 5 hours: ' + pick(usage, 'QuietWindow') + '. ' +
+                            'Up to ' + pick(usage, 'MaxStreams') + ' watching at once' +
+                            (share !== null && share !== undefined ? ', ' + Math.round(share * 100) + '% of playback transcoded.' : '.'));
+                    }
+
+                    const values = pick(usage, 'AverageStreams') || [];
+                    const max = Math.max.apply(null, values.concat([0.0001]));
+
+                    const head = el('tr');
+                    head.appendChild(el('th'));
+                    for (let h = 0; h < 24; h++) head.appendChild(el('th', null, hourLabel(h)));
+                    table.appendChild(head);
+
+                    for (let d = 0; d < 7; d++) {
+                        const row = el('tr');
+                        row.appendChild(el('th', null, DAYS[d]));
+                        for (let h = 0; h < 24; h++) {
+                            const v = values[d * 24 + h] || 0;
+                            const cell = el('td');
+                            if (v > 0) {
+                                const strength = 0.15 + 0.85 * (v / max);
+                                cell.style.background = 'rgba(0, 164, 220, ' + strength.toFixed(2) + ')';
+                            }
+                            cell.title = DAYS[d] + ' ' + fmtTimes((h < 10 ? '0' : '') + h + ':00') + ': ' + v.toFixed(1) + ' watching on average';
+                            row.appendChild(cell);
+                        }
+                        table.appendChild(row);
+                    }
+                }
+
+                // ---------- Plugins ----------
+
+                function renderPlugins() {
+                    const box = $('so-plugins');
+                    box.innerHTML = '';
+                    if (!plugins) return;
+                    plugins.forEach(function (p) {
+                        const panel = el('div', 'so-panel');
+                        const head = el('div', 'so-plugin-head');
+                        head.appendChild(el('h3', null, pick(p, 'Name')));
+                        const version = pick(p, 'Version');
+                        head.appendChild(el('span', 'so-muted', (version ? 'Version ' + version + ', ' : '') + pick(p, 'Status')));
+                        panel.appendChild(head);
+
+                        const findings = pick(p, 'Findings') || [];
+                        if (findings.length === 0) {
+                            panel.appendChild(el('p', 'so-muted so-small', 'No problems spotted.'));
+                        } else {
+                            findings.forEach(function (f) { panel.appendChild(findingCard(f)); });
+                        }
+
+                        const rows = pick(p, 'Settings') || [];
+                        if (rows.length > 0) {
+                            const details = el('details');
+                            details.appendChild(el('summary', null, 'Show settings (' + rows.length + ')'));
+                            const table = el('table', 'so-table');
+                            const body = el('tbody');
+                            rows.forEach(function (r) {
+                                const row = el('tr');
+                                row.appendChild(el('td', 'so-muted', pick(r, 'Name')));
+                                row.appendChild(el('td', null, pick(r, 'Value')));
+                                body.appendChild(row);
+                            });
+                            table.appendChild(body);
+                            details.appendChild(table);
+                            panel.appendChild(details);
+                        } else if (pick(p, 'Status') !== 'Not installed') {
+                            panel.appendChild(el('p', 'so-muted so-small', 'No settings file found for this plugin.'));
+                        }
+                        box.appendChild(panel);
+                    });
+                }
+
+                // ---------- All settings ----------
+
+                function renderSettings() {
+                    if (!settings) return;
+                    const query = $('so-settings-search').value.trim().toLowerCase();
+                    const section = $('so-settings-section').value;
+                    const body = $('so-settings-body');
+                    body.innerHTML = '';
+                    const matches = settings.filter(function (s) {
+                        if (section && pick(s, 'Section') !== section) return false;
+                        if (!query) return true;
+                        return (pick(s, 'Name') + ' ' + pick(s, 'Value')).toLowerCase().indexOf(query) >= 0;
+                    });
+                    matches.slice(0, 500).forEach(function (s) {
+                        const row = el('tr');
+                        row.appendChild(el('td', 'so-muted', pick(s, 'Section')));
+                        row.appendChild(el('td', null, pick(s, 'Name')));
+                        row.appendChild(el('td', null, pick(s, 'Value')));
+                        body.appendChild(row);
+                    });
+                    $('so-settings-count').textContent = matches.length > 500
+                        ? 'Showing 500 of ' + matches.length + ' settings. Search to narrow it down.'
+                        : matches.length + ' settings';
+                }
+
+                function fillSections() {
+                    const select = $('so-settings-section');
+                    const current = select.value;
+                    select.innerHTML = '';
+                    const all = el('option', null, 'All sections');
+                    all.value = '';
+                    select.appendChild(all);
+                    const seen = [];
+                    settings.forEach(function (s) {
+                        const name = pick(s, 'Section');
+                        if (seen.indexOf(name) < 0) seen.push(name);
+                    });
+                    seen.forEach(function (name) {
+                        const option = el('option', null, name);
+                        option.value = name;
+                        select.appendChild(option);
+                    });
+                    select.value = current;
+                }
+
+                $('so-settings-search').addEventListener('input', renderSettings);
+                $('so-settings-section').addEventListener('change', renderSettings);
+
+                // ---------- Dashboard ----------
+
+                function goto(tab) { selectTab(tab); }
+
+                page.querySelectorAll('.md-goto').forEach(function (b) {
+                    b.addEventListener('click', function () { goto(b.getAttribute('data-goto')); });
+                });
+
+                function renderDashboard() {
+                    if (!report) return;
+                    const all = pick(report, 'Findings') || [];
+                    const active = all.filter(function (f) { return !isIgnored(f); });
+                    const counts = { Problem: 0, Improve: 0, Tip: 0 };
+                    active.forEach(function (f) { if (counts[pick(f, 'Severity')] !== undefined) counts[pick(f, 'Severity')]++; });
+                    const ignoredCount = all.filter(isIgnored).length;
+
+                    $('md-checked').textContent = 'Last checked ' + fmtDateTime(pick(report, 'GeneratedUtc'));
+                    const toFix = counts.Problem + counts.Improve;
+                    $('md-health-big').textContent = toFix === 0 ? 'Nothing important to fix' : (toFix === 1 ? '1 thing to fix' : toFix + ' things to fix');
+
+                    const box = $('so-counts');
+                    box.innerHTML = '';
+                    [['Problem', 'Problems', counts.Problem], ['Improve', 'Improve', counts.Improve], ['Tip', 'Tips', counts.Tip], ['Ignored', 'Ignored', ignoredCount]].forEach(function (c) {
+                        const b = el('button', 'md-count sev-' + c[0]);
+                        b.type = 'button';
+                        b.appendChild(el('strong', null, String(c[2])));
+                        b.appendChild(el('span', 'so-small', c[1]));
+                        b.addEventListener('click', function () { setFilter(c[0]); selectTab('recs'); });
+                        box.appendChild(b);
+                    });
+
+                    const list = $('md-issues');
+                    list.innerHTML = '';
+                    const top = active.filter(function (f) { return ['Problem', 'Improve'].indexOf(pick(f, 'Severity')) >= 0; }).slice(0, 4);
+                    if (top.length === 0) {
+                        const li = el('li');
+                        li.appendChild(el('span', 'so-muted', 'Nothing important to fix. The Checks tab has optional tips.'));
+                        list.appendChild(li);
+                    }
+                    top.forEach(function (f) {
+                        const sev = pick(f, 'Severity');
+                        const li = el('li');
+                        li.appendChild(el('span', 'md-pill sev-' + sev, SEV_LABEL[sev] || sev));
+                        const text = el('div', 'md-issue-text');
+                        text.appendChild(el('strong', null, fmtTimes(pick(f, 'Title'))));
+                        text.appendChild(el('span', 'so-muted so-small', fmtTimes(pick(f, 'Recommended') || pick(f, 'Why'))));
+                        li.appendChild(text);
+                        const actions = el('div', 'md-row');
+                        const show = el('button', 'so-btn so-btn-plain', 'Details');
+                        show.type = 'button';
+                        show.addEventListener('click', function () { setFilter('all'); selectTab('recs'); });
+                        actions.appendChild(show);
+                        const ignore = el('button', 'so-btn so-btn-plain', 'Ignore');
+                        ignore.type = 'button';
+                        ignore.addEventListener('click', function () { toggleIgnore(f, ignore); });
+                        actions.appendChild(ignore);
+                        li.appendChild(actions);
+                        list.appendChild(li);
+                    });
+
+                    const users = pick(report, 'Users');
+                    const ul = $('md-users');
+                    ul.innerHTML = '';
+                    if (users) {
+                        $('md-users-big').textContent = pick(users, 'Total') + (pick(users, 'Total') === 1 ? ' user' : ' users');
+                        [['Inactive', (pick(users, 'Inactive') || []).length, 'md-num-warn'],
+                         ['No password set', (pick(users, 'NoPassword') || []).length, 'md-num-bad'],
+                         ['Administrators', pick(users, 'Admins') || 0, ''],
+                         ['Disabled', pick(users, 'Disabled') || 0, '']].forEach(function (r) {
+                            const li = el('li');
+                            li.appendChild(el('span', null, r[0]));
+                            li.appendChild(el('strong', r[1] > 0 ? r[2] : 'md-num-ok', String(r[1])));
+                            ul.appendChild(li);
+                        });
+                    }
+
+                    const updates = pick(report, 'Updates') || [];
+                    $('md-updates-big').textContent = updates.length === 0 ? 'Plugins up to date' : (updates.length === 1 ? '1 plugin update' : updates.length + ' plugin updates');
+                    const up = $('md-updates');
+                    up.innerHTML = '';
+                    updates.slice(0, 6).forEach(function (u) {
+                        const li = el('li');
+                        li.appendChild(el('span', null, u));
+                        li.appendChild(el('span', 'md-num-warn', 'Ready'));
+                        up.appendChild(li);
+                    });
+                    if (updates.length > 6) up.appendChild(el('li', 'so-muted so-small', 'and ' + (updates.length - 6) + ' more'));
+
+                    renderSpecs();
+                }
+
+                function renderSpecs() {
+                    const specs = $('so-specs');
+                    specs.innerHTML = '';
+                    const groups = {};
+                    (pick(report, 'Specs') || []).forEach(function (s) {
+                        const g = pick(s, 'Group');
+                        (groups[g] = groups[g] || []).push(s);
+                    });
+                    Object.keys(groups).forEach(function (g) {
+                        const wrap = el('div', 'so-spec-group');
+                        wrap.appendChild(el('h4', null, g));
+                        const table = el('table', 'so-table');
+                        const body = el('tbody');
+                        groups[g].forEach(function (s) {
+                            const row = el('tr');
+                            row.appendChild(el('td', 'so-muted', pick(s, 'Label')));
+                            row.appendChild(el('td', null, pick(s, 'Value')));
+                            body.appendChild(row);
+                        });
+                        table.appendChild(body);
+                        wrap.appendChild(table);
+                        specs.appendChild(wrap);
+                    });
+                }
+
+                function renderNow() {
+                    if (!nowData) return;
+                    $('md-cpu').textContent = Math.round(pick(nowData, 'CpuPercent') || 0) + '%';
+                    const hist = (pick(nowData, 'CpuHistory') || []).concat([pick(nowData, 'CpuPercent') || 0]);
+                    const points = hist.map(function (v, i) {
+                        const x = hist.length < 2 ? 0 : (i / (hist.length - 1)) * 148 + 1;
+                        const y = 44 - Math.min(100, v) / 100 * 40;
+                        return x.toFixed(1) + ',' + y.toFixed(1);
+                    }).join(' ');
+                    $('md-spark-line').setAttribute('points', points);
+                    const dl = $('md-now');
+                    dl.innerHTML = '';
+                    function row(k, v) { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); }
+                    row('Memory', (pick(nowData, 'MemoryGb') || 0) + ' GB of ' + (pick(nowData, 'MemoryLimitGb') || '?') + ' GB');
+                    const watching = pick(nowData, 'Watching') || 0;
+                    const transcoding = pick(nowData, 'Transcoding') || 0;
+                    row('Watching', watching === 0 ? 'Nobody' : watching + (watching === 1 ? ' person' : ' people') + (transcoding ? ', ' + transcoding + ' transcoding' : ''));
+                    const tasks = pick(nowData, 'RunningTasks') || [];
+                    row('Running tasks', tasks.length ? tasks.join(', ') : 'None');
+                    row('Active devices', String(pick(nowData, 'ActiveDevices') || 0));
+                    const running = pick(nowData, 'RunningTasks') || [];
+                    const rt = $('md-running-text');
+                    if (rt) rt.textContent = running.length ? running.join(', ') : 'None running.';
+                }
+
+                async function loadNow() {
+                    try {
+                        nowData = await getJson('/JellyfinMedic/Now');
+                        renderNow();
+                    } catch (e) { /* the tile just stays as it was */ }
+                }
+
+                function renderToday() {
+                    const box = $('md-today');
+                    const axis = $('md-today-axis');
+                    box.innerHTML = '';
+                    axis.innerHTML = '';
+                    if (!cal) return;
+                    const todayIndex = pick(cal, 'TodayIndex');
+                    const day = (pick(cal, 'Days') || [])[todayIndex];
+                    if (!day) { $('md-today-big').textContent = 'No schedule data'; return; }
+                    const runs = (pick(day, 'Runs') || []).filter(function (r) { return pick(r, 'StartMinutes') >= 0; });
+                    const now = pick(cal, 'NowMinutes');
+                    const next = runs.find(function (r) { return pick(r, 'StartMinutes') >= now; });
+                    $('md-today-big').textContent = runs.length + (runs.length === 1 ? ' task' : ' tasks') + (next ? ', next at ' + hm(pick(next, 'StartMinutes')) : ', all done');
+                    runs.forEach(function (r) {
+                        const b = el('div', 'md-mini-block');
+                        const cat = CATEGORY[pick(r, 'Category')] || CATEGORY.upkeep;
+                        b.style.left = (pick(r, 'StartMinutes') / 1440 * 100) + '%';
+                        b.style.width = 'max(' + (pick(r, 'DurationMinutes') / 1440 * 100) + '%, 4px)';
+                        b.style.background = pick(r, 'Kind') === 'backoff' ? HATCH : cat.bg;
+                        b.title = pick(r, 'TaskName') + ' at ' + hm(pick(r, 'StartMinutes'));
+                        box.appendChild(b);
+                    });
+                    const line = el('div', 'md-now-line');
+                    line.style.left = (now / 1440 * 100) + '%';
+                    box.appendChild(line);
+                    [0, 360, 720, 1080, 1440].forEach(function (m) {
+                        const s = el('span', null, m === 1440 ? (clock === '24' ? '24:00' : '12 am') : hm(m));
+                        s.style.left = (m / 1440 * 100) + '%';
+                        s.style.transform = 'translateX(' + (m === 0 ? '0' : m === 1440 ? '-100%' : '-50%') + ')';
+                        axis.appendChild(s);
+                    });
+                }
+
+                function renderLastDay() {
+                    if (!history) return;
+                    const since = Date.now() - 24 * 3600 * 1000;
+                    const runs = (pick(history, 'Runs') || []).filter(function (r) { return new Date(pick(r, 'EndUtc')).getTime() >= since; });
+                    const failed = runs.filter(function (r) { return ['Failed', 'Aborted'].indexOf(pick(r, 'Status')) >= 0; });
+                    const done = runs.filter(function (r) { return pick(r, 'Status') === 'Completed'; }).length;
+                    $('md-last-big').textContent = runs.length === 0 ? 'No tasks ran' : done + ' of ' + runs.length + ' tasks completed';
+                    const box = $('md-last');
+                    box.innerHTML = '';
+                    failed.slice(0, 3).forEach(function (r) {
+                        const f = el('div', 'md-fail-box');
+                        f.appendChild(el('strong', null, pick(r, 'TaskName') + ' failed'));
+                        f.appendChild(el('span', 'so-small', (pick(r, 'ErrorMessage') || 'No error message') + ' (' + fmtShort(pick(r, 'EndUtc')) + ')'));
+                        box.appendChild(f);
+                    });
+                }
+
+                // ---------- Schedule ----------
+
+                async function loadCalendar() {
+                    try {
+                        cal = await getJson('/JellyfinMedic/Schedule/GetCalendar', { weekOffset: calWeek });
+                        renderTimeline();
+                        renderToday();
+                    } catch (err) {
+                        console.error('Jellyfin Medic: could not load the schedule', err);
+                        showStatus('Couldn\'t load the schedule. Check the Jellyfin log for Jellyfin Medic errors.', 'error');
+                    }
+                }
+
+                function allRuns() {
+                    const list = [];
+                    (pick(cal, 'Days') || []).forEach(function (d, di) {
+                        (pick(d, 'Runs') || []).forEach(function (r) { list.push({ run: r, day: d, index: di }); });
+                    });
+                    return list;
+                }
+
+                function runKey(di, r) { return di + '|' + pick(r, 'TaskId') + '|' + pick(r, 'StartMinutes'); }
+
+                function busyDuring(day, start, minutes) {
+                    const busy = pick(day, 'Busy') || [];
+                    let peak = 0;
+                    for (let m = start; m < start + Math.max(1, minutes); m += 15) {
+                        peak = Math.max(peak, busy[Math.floor(m / 60) % 24] || 0);
+                    }
+                    return peak;
+                }
+
+                function renderTimeline() {
+                    const box = $('md-timeline');
+                    box.innerHTML = '';
+                    if (!cal) return;
+
+                    const start = 0;
+                    const end = range === 'night' ? 480 : 1440;
+                    const span = end - start;
+                    const pct = function (m) { return ((m - start) / span * 100) + '%'; };
+                    const fromViewing = !!pick(cal, 'FromViewing');
+                    const avoided = pick(cal, 'AvoidedHours') || [];
+
+                    $('md-range').textContent = pick(cal, 'RangeLabel');
+                    $('md-prev').disabled = calWeek <= 0;
+                    $('md-next').disabled = calWeek >= (pick(cal, 'MaxWeekOffset') || 5);
+                    $('md-busy-note').textContent = pick(cal, 'BusySummary') || '';
+                    $('md-range-note').textContent = range === 'night'
+                        ? 'Showing 00:00 to 08:00. Switch to Full day to see the rest.'
+                        : 'Shading shows how busy each hour usually is. Click a task for its details.';
+
+                    // Hour labels
+                    const head = el('div', 'md-tl-head');
+                    const step = range === 'night' ? 60 : 120;
+                    for (let m = start; m <= end; m += step) {
+                        const s = el('span', null, m === 1440 ? (clock === '24' ? '24:00' : '12 am') : hm(m));
+                        s.style.left = pct(m);
+                        s.style.transform = 'translateX(' + (m === start ? '0' : m === end ? '-100%' : '-50%') + ')';
+                        head.appendChild(s);
+                    }
+                    box.appendChild(head);
+
+                    let busyCount = 0;
+                    const busyNames = [];
+
+                    (pick(cal, 'Days') || []).forEach(function (day, di) {
+                        const row = el('div', 'md-tl-row' + (pick(day, 'IsToday') ? ' is-today' : '') + (pick(day, 'IsPast') ? ' is-past' : ''));
+                        const label = el('div', 'md-tl-day');
+                        label.appendChild(el('strong', null, pick(day, 'Name')));
+                        label.appendChild(el('span', null, pick(day, 'Label') + (pick(day, 'IsToday') ? ' · Today' : '')));
+                        const many = (pick(day, 'Runs') || []).filter(function (r) { return pick(r, 'StartMinutes') < 0; });
+                        many.slice(0, 2).forEach(function (r) { label.appendChild(el('span', 'md-tl-note', pick(r, 'Time') + ': ' + pick(r, 'TaskName'))); });
+                        row.appendChild(label);
+
+                        const track = el('div', 'md-tl-track');
+
+                        // Busy shading, one band per hour
+                        const busy = pick(day, 'Busy') || [];
+                        for (let h = 0; h < 24; h++) {
+                            const hs = h * 60;
+                            if (hs >= end) break;
+                            if (avoided[h]) {
+                                const a = el('div', 'md-tl-avoid');
+                                a.style.left = pct(hs);
+                                a.style.width = (60 / span * 100) + '%';
+                                a.title = 'You asked Medic never to schedule tasks at this time';
+                                track.appendChild(a);
+                            }
+                            const v = busy[h] || 0;
+                            if (v > 0.05) {
+                                const b = el('div', 'md-tl-busy');
+                                b.style.left = pct(hs);
+                                b.style.width = (60 / span * 100) + '%';
+                                b.style.opacity = (0.06 + v * 0.3).toFixed(2);
+                                track.appendChild(b);
+                            }
+                        }
+                        for (let m = start + step; m < end; m += step) {
+                            const g = el('div', 'md-tl-grid');
+                            g.style.left = pct(m);
+                            track.appendChild(g);
+                        }
+
+                        // Task blocks, stacked into lanes where they overlap
+                        const runs = (pick(day, 'Runs') || [])
+                            .filter(function (r) { const s = pick(r, 'StartMinutes'); return s >= 0 && s < end && s + pick(r, 'DurationMinutes') > start; })
+                            .sort(function (a, b) { return pick(a, 'StartMinutes') - pick(b, 'StartMinutes'); });
+                        const laneEnds = [];
+                        runs.forEach(function (r) {
+                            const s = pick(r, 'StartMinutes');
+                            const d = Math.max(pick(r, 'DurationMinutes') || 10, 5);
+                            let lane = laneEnds.findIndex(function (e) { return e <= s; });
+                            if (lane < 0) lane = laneEnds.length < 3 ? laneEnds.length : 2;
+                            laneEnds[lane] = Math.max(laneEnds[lane] || 0, s + d);
+
+                            const key = runKey(di, r);
+                            if (selKey === null && pick(day, 'IsToday')) selKey = key;
+                            const cat = CATEGORY[pick(r, 'Category')] || CATEGORY.upkeep;
+                            const widthPct = d / span * 100;
+                            const block = el('button', 'md-tl-block', widthPct > 6 ? pick(r, 'TaskName') : '');
+                            block.type = 'button';
+                            block.style.left = pct(s);
+                            block.style.width = 'max(' + widthPct + '%, 8px)';
+                            block.style.top = (6 + lane * 31) + 'px';
+                            block.style.background = pick(r, 'Kind') === 'backoff' ? HATCH : cat.bg;
+                            const rings = [];
+                            if (pick(r, 'LastFailed')) rings.push('0 0 0 2px #ff5a5f');
+                            if (key === selKey) rings.push('0 0 0 ' + (pick(r, 'LastFailed') ? 4 : 2) + 'px #ffffff');
+                            if (rings.length) block.style.boxShadow = rings.join(', ');
+                            const busyPeak = busyDuring(day, s, d);
+                            if (fromViewing && busyPeak >= 0.5 && !pick(day, 'IsPast') && pick(r, 'Category') !== 'plugin') {
+                                block.style.outline = '2px dashed #ffb648';
+                                block.style.outlineOffset = '2px';
+                                busyCount++;
+                                if (busyNames.indexOf(pick(r, 'TaskName')) < 0) busyNames.push(pick(r, 'TaskName'));
+                            }
+                            const aria = pick(r, 'TaskName') + ', ' + pick(day, 'Name') + ' ' + pick(day, 'Label') + ' at ' + hm(s);
+                            block.title = aria;
+                            block.setAttribute('aria-label', aria);
+                            block.addEventListener('click', function () { selKey = key; renderTimeline(); });
+                            track.appendChild(block);
+                        });
+                        const lanes = Math.max(1, laneEnds.length);
+                        row.style.height = (12 + lanes * 31) + 'px';
+                        row.appendChild(track);
+                        box.appendChild(row);
+                    });
+
+                    // The red "now" line
+                    const todayIndex = pick(cal, 'TodayIndex');
+                    const now = pick(cal, 'NowMinutes');
+                    if (todayIndex >= 0 && now >= start && now <= end) {
+                        const overlay = el('div');
+                        overlay.style.cssText = 'position:absolute; top:0; bottom:0; left:84px; right:0; pointer-events:none;';
+                        const line = el('div', 'md-tl-now');
+                        line.style.left = pct(now);
+                        const tag = el('div', 'md-tl-now-label', 'Now ' + hm(now));
+                        tag.style.left = pct(now);
+                        overlay.appendChild(line);
+                        overlay.appendChild(tag);
+                        box.appendChild(overlay);
+                    }
+
+                    const banner = $('md-banner');
+                    if (busyNames.length > 0) {
+                        banner.hidden = false;
+                        banner.textContent = (busyNames.length === 1 ? '1 task runs' : busyNames.length + ' tasks run') + ' when people usually watch: ' + busyNames.slice(0, 4).join(', ') + (busyNames.length > 4 ? ' and more' : '') + '. Preview changes to see quieter times.';
+                    } else {
+                        banner.hidden = true;
+                    }
+
+                    renderDetail();
+                }
+
+                function renderDetail() {
+                    const box = $('md-detail');
+                    box.innerHTML = '';
+                    const found = allRuns().find(function (x) { return runKey(x.index, x.run) === selKey; });
+                    if (!found) {
+                        box.appendChild(el('p', 'so-muted', 'Click a task on the timeline to see its details.'));
+                        return;
+                    }
+                    const r = found.run;
+                    const cat = pick(r, 'Kind') === 'backoff' ? { label: 'Moved after a failure', bg: HATCH } : (CATEGORY[pick(r, 'Category')] || CATEGORY.upkeep);
+                    const type = el('div', 'md-detail-type');
+                    const sw = el('i', 'md-sw');
+                    sw.style.background = cat.bg;
+                    type.appendChild(sw);
+                    type.appendChild(el('span', null, cat.label));
+                    box.appendChild(type);
+                    box.appendChild(el('h4', null, pick(r, 'TaskName')));
+                    const dl = el('dl', 'so-kv');
+                    function row(k, v, cls) { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', cls || null, v)); }
+                    row('This run', pick(found.day, 'Name') + ' ' + pick(found.day, 'Label') + ', ' + hm(pick(r, 'StartMinutes')) + ' to ' + hm(pick(r, 'StartMinutes') + pick(r, 'DurationMinutes')));
+                    row('Schedule', fmtTimes(pick(r, 'Schedule')));
+                    row('Usually takes', pick(r, 'AverageText'));
+                    const last = pick(r, 'LastText') || '';
+                    row('Last run', last, /^Failed/.test(last) ? 'md-bad-text' : 'md-ok-text');
+                    const peak = busyDuring(found.day, pick(r, 'StartMinutes'), pick(r, 'DurationMinutes'));
+                    if (pick(cal, 'FromViewing')) row('Busy then', peak >= 0.5 ? 'People are often watching' : (peak >= 0.2 ? 'A little' : 'Quiet'));
+                    box.appendChild(dl);
+                    if (pick(r, 'Note')) box.appendChild(el('p', 'md-note', pick(r, 'Note')));
+                    const actions = el('div', 'md-row md-wrap');
+                    const run = el('button', 'so-btn so-btn-accent', 'Run now');
+                    run.type = 'button';
+                    run.addEventListener('click', async function () {
+                        run.disabled = true;
+                        try {
+                            await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('ScheduledTasks/Running/' + pick(r, 'TaskId')) });
+                            showStatus(pick(r, 'TaskName') + ' has started.', 'info');
+                        } catch (e) {
+                            showStatus('Couldn\'t start ' + pick(r, 'TaskName') + '. It may already be running.', 'error');
+                        } finally {
+                            run.disabled = false;
+                        }
+                    });
+                    actions.appendChild(run);
+                    box.appendChild(actions);
+                }
+
+                page.querySelectorAll('.md-seg button').forEach(function (b) {
+                    b.addEventListener('click', function () {
+                        range = b.getAttribute('data-range');
+                        page.querySelectorAll('.md-seg button').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+                        renderTimeline();
+                    });
+                });
+
+                $('md-prev').addEventListener('click', function () { if (calWeek > 0) { calWeek--; selKey = null; loadCalendar(); } });
+                $('md-next').addEventListener('click', function () { calWeek++; selKey = null; loadCalendar(); });
+
+                async function loadBackups() {
+                    try {
+                        const list = await getJson('/JellyfinMedic/Schedule/ListBackups');
+                        const select = $('md-backups');
+                        select.innerHTML = '';
+                        if (!list || list.length === 0) {
+                            const o = el('option', null, 'No backups yet');
+                            o.value = '';
+                            select.appendChild(o);
+                        }
+                        (list || []).forEach(function (b) {
+                            const o = el('option', null, fmtDateTime(pick(b, 'CreatedUtc')) + ' (' + pick(b, 'FileName') + ')');
+                            o.value = pick(b, 'FileName');
+                            select.appendChild(o);
+                        });
+                    } catch (e) { /* leave the list as it is */ }
+                }
+
+                async function loadAudit() {
+                    try {
+                        const rows = await getJson('/JellyfinMedic/Schedule/GetMovementAuditLog');
+                        const body = $('md-audit');
+                        body.innerHTML = '';
+                        (rows || []).forEach(function (a) {
+                            const tr = el('tr');
+                            tr.appendChild(el('td', 'so-muted', fmtShort(pick(a, 'Timestamp'))));
+                            tr.appendChild(el('td', null, pick(a, 'TaskName')));
+                            tr.appendChild(el('td', null, fmtTimes(pick(a, 'PreviousTime')) + ' → ' + fmtTimes(pick(a, 'NewTime'))));
+                            tr.appendChild(el('td', 'so-muted', fmtTimes(pick(a, 'Rationale'))));
+                            body.appendChild(tr);
+                        });
+                        if (!rows || rows.length === 0) {
+                            const tr = el('tr');
+                            const td = el('td', 'so-muted', 'No changes yet.');
+                            td.colSpan = 4;
+                            tr.appendChild(td);
+                            body.appendChild(tr);
+                        }
+                    } catch (e) { /* leave the table as it is */ }
+                }
+
+                $('md-preview').addEventListener('click', async function () {
+                    const box = $('md-preview-box');
+                    box.hidden = false;
+                    box.innerHTML = '';
+                    box.appendChild(el('p', 'so-muted', 'Working out the quietest times…'));
+                    try {
+                        const plan = await getJson('/JellyfinMedic/Schedule/PreviewScheduleDiff');
+                        box.innerHTML = '';
+                        const headRow = el('div', 'md-row md-space md-wrap');
+                        headRow.appendChild(el('h3', 'md-inline-head', pick(plan, 'Changing') + ' of ' + pick(plan, 'TotalAuditedTasks') + ' tasks would change'));
+                        const apply = el('button', 'so-btn so-btn-accent', 'Apply these changes');
+                        apply.type = 'button';
+                        apply.disabled = !pick(plan, 'Changing');
+                        apply.addEventListener('click', applyPlan);
+                        headRow.appendChild(apply);
+                        box.appendChild(headRow);
+                        box.appendChild(el('p', 'so-muted so-small', pick(plan, 'BusySummary') || ''));
+                        const wrap = el('div', 'so-scroll');
+                        const table = el('table', 'so-table');
+                        const thead = el('thead');
+                        const hr = el('tr');
+                        ['Task', 'Now', 'Recommended', 'How often', 'Why'].forEach(function (h) { hr.appendChild(el('th', null, h)); });
+                        thead.appendChild(hr);
+                        table.appendChild(thead);
+                        const body = el('tbody');
+                        (pick(plan, 'SchedulePlan') || []).forEach(function (p) {
+                            const tr = el('tr');
+                            if (!pick(p, 'Changes')) tr.style.opacity = '0.6';
+                            tr.appendChild(el('td', null, pick(p, 'TaskName')));
+                            tr.appendChild(el('td', null, fmtTimes(pick(p, 'CurrentSchedule'))));
+                            tr.appendChild(el('td', pick(p, 'Changes') ? 'md-ok-text' : null, fmtTimes(pick(p, 'ProposedSchedule'))));
+                            tr.appendChild(el('td', null, pick(p, 'Cadence')));
+                            const why = el('td', 'so-muted', fmtTimes(pick(p, 'Reason')));
+                            if (pick(p, 'Warning')) {
+                                why.appendChild(el('div', 'md-warn-text', fmtTimes(pick(p, 'Warning'))));
+                            }
+                            tr.appendChild(why);
+                            body.appendChild(tr);
+                        });
+                        table.appendChild(body);
+                        wrap.appendChild(table);
+                        box.appendChild(wrap);
+                    } catch (err) {
+                        console.error('Jellyfin Medic: preview failed', err);
+                        box.innerHTML = '';
+                        box.appendChild(el('p', 'md-bad-text', 'Couldn\'t work out a schedule. Check the Jellyfin log for Jellyfin Medic errors.'));
+                    }
+                });
+
+                async function applyPlan() {
+                    if (!window.confirm('Apply the recommended schedule? Your current schedule is backed up first, so you can restore it.')) return;
+                    try {
+                        const result = await postJson('/JellyfinMedic/Schedule/ApplyRecommendedSchedule');
+                        showStatus(pick(result, 'Message') || 'Schedule applied.', pick(result, 'Success') === false ? 'error' : 'info');
+                        $('md-preview-box').hidden = true;
+                        await Promise.all([loadCalendar(), loadBackups(), loadAudit()]);
+                    } catch (err) {
+                        showStatus('Couldn\'t apply the schedule. Check the Jellyfin log for Jellyfin Medic errors.', 'error');
+                    }
+                }
+
+                $('md-apply').addEventListener('click', applyPlan);
+
+                $('md-backup').addEventListener('click', async function () {
+                    try {
+                        const result = await postJson('/JellyfinMedic/Schedule/BackupCurrentSchedule');
+                        showStatus('Schedule backed up as ' + pick(result, 'BackupFile') + '.', 'info');
+                        loadBackups();
+                    } catch (e) {
+                        showStatus('Couldn\'t back up the schedule.', 'error');
+                    }
+                });
+
+                $('md-restore').addEventListener('click', async function () {
+                    const file = $('md-backups').value;
+                    if (!file) return;
+                    if (!window.confirm('Restore the schedule from this backup? Your current schedule is backed up first.')) return;
+                    try {
+                        const result = await postJson('/JellyfinMedic/Schedule/RestorePreviousSchedule', { backupFileName: file });
+                        showStatus(pick(result, 'Message') || 'Schedule restored.', pick(result, 'Success') === false ? 'error' : 'info');
+                        await Promise.all([loadCalendar(), loadBackups(), loadAudit()]);
+                    } catch (e) {
+                        showStatus('Couldn\'t restore that backup.', 'error');
+                    }
+                });
+
+                // ---------- Tests ----------
+
+                let films = null;
+                let speedResult = null;
+                let viewers = 2;
+                let testing = false;
+
+                function setTesting(on) {
+                    testing = on;
+                    ['so-run-playback', 'so-run-decode', 'so-run-speed', 'so-rerun'].forEach(function (id) { $(id).disabled = on; });
+                }
+
+                function videoStream(source) {
+                    return ((source && pick(source, 'MediaStreams')) || []).find(function (s) { return pick(s, 'Type') === 'Video'; }) || null;
+                }
+
+                function isHdr(item) {
+                    const v = videoStream((pick(item, 'MediaSources') || [])[0]);
+                    return !!v && String(pick(v, 'VideoRange') || '').toUpperCase() === 'HDR';
+                }
+
+                function describeFilm(item) {
+                    const v = videoStream((pick(item, 'MediaSources') || [])[0]) || {};
+                    const width = pick(v, 'Width') || 0;
+                    const resolution = width >= 3800 ? '4K ' : width >= 1800 ? '1080p ' : width >= 1200 ? '720p ' : '';
+                    const codec = String(pick(v, 'Codec') || '').toUpperCase();
+                    const range = isHdr(item) ? ' ' + (pick(v, 'VideoRangeType') || 'HDR') : '';
+                    return pick(item, 'Name') + ' (' + resolution + codec + range + ')';
+                }
+
+                async function findFilms() {
+                    if (films) return films;
+                    const base = {
+                        userId: ApiClient.getCurrentUserId(), IncludeItemTypes: 'Movie', Recursive: true,
+                        Fields: 'MediaSources,Path', Limit: 15, SortBy: 'Random'
+                    };
+                    const results = await Promise.all([
+                        getJson('Items', Object.assign({}, base, { MinWidth: 1800, MaxWidth: 2100 })),
+                        getJson('Items', Object.assign({}, base, { MinWidth: 3800 }))
+                    ]);
+                    function usable(item) {
+                        const source = (pick(item, 'MediaSources') || [])[0];
+                        const path = pick(item, 'Path') || '';
+                        return source && pick(source, 'Protocol') === 'File' && path && !/\.strm$/i.test(path) && videoStream(source);
+                    }
+                    const hd = (pick(results[0], 'Items') || []).filter(usable);
+                    const uhd = (pick(results[1], 'Items') || []).filter(usable);
+                    films = { hd: hd[0] || null, uhd: uhd.find(isHdr) || uhd[0] || null };
+                    return films;
+                }
+
+                async function showFilms() {
+                    const box = $('so-test-films');
+                    try {
+                        const f = await findFilms();
+                        const names = [f.hd, f.uhd].filter(Boolean).map(describeFilm);
+                        box.textContent = names.length ? 'Films chosen: ' + names.join(' and ') + '.' : 'No local films found to test with (streamed .strm films can\'t be used).';
+                        box.className = names.length ? 'so-small' : 'so-small so-muted';
+                    } catch (err) {
+                        console.error('Jellyfin Medic: could not pick test films', err);
+                        box.textContent = 'Couldn\'t look up films to test with.';
+                    }
+                }
+
+                async function httpError(res, what) {
+                    let reason = '';
+                    try { reason = (await res.text()).trim().slice(0, 300); } catch (e) { /* no body */ }
+                    return new Error(what + ' failed (HTTP ' + res.status + ')' + (reason ? ': ' + reason : ''));
+                }
+
+                async function fetchText(url) {
+                    const res = await fetch(url);
+                    if (!res.ok) throw await httpError(res, 'Playlist');
+                    return res.text();
+                }
+
+                async function playbackTest(film, target) {
+                    const source = pick(film, 'MediaSources')[0];
+                    const token = ApiClient.accessToken();
+                    const deviceId = ApiClient.deviceId();
+                    const playSessionId = 'jellyfinmedic' + Date.now();
+                    const started = new Date();
+                    const result = { label: target.label, film: describeFilm(film), hdr: isHdr(film), worked: false, segments: 0 };
+
+                    const params = {
+                        MediaSourceId: pick(source, 'Id'), DeviceId: deviceId, PlaySessionId: playSessionId,
+                        VideoCodec: 'h264', AudioCodec: 'aac', MaxWidth: target.maxWidth,
+                        VideoBitrate: target.bitrate, AudioBitrate: 192000, MaxStreamingBitrate: target.bitrate + 192000,
+                        TranscodingMaxAudioChannels: 2, SegmentContainer: 'ts', MinSegments: 1, BreakOnNonKeyFrames: true,
+                        AllowVideoStreamCopy: false, AllowAudioStreamCopy: false,
+                        api_key: token, ApiKey: token
+                    };
+
+                    try {
+                        const masterUrl = ApiClient.getUrl('Videos/' + pick(film, 'Id') + '/master.m3u8', params);
+                        const master = await fetchText(masterUrl);
+                        const variant = master.split('\n').map(function (l) { return l.trim(); }).find(function (l) { return l && l.charAt(0) !== '#'; });
+                        if (!variant) throw new Error('Jellyfin returned an empty playlist');
+                        const variantUrl = new URL(variant, masterUrl).href;
+                        const lines = (await fetchText(variantUrl)).split('\n').map(function (l) { return l.trim(); });
+
+                        const segments = [];
+                        let duration = 0;
+                        lines.forEach(function (l) {
+                            if (l.indexOf('#EXTINF:') === 0) {
+                                duration = parseFloat(l.substring(8)) || 0;
+                            } else if (l && l.charAt(0) !== '#') {
+                                const url = new URL(l, variantUrl);
+                                ['StartTimeTicks', 'startTimeTicks'].forEach(function (k) { url.searchParams.delete(k); });
+                                segments.push({ url: url.href, seconds: duration });
+                            }
+                        });
+                        if (segments.length === 0) throw new Error('Jellyfin returned a playlist with no segments');
+
+                        // Start about 5 minutes in (past studio logos and black frames) by asking for that
+                        // segment first; Jellyfin starts the transcode from there, as a real app does when seeking.
+                        let first = 0;
+                        let elapsed = 0;
+                        while (first < segments.length - 12 && elapsed < 300) {
+                            elapsed += segments[first].seconds;
+                            first++;
+                        }
+
+                        let mediaSeconds = 0;
+                        let wallSeconds = 0;
+                        const testStart = performance.now();
+                        for (let i = first; i < segments.length && i < first + 10; i++) {
+                            const t0 = performance.now();
+                            const res = await fetch(segments[i].url);
+                            if (!res.ok) throw await httpError(res, 'Segment ' + (i - first + 1));
+                            await res.arrayBuffer();
+                            const took = (performance.now() - t0) / 1000;
+                            result.segments++;
+                            if (i === first) {
+                                result.startup = took;
+                            } else {
+                                mediaSeconds += segments[i].seconds;
+                                wallSeconds += took;
+                            }
+                            if ((performance.now() - testStart) / 1000 > 50) break;
+                        }
+                        result.worked = result.segments > 0;
+                        if (wallSeconds > 0) result.speed = mediaSeconds / wallSeconds;
+                    } catch (err) {
+                        result.error = err.message || String(err);
+                    } finally {
+                        try {
+                            await ApiClient.ajax({ type: 'DELETE', url: ApiClient.getUrl('Videos/ActiveEncodings', { DeviceId: deviceId, PlaySessionId: playSessionId }) });
+                        } catch (e) { /* the transcode stops by itself shortly anyway */ }
+                    }
+
+                    await sleep(1500);
+                    try {
+                        const path = pick(film, 'Path') || '';
+                        const fileName = path.split(/[\\/]/).pop();
+                        result.log = await getJson('/JellyfinMedic/TranscodeLog', { sinceUtc: started.toISOString(), match: fileName });
+                    } catch (e) {
+                        result.log = null;
+                    }
+                    return result;
+                }
+
+                function playbackCard(r) {
+                    const log = r.log || {};
+                    const hwOn = (pick(log, 'ConfiguredAcceleration') || 'none') !== 'none';
+                    const speed = (pick(log, 'FfmpegSpeed') || r.speed || 0);
+                    const advice = [];
+                    let sev = 'Good';
+
+                    if (!r.worked) {
+                        sev = 'Problem';
+                        advice.push('Transcoding failed' + (r.error ? ': ' + r.error : '') + '.' + ((pick(log, 'Errors') || []).length ? ' The FFmpeg errors below usually show why.' : ' Jellyfin stopped before starting FFmpeg, so the reason above is from Jellyfin itself.'));
+                    } else {
+                        if (speed > 0 && speed < 1) {
+                            sev = 'Problem';
+                            advice.push('This is slower than real time, so anyone watching a film like this would get buffering.');
+                        }
+                        if (pick(log, 'Found')) {
+                            if (pick(log, 'Kind') && pick(log, 'Kind') !== 'Transcode') {
+                                advice.push('Jellyfin copied the video instead of transcoding it, so this run didn\'t test transcoding.');
+                            }
+                            if (hwOn && !pick(log, 'DecodingOnGpu')) {
+                                if (sev === 'Good') sev = 'Improve';
+                                advice.push('Decoding used the CPU. Tick this film\'s format under Hardware decoding (Dashboard → Playback → Transcoding).');
+                            }
+                            if (hwOn && !pick(log, 'EncodingOnGpu')) {
+                                if (sev === 'Good') sev = 'Improve';
+                                advice.push('Encoding fell back to the CPU. Check that hardware encoding is on and look at the errors below.');
+                            }
+                            if (r.hdr && pick(log, 'ToneMapping') === 'Not used') {
+                                if (sev === 'Good') sev = 'Improve';
+                                advice.push('This HDR film was converted without tone mapping, so colours will look washed out on normal screens. Turn on tone mapping.');
+                            } else if (r.hdr && hwOn && String(pick(log, 'ToneMapping')).indexOf('CPU') === 0) {
+                                if (sev === 'Good') sev = 'Improve';
+                                advice.push('Tone mapping ran on the CPU, which is slow. Your GPU can do it; check the tone mapping settings.');
+                            }
+                        } else {
+                            advice.push('Couldn\'t find Jellyfin\'s FFmpeg log for this test, so GPU use couldn\'t be confirmed.');
+                        }
+                        if (sev === 'Good') advice.push('All good: the GPU handled this film' + (r.hdr ? ', including tone mapping.' : '.'));
+                    }
+
+                    const card = el('div', 'so-card so-test-result sev-' + sev);
+                    const head = el('div');
+                    head.appendChild(el('span', 'so-badge', r.worked ? (sev === 'Good' ? 'Worked' : sev === 'Problem' ? 'Problem' : 'Worked, with issues') : 'Failed'));
+                    card.appendChild(head);
+                    card.appendChild(el('h4', null, r.label));
+
+                    const kv = el('dl', 'so-kv');
+                    function row(k, v) { if (v === undefined || v === null || v === '') return; kv.appendChild(el('dt', null, k)); kv.appendChild(el('dd', null, v)); }
+                    row('Film', r.film);
+                    if (speed > 0) {
+                        const people = Math.floor(speed);
+                        row('Speed', speed.toFixed(1) + '× real time' + (people >= 1 ? ', roughly ' + people + (people === 1 ? ' person' : ' people') + ' at once for films like this' : ''));
+                    }
+                    if (r.startup) row('Ready to play in', r.startup.toFixed(1) + ' s');
+                    if (pick(log, 'Found')) {
+                        row('Decoding', pick(log, 'Decoding'));
+                        row('Encoding', pick(log, 'Encoding'));
+                        if (r.hdr) row('Tone mapping', pick(log, 'ToneMapping'));
+                    }
+                    card.appendChild(kv);
+
+                    const list = el('ul', 'so-advice');
+                    advice.forEach(function (a) { list.appendChild(el('li', null, a)); });
+                    card.appendChild(list);
+
+                    const errors = pick(log, 'Errors') || [];
+                    if (errors.length) {
+                        const details = el('details');
+                        details.appendChild(el('summary', null, 'FFmpeg errors (' + errors.length + ')'));
+                        const pre = el('pre', 'so-small', errors.join('\n'));
+                        pre.style.whiteSpace = 'pre-wrap';
+                        details.appendChild(pre);
+                        card.appendChild(details);
+                    }
+                    if (String(pick(log, 'ConfiguredAcceleration')) === 'nvenc') {
+                        card.appendChild(el('p', 'so-where', 'NVIDIA consumer cards also limit how many encodes can run at once (set by the driver), whatever the speed.'));
+                    }
+                    return card;
+                }
+
+                $('so-run-playback').addEventListener('click', async function () {
+                    if (testing) return;
+                    const box = $('so-playback-results');
+                    box.innerHTML = '';
+                    let f;
+                    try { f = await findFilms(); } catch (e) { f = { hd: null, uhd: null }; }
+                    const plan = [];
+                    if (f.hd) plan.push({ film: f.hd, target: { maxWidth: 1280, bitrate: 4000000, label: '1080p film → 720p' } });
+                    if (f.uhd) plan.push({ film: f.uhd, target: { maxWidth: 1920, bitrate: 10000000, label: '4K film → 1080p' + (isHdr(f.uhd) ? ' with HDR tone mapping' : '') } });
+                    if (!plan.length) {
+                        box.appendChild(el('p', 'so-muted', 'No local 1080p or 4K films were found to test with.'));
+                        return;
+                    }
+                    if (!window.confirm('Run the playback test? It transcodes ' + plan.length + ' film(s) for up to a minute each.')) return;
+
+                    setTesting(true);
+                    try {
+                        for (const step of plan) {
+                            const waiting = el('p', 'so-muted', 'Testing: ' + step.target.label + '…');
+                            box.appendChild(waiting);
+                            const result = await playbackTest(step.film, step.target);
+                            box.replaceChild(playbackCard(result), waiting);
+                        }
+                    } finally {
+                        setTesting(false);
+                    }
+                });
+
+                function decodeCard(data) {
+                    const runs = pick(data, 'Runs') || [];
+                    const gpu = runs.find(function (r) { return pick(r, 'Method') !== 'CPU'; });
+                    const cpu = runs.find(function (r) { return pick(r, 'Method') === 'CPU'; });
+                    let sev = 'Good';
+                    const advice = [];
+
+                    if (!gpu) {
+                        sev = 'Improve';
+                        advice.push('Hardware acceleration is off, so trickplay and chapter images run on the CPU only.');
+                    } else if (!pick(gpu, 'Worked')) {
+                        sev = 'Problem';
+                        advice.push('The GPU couldn\'t decode this film: ' + (pick(gpu, 'Error') || 'unknown error') + '. Trickplay and chapter images will fall back to the CPU or fail.');
+                    } else if (cpu && pick(cpu, 'Speed') && pick(gpu, 'Speed')) {
+                        const ratio = pick(gpu, 'Speed') / pick(cpu, 'Speed');
+                        advice.push(ratio >= 1.2 ? 'Your GPU is ' + ratio.toFixed(1) + '× faster than the CPU here, so keep hardware acceleration on for trickplay.'
+                            : 'Your CPU kept up with the GPU on this film. That\'s normal for simpler formats on a strong CPU; the GPU still frees the CPU for other work.');
+                    }
+
+                    const card = el('div', 'so-card so-test-result sev-' + sev);
+                    card.appendChild(el('h4', null, 'Scanning ' + pick(data, 'File')));
+                    const kv = el('dl', 'so-kv');
+                    runs.forEach(function (r) {
+                        kv.appendChild(el('dt', null, pick(r, 'Method')));
+                        const s = pick(r, 'Speed');
+                        const secs = pick(r, 'SecondsPerTwoHourFilm');
+                        kv.appendChild(el('dd', null, pick(r, 'Worked') && s
+                            ? s + '× real time (about ' + (secs >= 120 ? Math.round(secs / 60) + ' min' : secs + ' s') + ' per 2-hour film)'
+                            : 'Failed' + (pick(r, 'Error') ? ': ' + pick(r, 'Error') : '')));
+                    });
+                    card.appendChild(kv);
+                    const list = el('ul', 'so-advice');
+                    advice.forEach(function (a) { list.appendChild(el('li', null, a)); });
+                    card.appendChild(list);
+                    card.appendChild(el('p', 'so-where', 'Approximate: real trickplay also resizes and saves images, so expect it to take a bit longer.'));
+                    return card;
+                }
+
+                $('so-run-decode').addEventListener('click', async function () {
+                    if (testing) return;
+                    const box = $('so-decode-results');
+                    box.innerHTML = '';
+                    let f;
+                    try { f = await findFilms(); } catch (e) { f = { hd: null, uhd: null }; }
+                    const film = f.hd || f.uhd;
+                    if (!film) {
+                        box.appendChild(el('p', 'so-muted', 'No local films were found to test with.'));
+                        return;
+                    }
+                    setTesting(true);
+                    box.appendChild(el('p', 'so-muted', 'Scanning ' + describeFilm(film) + '… this takes up to 3 minutes.'));
+                    try {
+                        const data = await postJson('/JellyfinMedic/DecodeTest', { itemId: pick(film, 'Id') });
+                        box.innerHTML = '';
+                        box.appendChild(decodeCard(data));
+                    } catch (err) {
+                        console.error('Jellyfin Medic: decode test failed', err);
+                        box.innerHTML = '';
+                        box.appendChild(el('p', 'so-muted', 'The test couldn\'t run. If another test is running, wait for it to finish.'));
+                    } finally {
+                        setTesting(false);
+                    }
+                });
+
+                function renderSpeed() {
+                    const box = $('so-speed-results');
+                    box.innerHTML = '';
+                    if (!speedResult) {
+                        box.appendChild(el('p', 'so-muted so-small', 'No speed test run yet.'));
+                        return;
+                    }
+                    if (pick(speedResult, 'Error')) {
+                        box.appendChild(el('p', 'so-muted', pick(speedResult, 'Error')));
+                        return;
+                    }
+
+                    const grid = el('div', 'so-speed-grid');
+                    [['Download', pick(speedResult, 'DownloadMbps') + ' Mbps'], ['Upload', pick(speedResult, 'UploadMbps') + ' Mbps'], ['Latency', pick(speedResult, 'LatencyMs') + ' ms']].forEach(function (pair) {
+                        const cell = el('div');
+                        cell.appendChild(el('strong', null, pair[1]));
+                        cell.appendChild(document.createTextNode(pair[0]));
+                        grid.appendChild(cell);
+                    });
+                    box.appendChild(grid);
+                    box.appendChild(el('p', 'so-muted so-small', 'Tested ' + fmtDateTime(pick(speedResult, 'TestedUtc')) + '. Results are lower if something else was using the connection at the time.'));
+
+                    const pickRow = el('div', 'so-viewers');
+                    pickRow.appendChild(el('span', null, 'People watching away from home at the same time:'));
+                    (pick(speedResult, 'Options') || []).forEach(function (o) {
+                        const b = el('button', 'so-filter', String(pick(o, 'Viewers')));
+                        b.type = 'button';
+                        b.setAttribute('aria-pressed', pick(o, 'Viewers') === viewers ? 'true' : 'false');
+                        b.addEventListener('click', function () { viewers = pick(o, 'Viewers'); renderSpeed(); });
+                        pickRow.appendChild(b);
+                    });
+                    box.appendChild(pickRow);
+
+                    const option = (pick(speedResult, 'Options') || []).find(function (o) { return pick(o, 'Viewers') === viewers; });
+                    if (!option) return;
+                    const limit = pick(option, 'RecommendedLimitMbps');
+                    const currentBps = pick(speedResult, 'CurrentLimitBps') || 0;
+                    const currentMbps = currentBps / 1000000;
+
+                    let sev = 'Good';
+                    let verdict = 'Your current setting is about right.';
+                    if (limit > 0 && currentBps <= 0) { sev = 'Improve'; verdict = 'You have no limit set, so apps can ask for more than your upload can send, which causes buffering.'; }
+                    else if (limit > 0 && currentMbps > limit * 1.25) { sev = 'Improve'; verdict = 'Your current limit is higher than your upload can deliver to this many people.'; }
+                    else if (limit > 0 && currentMbps < limit * 0.6) { sev = 'Tip'; verdict = 'Your current limit is lower than it needs to be, so films are transcoded to lower quality than necessary.'; }
+                    else if (limit === 0) { verdict = 'Your upload is fast enough that no limit is needed.'; }
+
+                    const card = el('div', 'so-card so-test-result sev-' + sev);
+                    card.appendChild(el('h4', null, 'Recommended internet streaming bitrate limit: ' + (limit === 0 ? 'No limit' : limit + ' Mbps')));
+                    const kv = el('dl', 'so-kv');
+                    kv.appendChild(el('dt', null, 'Each viewer gets'));
+                    kv.appendChild(el('dd', null, 'About ' + pick(option, 'PerViewerMbps') + ' Mbps: ' + String(pick(option, 'Quality')).toLowerCase()));
+                    kv.appendChild(el('dt', null, 'Now'));
+                    kv.appendChild(el('dd', null, currentBps > 0 ? currentMbps.toFixed(1) + ' Mbps' : 'No limit'));
+                    kv.appendChild(el('dt', null, 'IPTV'));
+                    kv.appendChild(el('dd', null, 'Your download can carry roughly ' + pick(speedResult, 'IptvHdStreams') + ' HD IPTV channels at once'));
+                    card.appendChild(kv);
+                    card.appendChild(el('p', 'so-why', verdict + ' This keeps 20% of your upload spare for everything else on your network.'));
+                    card.appendChild(el('p', 'so-where', 'Where: Dashboard → Playback → Streaming → Internet streaming bitrate limit'));
+                    box.appendChild(card);
+                }
+
+                $('so-run-speed').addEventListener('click', async function () {
+                    if (testing) return;
+                    setTesting(true);
+                    const box = $('so-speed-results');
+                    box.innerHTML = '';
+                    box.appendChild(el('p', 'so-muted', 'Testing your server\'s connection… about 20 seconds.'));
+                    try {
+                        speedResult = await postJson('/JellyfinMedic/SpeedTest');
+                        renderSpeed();
+                    } catch (err) {
+                        console.error('Jellyfin Medic: speed test failed', err);
+                        box.innerHTML = '';
+                        box.appendChild(el('p', 'so-muted', 'The speed test couldn\'t run. If another test is running, wait for it to finish.'));
+                    } finally {
+                        setTesting(false);
+                    }
+                });
+
+                async function loadTests() {
+                    showFilms();
+                    if (!speedResult) {
+                        try { speedResult = await getJson('/JellyfinMedic/SpeedTest'); } catch (e) { speedResult = null; }
+                    }
+                    renderSpeed();
+                }
+
+                // ---------- History ----------
+
+                async function loadHistory() {
+                    try {
+                        history = await getJson('/JellyfinMedic/Schedule/GetRunHistory', { errorsOnly: $('md-errors-only').checked });
+                        renderHistory();
+                        renderLastDay();
+                    } catch (err) {
+                        console.error('Jellyfin Medic: could not load run history', err);
+                    }
+                }
+
+                function renderHistory() {
+                    if (!history) return;
+                    const sum = $('md-hist-summary');
+                    sum.innerHTML = '';
+                    (pick(history, 'Summary') || []).forEach(function (s) {
+                        const tr = el('tr');
+                        tr.appendChild(el('td', null, pick(s, 'TaskName') + (pick(s, 'BackedOff') ? ' (moved after a failure)' : '')));
+                        tr.appendChild(el('td', 'so-muted', fmtTimes(pick(s, 'Schedule'))));
+                        tr.appendChild(el('td', null, pick(s, 'LastEndUtc') ? fmtShort(pick(s, 'LastEndUtc')) : 'Never'));
+                        const st = pick(s, 'LastStatus') || '–';
+                        tr.appendChild(el('td', st === 'Failed' ? 'md-bad-text' : (st === 'Completed' ? 'md-ok-text' : null), st));
+                        tr.appendChild(el('td', null, fmtDuration(pick(s, 'LastDurationSeconds'))));
+                        tr.appendChild(el('td', null, fmtDuration(pick(s, 'AverageDurationSeconds'))));
+                        const rate = pick(s, 'FailureRatePercent');
+                        tr.appendChild(el('td', rate > 30 ? 'md-bad-text' : null, rate === null || rate === undefined ? '–' : rate + '%'));
+                        sum.appendChild(tr);
+                    });
+
+                    const body = $('md-hist-runs');
+                    body.innerHTML = '';
+                    const runs = pick(history, 'Runs') || [];
+                    if (runs.length === 0) {
+                        const tr = el('tr');
+                        const td = el('td', 'so-muted', 'No runs recorded yet.');
+                        td.colSpan = 5;
+                        tr.appendChild(td);
+                        body.appendChild(tr);
+                    }
+                    runs.forEach(function (r) {
+                        const tr = el('tr');
+                        tr.appendChild(el('td', 'so-muted', fmtShort(pick(r, 'EndUtc'))));
+                        tr.appendChild(el('td', null, pick(r, 'TaskName')));
+                        const st = pick(r, 'Status');
+                        tr.appendChild(el('td', st === 'Failed' ? 'md-bad-text' : (st === 'Completed' ? 'md-ok-text' : null), st));
+                        tr.appendChild(el('td', null, fmtDuration(pick(r, 'DurationSeconds'))));
+                        const err = el('td');
+                        if (pick(r, 'ErrorMessage')) {
+                            err.appendChild(el('span', null, pick(r, 'ErrorMessage')));
+                            if (pick(r, 'ErrorDetails')) {
+                                const d = el('details');
+                                d.appendChild(el('summary', null, 'Details'));
+                                const pre = el('pre', 'so-small', pick(r, 'ErrorDetails'));
+                                pre.style.whiteSpace = 'pre-wrap';
+                                d.appendChild(pre);
+                                err.appendChild(d);
+                            }
+                        }
+                        tr.appendChild(err);
+                        body.appendChild(tr);
+                    });
+                }
+
+                $('md-errors-only').addEventListener('change', loadHistory);
+
+                // ---------- IPTV ----------
+
+                function renderIptv() {
+                    const box = $('md-iptv');
+                    box.innerHTML = '';
+                    if (!iptv) {
+                        box.appendChild(el('p', 'so-muted so-small', 'Not analysed since Jellyfin last started.'));
+                        return;
+                    }
+                    box.appendChild(el('p', 'so-muted so-small', 'Analysed ' + fmtDateTime(pick(iptv, 'GeneratedUtc')) + '. "Watched" is the most items in that group watched by any one person.'));
+                    const libs = pick(iptv, 'Libraries') || [];
+                    if (libs.length === 0) box.appendChild(el('p', 'so-muted', 'No IPTV (.strm) libraries were found.'));
+                    libs.forEach(function (lib) {
+                        const panel = el('div', 'so-panel');
+                        panel.appendChild(el('h3', null, pick(lib, 'Name') + ': ' + Number(pick(lib, 'Items') || 0).toLocaleString('en-GB') + ' items'));
+                        const table = el('table', 'so-table');
+                        const hr = el('tr');
+                        ['Genre', 'Items', 'Watched', 'Share of library'].forEach(function (h) { hr.appendChild(el('th', null, h)); });
+                        const thead = el('thead');
+                        thead.appendChild(hr);
+                        table.appendChild(thead);
+                        const body = el('tbody');
+                        (pick(lib, 'Genres') || []).forEach(function (g) {
+                            const tr = el('tr');
+                            tr.appendChild(el('td', null, pick(g, 'Name')));
+                            tr.appendChild(el('td', null, Number(pick(g, 'Items') || 0).toLocaleString('en-GB')));
+                            const w = pick(g, 'Watched') || 0;
+                            tr.appendChild(el('td', w === 0 && pick(g, 'Items') >= 500 ? 'md-warn-text' : null, Number(w).toLocaleString('en-GB')));
+                            const share = el('td');
+                            const bar = el('div', 'md-bar');
+                            const fill = el('i');
+                            fill.style.width = Math.round((pick(g, 'Share') || 0) * 100) + '%';
+                            bar.appendChild(fill);
+                            share.appendChild(bar);
+                            tr.appendChild(share);
+                            body.appendChild(tr);
+                        });
+                        table.appendChild(body);
+                        const wrap = el('div', 'so-scroll');
+                        wrap.appendChild(table);
+                        panel.appendChild(wrap);
+                        const countries = (pick(lib, 'Countries') || []).map(function (c) { return pick(c, 'Name') + ' ' + Math.round((pick(c, 'Share') || 0) * 100) + '%'; });
+                        if (countries.length) panel.appendChild(el('p', 'so-small so-muted', 'Where they come from (sampled): ' + countries.join(', ')));
+                        box.appendChild(panel);
+                    });
+
+                    const ch = pick(iptv, 'Channels') || {};
+                    const panel = el('div', 'so-panel');
+                    panel.appendChild(el('h3', null, 'Live channels'));
+                    if (!pick(ch, 'Total')) {
+                        panel.appendChild(el('p', 'so-muted', 'No live TV channels found.'));
+                    } else {
+                        const dl = el('dl', 'so-kv');
+                        function row(k, v) { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); }
+                        row('Channels', Number(pick(ch, 'Total')).toLocaleString('en-GB'));
+                        row('Shown more than once', Number(pick(ch, 'DuplicateGroups') || 0).toLocaleString('en-GB') + ' channels, ' + Number(pick(ch, 'ExtraCopies') || 0).toLocaleString('en-GB') + ' extra copies');
+                        row('Regional versions', Number(pick(ch, 'Regional') || 0).toLocaleString('en-GB'));
+                        panel.appendChild(dl);
+                        const ex = pick(ch, 'Examples') || [];
+                        if (ex.length) panel.appendChild(el('p', 'so-small so-muted', 'For example: ' + ex.join(', ')));
+                        if ((pick(ch, 'ExtraCopies') || 0) >= 30) {
+                            panel.appendChild(el('p', 'md-note', 'Dispatcharr can merge these into one channel each, with the best quality first and the others as backups, and lets you keep just the regional versions you want. Xtream Library already supports it.'));
+                        }
+                    }
+                    box.appendChild(panel);
+                }
+
+                $('md-run-iptv').addEventListener('click', async function () {
+                    if (testing) return;
+                    const btn = $('md-run-iptv');
+                    btn.disabled = true;
+                    $('md-iptv').innerHTML = '';
+                    $('md-iptv').appendChild(el('p', 'so-muted', 'Analysing your IPTV libraries… this can take a minute on a big catalogue.'));
+                    try {
+                        iptv = await postJson('/JellyfinMedic/Iptv');
+                        renderIptv();
+                    } catch (err) {
+                        console.error('Jellyfin Medic: IPTV analysis failed', err);
+                        $('md-iptv').innerHTML = '';
+                        $('md-iptv').appendChild(el('p', 'md-bad-text', 'The analysis couldn\'t run. If a test is running, wait for it to finish.'));
+                    } finally {
+                        btn.disabled = false;
+                    }
+                });
+
+                // ---------- Medic settings ----------
+
+                function fillHours(select) {
+                    select.innerHTML = '';
+                    for (let h = 0; h < 24; h++) {
+                        const o = el('option', null, hm(h * 60));
+                        o.value = String(h);
+                        select.appendChild(o);
+                    }
+                }
+
+                async function loadMedicSettings() {
+                    fillHours($('md-avoid-from'));
+                    fillHours($('md-avoid-to'));
+                    try {
+                        const s = await getJson('/JellyfinMedic/MedicSettings');
+                        $('md-avoid').checked = !!pick(s, 'AvoidEnabled');
+                        $('md-avoid-from').value = String(pick(s, 'AvoidStartHour'));
+                        $('md-avoid-to').value = String((pick(s, 'AvoidEndHour') || 0) % 24);
+                        $('md-inactive').value = String(pick(s, 'InactiveUserDays'));
+                    } catch (e) { /* defaults stay */ }
+                }
+
+                $('md-save-settings').addEventListener('click', async function () {
+                    const body = {
+                        AvoidEnabled: $('md-avoid').checked,
+                        AvoidStartHour: parseInt($('md-avoid-from').value, 10),
+                        AvoidEndHour: parseInt($('md-avoid-to').value, 10),
+                        InactiveUserDays: parseInt($('md-inactive').value, 10) || 90
+                    };
+                    try {
+                        await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JellyfinMedic/MedicSettings'), data: JSON.stringify(body), contentType: 'application/json', dataType: 'json' });
+                        $('md-settings-saved').textContent = 'Saved. Preview changes on the Schedule tab to see the effect.';
+                        cal = null;
+                    } catch (e) {
+                        $('md-settings-saved').textContent = 'Couldn\'t save. Check the Jellyfin log.';
+                    }
+                });
+
+                // ---------- Settings for support ----------
+
+                $('md-export').addEventListener('click', async function () {
+                    const btn = $('md-export');
+                    btn.disabled = true;
+                    try {
+                        exportText = await ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JellyfinMedic/Export', { includeSystem: $('md-export-system').checked }), dataType: 'text' });
+                        $('md-export-text').value = exportText;
+                        $('md-export-box').hidden = false;
+                    } catch (e) {
+                        showStatus('Couldn\'t build the settings file. Check the Jellyfin log for Jellyfin Medic errors.', 'error');
+                    } finally {
+                        btn.disabled = false;
+                    }
+                });
+
+                $('md-export-download').addEventListener('click', function () {
+                    if (!exportText) return;
+                    const blob = new Blob([exportText], { type: 'text/plain' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'jellyfin-medic-plugin-settings-' + new Date().toISOString().slice(0, 10) + '.txt';
+                    document.body.appendChild(link);
+                    link.click();
+                    setTimeout(function () { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
+                });
+
+                // ---------- Maintenance ----------
+
+                async function stopAllTasks() {
+                    const running = (nowData && (pick(nowData, 'RunningTasks') || [])) || [];
+                    if (running.length === 0) { showStatus('No tasks are running.', 'info'); return; }
+                    if (!window.confirm('Stop ' + running.length + ' running task(s)? They can run again at their next scheduled time.')) return;
+                    try {
+                        const result = await postJson('/JellyfinMedic/StopRunningTasks');
+                        showStatus('Stopped ' + pick(result, 'Stopped') + ' task(s).', 'info');
+                        loadNow();
+                    } catch (e) {
+                        showStatus('Couldn\'t stop the tasks. Check the Jellyfin log for Jellyfin Medic errors.', 'error');
+                    }
+                }
+
+                const stopBtn = $('md-stop');
+                if (stopBtn) stopBtn.addEventListener('click', stopAllTasks);
+                const stopBtn2 = $('md-stop2');
+                if (stopBtn2) stopBtn2.addEventListener('click', stopAllTasks);
+
+                async function loadCleanup() {
+                    try {
+                        const data = await getJson('/JellyfinMedic/Cleanup');
+                        const text = $('md-cleanup-text');
+                        const actions = $('md-cleanup-actions');
+                        actions.innerHTML = '';
+                        const items = pick(data, 'Items') || [];
+                        if (items.length === 0) {
+                            text.textContent = 'Nothing to clean up right now.';
+                            return;
+                        }
+                        text.textContent = 'About ' + pick(data, 'TotalSize') + ' can be freed.';
+                        items.forEach(function (item) {
+                            const b = el('button', 'so-btn so-btn-plain', 'Clear ' + pick(item, 'Label').toLowerCase() + ' (' + pick(item, 'Size') + ')');
+                            b.type = 'button';
+                            b.addEventListener('click', async function () {
+                                if (!window.confirm('Remove ' + pick(item, 'Count') + ' file(s), freeing ' + pick(item, 'Size') + '? Jellyfin rebuilds anything it still needs.')) return;
+                                b.disabled = true;
+                                try {
+                                    const r = await postJson('/JellyfinMedic/Cleanup', { kind: pick(item, 'Kind') });
+                                    showStatus(pick(r, 'Message') || 'Done.', pick(r, 'Success') === false ? 'error' : 'info');
+                                    loadCleanup();
+                                } catch (e) {
+                                    showStatus('Couldn\'t clean that up.', 'error');
+                                    b.disabled = false;
+                                }
+                            });
+                            actions.appendChild(b);
+                        });
+                    } catch (e) {
+                        $('md-cleanup-text').textContent = 'Couldn\'t check for files to clean up.';
+                    }
+                }
+
+                $('md-expose').addEventListener('click', async function () {
+                    const btn = $('md-expose');
+                    const out = $('md-expose-result');
+                    btn.disabled = true;
+                    out.textContent = 'Checking…';
+                    out.className = 'so-muted so-small';
+                    try {
+                        const r = await postJson('/JellyfinMedic/ExposureCheck');
+                        if (pick(r, 'Error')) { out.textContent = pick(r, 'Error'); out.className = 'so-muted so-small'; }
+                        else if (pick(r, 'Reachable')) { out.textContent = 'Reachable from the internet on port ' + pick(r, 'Port') + '. Make sure it\'s behind HTTPS and strong passwords.'; out.className = 'md-bad-text so-small'; }
+                        else { out.textContent = 'Not reachable from the internet on port ' + pick(r, 'Port') + '. Only people on your network or VPN can reach it.'; out.className = 'md-ok-text so-small'; }
+                    } catch (e) {
+                        out.textContent = 'Couldn\'t run the check.';
+                    } finally {
+                        btn.disabled = false;
+                    }
+                });
+
+                // ---------- Loading ----------
+
+                async function loadReport() {
+                    $('so-rerun').disabled = true;
+                    showStatus('Checking your setup…', 'info');
+                    try {
+                        report = await getJson('/JellyfinMedic/Report');
+                        hideStatus();
+                        renderDashboard();
+                        renderRecs();
+                    } catch (err) {
+                        console.error('Jellyfin Medic: report failed', err);
+                        showStatus('The checks couldn\'t run. Check the Jellyfin log for Jellyfin Medic errors.', 'error');
+                    } finally {
+                        $('so-rerun').disabled = false;
+                    }
+                }
+
+                function startNowTimer() {
+                    stopNowTimer();
+                    loadNow();
+                    nowTimer = setInterval(function () {
+                        if (!document.body.contains(page) || activeTab !== 'dashboard') { stopNowTimer(); return; }
+                        loadNow();
+                    }, 15000);
+                }
+
+                function stopNowTimer() {
+                    if (nowTimer) { clearInterval(nowTimer); nowTimer = null; }
+                }
+
+                async function loadTab(name) {
+                    try {
+                        if (name === 'dashboard') {
+                            startNowTimer();
+                            loadCleanup();
+                            if (!cal || calWeek !== 0) { calWeek = 0; await loadCalendar(); } else { renderToday(); }
+                            if (!history) await loadHistory();
+                        } else if (name === 'schedule') {
+                            await Promise.all([loadCalendar(), loadBackups(), loadAudit()]);
+                            if (!usage) { usage = await getJson('/JellyfinMedic/Usage'); }
+                            renderUsage();
+                        } else if (name === 'history') {
+                            await loadHistory();
+                        } else if (name === 'iptv') {
+                            if (!iptv) { iptv = await getJson('/JellyfinMedic/Iptv'); }
+                            renderIptv();
+                        } else if (name === 'tests') {
+                            await loadTests();
+                        } else if (name === 'plugins') {
+                            plugins = await getJson('/JellyfinMedic/Plugins');
+                            renderPlugins();
+                        } else if (name === 'settings') {
+                            await loadMedicSettings();
+                            if (!settings) {
+                                settings = await getJson('/JellyfinMedic/JellyfinSettings');
+                                fillSections();
+                                renderSettings();
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Jellyfin Medic: could not load ' + name, err);
+                        showStatus('Couldn\'t load this tab. Check the Jellyfin log for Jellyfin Medic errors.', 'error');
+                    }
+                }
+
+                // ---------- Tabs ----------
+
+                const tabNames = ['dashboard', 'schedule', 'history', 'recs', 'iptv', 'tests', 'plugins', 'settings'];
+
+                function selectTab(name) {
+                    activeTab = name;
+                    if (name !== 'dashboard') stopNowTimer();
+                    page.querySelectorAll('.so-tab').forEach(function (tab) {
+                        const selected = tab.getAttribute('data-tab') === name;
+                        tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+                        tab.tabIndex = selected ? 0 : -1;
+                    });
+                    page.querySelectorAll('.so-tabpanel').forEach(function (panel) {
+                        panel.hidden = panel.getAttribute('data-panel') !== name;
+                    });
+                    loadTab(name);
+                }
+
+                page.querySelectorAll('.so-tab').forEach(function (tab) {
+                    tab.addEventListener('click', function () { selectTab(tab.getAttribute('data-tab')); });
+                    tab.addEventListener('keydown', function (e) {
+                        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+                        const i = tabNames.indexOf(tab.getAttribute('data-tab'));
+                        const next = tabNames[(i + (e.key === 'ArrowRight' ? 1 : tabNames.length - 1)) % tabNames.length];
+                        selectTab(next);
+                        page.querySelector('.so-tab[data-tab="' + next + '"]').focus();
+                    });
+                });
+
+                // ---------- Clock, re-run, download ----------
+
+                function showClock() {
+                    page.querySelectorAll('.so-seg').forEach(function (b) {
+                        b.setAttribute('aria-pressed', b.getAttribute('data-clock') === clock ? 'true' : 'false');
+                    });
+                }
+
+                page.querySelectorAll('.so-seg').forEach(function (b) {
+                    b.addEventListener('click', function () {
+                        clock = b.getAttribute('data-clock') === '12' ? '12' : '24';
+                        try { window.localStorage.setItem(CLOCK_KEY, clock); } catch (e) { /* ignore */ }
+                        showClock();
+                        if (report) { renderDashboard(); renderRecs(); }
+                        if (cal) { renderTimeline(); renderToday(); }
+                        if (history) { renderHistory(); renderLastDay(); }
+                        if (usage) renderUsage();
+                        if (plugins) renderPlugins();
+                        if (speedResult) renderSpeed();
+                        if (iptv) renderIptv();
+                        if (activeTab === 'schedule') loadAudit();
+                    });
+                });
+                showClock();
+
+                $('so-rerun').addEventListener('click', function () {
+                    plugins = null;
+                    usage = null;
+                    loadReport();
+                    if (activeTab !== 'dashboard' && activeTab !== 'recs') loadTab(activeTab);
+                });
+
+                $('so-download').addEventListener('click', function () {
+                    if (!report) return;
+                    const lines = ['Jellyfin Medic report', 'Generated ' + fmtDateTime(pick(report, 'GeneratedUtc')), ''];
+                    lines.push('YOUR SETUP');
+                    (pick(report, 'Specs') || []).forEach(function (s) {
+                        lines.push('  ' + pick(s, 'Group') + ' - ' + pick(s, 'Label') + ': ' + pick(s, 'Value'));
+                    });
+                    lines.push('');
+                    lines.push('CHECKS');
+                    (pick(report, 'Findings') || []).forEach(function (f) {
+                        lines.push('');
+                        lines.push('[' + (isIgnored(f) ? 'Ignored' : (SEV_LABEL[pick(f, 'Severity')] || pick(f, 'Severity'))) + '] ' + pick(f, 'Area') + ': ' + fmtTimes(pick(f, 'Title')));
+                        if (pick(f, 'Current')) lines.push('  Now: ' + fmtTimes(pick(f, 'Current')));
+                        if (pick(f, 'Recommended')) lines.push('  Suggested: ' + fmtTimes(pick(f, 'Recommended')));
+                        if (pick(f, 'Why')) lines.push('  Why: ' + fmtTimes(pick(f, 'Why')));
+                        if (pick(f, 'Where')) lines.push('  Where: ' + pick(f, 'Where'));
+                    });
+                    const blob = new Blob([lines.join('\r\n')], { type: 'text/plain' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'jellyfin-medic-report-' + new Date().toISOString().slice(0, 10) + '.txt';
+                    document.body.appendChild(link);
+                    link.click();
+                    setTimeout(function () { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
+                });
+
+                return function refresh() {
+                    loadReport();
+                    loadTab(activeTab);
+                };
+            }
+
+            const page = document.getElementById('JellyfinMedicPage');
+            page.addEventListener('pageshow', function () {
+                // Wire everything up once; later visits just refresh the data.
+                if (!page._medicRefresh) {
+                    page._medicRefresh = init(page);
+                }
+                page._medicRefresh();
+            });
+        })();
+    </script>
+</div>

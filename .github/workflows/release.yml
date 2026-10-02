@@ -1,0 +1,80 @@
+name: Build and Release
+
+# Push a version tag to build, release and update the manifest:
+#   v1.0.0  ->  builds Jellyfin Medic 1.0.0, creates the release, adds it to manifest.json
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the tagged code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Work out the version
+        id: meta
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag must look like v1.2.3 (got $GITHUB_REF_NAME)"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "changelog=$(git log -1 --format=%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: >
+          dotnet publish src/JellyfinMedic/JellyfinMedic.csproj -c Release -o publish/JellyfinMedic
+          -p:Version=$VERSION -p:AssemblyVersion=$VERSION.0 -p:FileVersion=$VERSION.0
+
+      # Only the plugin's own DLL goes in the zip. Jellyfin already has its own DLLs, and
+      # shipping copies of them breaks the plugin's page and background services.
+      - name: Package
+        id: package
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          ZIP="JellyfinMedic-v$VERSION.zip"
+          zip -j "$ZIP" publish/JellyfinMedic/JellyfinMedic.dll
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "md5=$(md5sum "$ZIP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Jellyfin Medic ${{ steps.meta.outputs.version }}
+          files: ${{ steps.package.outputs.zip }}
+          body: |
+            ${{ steps.meta.outputs.changelog }}
+
+            MD5 checksum: `${{ steps.package.outputs.md5 }}`
+
+      - name: Add this version to manifest.json
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}.0
+          SOURCE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ steps.package.outputs.zip }}
+          CHECKSUM: ${{ steps.package.outputs.md5 }}
+          CHANGELOG: ${{ steps.meta.outputs.changelog }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 .github/scripts/update_manifest.py
+          git add manifest.json
+          git commit -m "chore: add $VERSION to manifest"
+          git push origin main

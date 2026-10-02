@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>JellyfinMedic</RootNamespace>
+    <AssemblyName>JellyfinMedic</AssemblyName>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+  </PropertyGroup>
+
+  <!--
+    Compile against Jellyfin, but don't copy Jellyfin's own DLLs into the output.
+    The server already has them, and a second copy stops Jellyfin recognising the
+    plugin's page and background services.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="12.1.*">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="12.1.*">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="medic.html" />
+  </ItemGroup>
+</Project>
