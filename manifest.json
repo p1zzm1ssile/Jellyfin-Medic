@@ -10,6 +10,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/src/JellyfinMedic/thumb.png",
     "versions": [
       {
+        "version": "1.0.4.0",
+        "changelog": "v1.0.4: track cleanup, load guard, suggest mode, plugin directory, what's-new popup",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/v1.0.4/JellyfinMedic-v1.0.4.zip",
+        "checksum": "203d8f6c95239631b865415f802797e9",
+        "timestamp": "2026-10-03T19:34:27Z"
+      },
+      {
         "version": "1.0.3.0",
         "changelog": "Add load guard, suggest mode, plugin directory and what's-new popup",
         "targetAbi": "12.1.0.0",
