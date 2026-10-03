@@ -35,6 +35,17 @@ public class PluginConfiguration : BasePluginConfiguration
     // Scheduling help: "off" (you run Preview/Apply) or "suggest" (Medic flags a better schedule
     // in the report but waits for you to Apply). Default: suggest.
     public string ScheduleMode { get; set; } = "suggest";
+
+    // Track cleaner (remux out unwanted audio/subtitle tracks from local files).
+    public string TracksKeepLanguages { get; set; } = "eng";
+
+    public bool TracksRemoveUndetermined { get; set; }          // off = keep undetermined tracks
+
+    public bool TracksReplaceInPlace { get; set; }              // off = write a copy beside the original
+
+    public int TracksConcurrentFiles { get; set; } = 1;
+
+    public int TracksFfmpegThreads { get; set; } = 1;
 }
 
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages

@@ -110,6 +110,16 @@ public class MedicSettingsDto
     public int MemoryCeilingPercent { get; set; } = 85;
 
     public string ScheduleMode { get; set; } = "suggest";
+
+    public string TracksKeepLanguages { get; set; } = "eng";
+
+    public bool TracksRemoveUndetermined { get; set; }
+
+    public bool TracksReplaceInPlace { get; set; }
+
+    public int TracksConcurrentFiles { get; set; } = 1;
+
+    public int TracksFfmpegThreads { get; set; } = 1;
 }
 
 /// <summary>Playback seen in one hour of the week (server local time).</summary>

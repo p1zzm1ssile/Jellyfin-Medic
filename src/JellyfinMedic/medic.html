@@ -20,6 +20,7 @@
                 <button type="button" role="tab" class="so-tab" data-tab="history" aria-selected="false" tabindex="-1">History</button>
                 <button type="button" role="tab" class="so-tab" data-tab="recs" aria-selected="false" tabindex="-1">Checks</button>
                 <button type="button" role="tab" class="so-tab" data-tab="iptv" aria-selected="false" tabindex="-1">IPTV</button>
+                <button type="button" role="tab" class="so-tab" data-tab="tracks" aria-selected="false" tabindex="-1">Tracks</button>
                 <button type="button" role="tab" class="so-tab" data-tab="tests" aria-selected="false" tabindex="-1">Tests</button>
                 <button type="button" role="tab" class="so-tab" data-tab="plugins" aria-selected="false" tabindex="-1">Plugins</button>
                 <button type="button" role="tab" class="so-tab" data-tab="directory" aria-selected="false" tabindex="-1">Plugin directory</button>
@@ -229,6 +230,46 @@
                 </div>
             </section>
 
+            <!-- Tracks -->
+            <section class="so-tabpanel" data-panel="tracks" role="tabpanel" hidden>
+                <div class="md-banner" style="background:#2a1a1c;border-color:#5a2a2a;color:#ffc9cc">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"></path><path d="M12 17h.01"></path><circle cx="12" cy="12" r="9"></circle></svg>
+                    <span style="flex:1 1 400px">This is the one tool that changes your actual media files. It removes audio and subtitle tracks by remuxing (no quality loss), but <strong>back up and run it on a few files first</strong>. It skips IPTV, never removes the last audio or subtitle track, always keeps forced subtitles, and by default keeps the original file beside a stripped copy.</span>
+                </div>
+                <div class="so-panel">
+                    <h3>Remove unwanted tracks</h3>
+                    <p class="so-muted so-small">Keeps your languages plus the native track where it's the only one (so anime and foreign films stay watchable). Set the languages and options on the Settings tab.</p>
+                    <div class="md-row md-wrap">
+                        <button type="button" id="md-tracks-scan" class="so-btn so-btn-accent">Scan and preview</button>
+                        <span id="md-tracks-langs" class="so-muted so-small"></span>
+                    </div>
+                    <div id="md-tracks-summary"></div>
+                </div>
+                <div class="so-panel" id="md-tracks-undet-panel" hidden>
+                    <h3>Undetermined tracks</h3>
+                    <p class="so-muted so-small">Tracks with no language tag. Kept by default, because an untagged track is often the one you want. To allow removing them, turn on "Remove undetermined tracks" in Settings; the "never remove the last audio/subtitle track" safety still applies.</p>
+                    <div class="so-scroll"><table class="so-table"><thead><tr><th>Type</th><th>Codec</th><th>Channels</th><th>Files</th><th>Examples</th></tr></thead><tbody id="md-tracks-undet"></tbody></table></div>
+                </div>
+                <div class="so-panel" id="md-tracks-preview-panel" hidden>
+                    <h3>Preview (first files that would change)</h3>
+                    <div id="md-tracks-preview"></div>
+                </div>
+                <div class="so-panel" id="md-tracks-run-panel" hidden>
+                    <h3>Run</h3>
+                    <div class="md-row md-wrap">
+                        <button type="button" id="md-tracks-dry" class="so-btn so-btn-plain">Dry run (report only)</button>
+                        <button type="button" id="md-tracks-go" class="so-btn so-btn-accent">Strip tracks for real</button>
+                        <button type="button" id="md-tracks-stop" class="so-btn so-btn-plain" hidden>Stop</button>
+                    </div>
+                    <div id="md-tracks-progress" class="so-muted so-small" style="margin-top:10px"></div>
+                    <div id="md-tracks-log" class="md-fulltext" style="margin-top:8px;display:none"></div>
+                    <div class="md-row md-wrap" id="md-tracks-delete-row" style="margin-top:12px" hidden>
+                        <button type="button" id="md-tracks-delete" class="so-btn so-btn-plain">Replace all originals with stripped copies</button>
+                        <span class="so-muted so-small">Only affects files Medic successfully stripped. Do this once you've checked the copies play correctly.</span>
+                    </div>
+                </div>
+            </section>
+
             <!-- Tests -->
             <section class="so-tabpanel" data-panel="tests" role="tabpanel" hidden>
                 <p class="so-muted">These tests use your GPU, CPU and internet connection for a minute or two. Run them when nobody's watching.</p>
@@ -327,6 +368,28 @@
                                 <button type="button" class="md-help" data-help="inactive" aria-label="What does this do?">?</button>
                             </div>
                             <p class="md-help-text" data-help-for="inactive" hidden></p>
+                        </div>
+
+                        <hr style="border:none;border-top:1px solid #2a2d34;width:100%">
+
+                        <div class="md-setting">
+                            <div class="md-row md-wrap">
+                                <strong>Track cleanup (Tracks tab)</strong>
+                                <button type="button" class="md-help" data-help="tracks" aria-label="What does this do?">?</button>
+                            </div>
+                            <p class="md-help-text" data-help-for="tracks" hidden></p>
+                            <div class="md-row md-wrap">
+                                <label for="md-tracks-langs-in">Keep languages</label>
+                                <input type="text" id="md-tracks-langs-in" class="so-input" style="width:160px" placeholder="eng">
+                            </div>
+                            <label class="md-check"><input type="checkbox" id="md-tracks-undet-in"> Allow removing undetermined (untagged) tracks</label>
+                            <label class="md-check"><input type="checkbox" id="md-tracks-inplace-in"> Replace files in place (default: keep original beside a copy)</label>
+                            <div class="md-row md-wrap">
+                                <label for="md-tracks-conc">Files at once</label>
+                                <input type="number" id="md-tracks-conc" class="so-input md-num" min="1" max="4">
+                                <label for="md-tracks-threads">FFmpeg threads</label>
+                                <input type="number" id="md-tracks-threads" class="so-input md-num" min="0" max="16">
+                            </div>
                         </div>
 
                         <hr style="border:none;border-top:1px solid #2a2d34;width:100%">
@@ -2132,6 +2195,7 @@
                     avoid: 'A time window Medic will always keep free, on top of what it learns from your viewing. Use it if you know a period should never have maintenance in it — for example a daily family viewing slot — even if the data looks quiet. Leave it off to let Medic choose purely from your real viewing pattern. It can wrap past midnight (e.g. 22:00 to 02:00).',
                     inactive: 'How long an account can go unused before Medic lists it as inactive in Checks and on the Dashboard. Inactive accounts are worth disabling because their old passwords still work. This only reports them; it never disables anyone. Default 90 days.',
                     guard: 'A safety net against the server running out of memory. If memory climbs past the ceiling while more than one heavy task (a scan, image extraction, a big sync) is running, Medic stops the extra heavy ones to keep the server up, then restarts them one at a time once memory recovers. It only ever stops heavy tasks, never light upkeep, and it records every action on the Dashboard. The real fix is spacing tasks out (the Schedule does this); the guard catches times when something unexpected stacks them anyway.',
+                    tracks: 'Settings for the Tracks tab, which removes unwanted audio and subtitle tracks from your LOCAL files by remuxing (no re-encode, no quality loss, so the GPU isn\'t used). "Keep languages": 3-letter codes, comma-separated (eng, jpn...). It always keeps forced subtitles and never removes the last audio or last subtitle track, so foreign films and anime stay watchable. "Files at once" and "FFmpeg threads": remuxing is disk-bound, so 1 of each is usually best; higher just thrashes the disk. By default the original is kept beside a stripped copy until you choose to replace it.',
                     ceiling: 'How full memory has to get before the guard steps in, as a percentage of what Jellyfin is actually allowed to use (its container limit, not the whole machine). Lower means it acts sooner and more cautiously; higher means it waits longer. 85% suits most servers. Below about 70% it may act when there was no real danger.'
                 };
 
@@ -2169,6 +2233,11 @@
                         $('md-ceiling').value = String(pick(s, 'MemoryCeilingPercent') || 85);
                         scheduleMode = pick(s, 'ScheduleMode') === 'off' ? 'off' : 'suggest';
                         showMode();
+                        $('md-tracks-langs-in').value = pick(s, 'TracksKeepLanguages') || 'eng';
+                        $('md-tracks-undet-in').checked = !!pick(s, 'TracksRemoveUndetermined');
+                        $('md-tracks-inplace-in').checked = !!pick(s, 'TracksReplaceInPlace');
+                        $('md-tracks-conc').value = String(pick(s, 'TracksConcurrentFiles') || 1);
+                        $('md-tracks-threads').value = String(pick(s, 'TracksFfmpegThreads') || 1);
                     } catch (e) { /* defaults stay */ }
                 }
 
@@ -2180,7 +2249,12 @@
                         InactiveUserDays: parseInt($('md-inactive').value, 10) || 90,
                         LoadGuardEnabled: $('md-guard-enabled').checked,
                         MemoryCeilingPercent: parseInt($('md-ceiling').value, 10) || 85,
-                        ScheduleMode: scheduleMode
+                        ScheduleMode: scheduleMode,
+                        TracksKeepLanguages: $('md-tracks-langs-in').value || 'eng',
+                        TracksRemoveUndetermined: $('md-tracks-undet-in').checked,
+                        TracksReplaceInPlace: $('md-tracks-inplace-in').checked,
+                        TracksConcurrentFiles: parseInt($('md-tracks-conc').value, 10) || 1,
+                        TracksFfmpegThreads: parseInt($('md-tracks-threads').value, 10)
                     };
                     try {
                         await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JellyfinMedic/MedicSettings'), data: JSON.stringify(body), contentType: 'application/json', dataType: 'json' });
@@ -2415,6 +2489,143 @@
                 $('md-whatsnew-close').addEventListener('click', function () { $('md-whatsnew').hidden = true; });
                 $('md-whatsnew').addEventListener('click', function (e) { if (e.target === $('md-whatsnew')) $('md-whatsnew').hidden = true; });
 
+                // ---------- Tracks ----------
+
+                let tracksScan = null;
+                let tracksTimer = null;
+
+                function loadTracks() {
+                    getJson('/JellyfinMedic/MedicSettings').then(function (s) {
+                        $('md-tracks-langs').textContent = 'Keeping: ' + (pick(s, 'TracksKeepLanguages') || 'eng') + (pick(s, 'TracksReplaceInPlace') ? ' · replacing files in place' : ' · keeping originals beside copies') + (pick(s, 'TracksRemoveUndetermined') ? ' · removing undetermined' : ' · keeping undetermined');
+                    }).catch(function () {});
+                    pollTracks();
+                }
+
+                $('md-tracks-scan').addEventListener('click', async function () {
+                    const btn = $('md-tracks-scan');
+                    btn.disabled = true;
+                    $('md-tracks-summary').innerHTML = '<p class="so-muted">Scanning your local files…</p>';
+                    try {
+                        tracksScan = await getJson('/JellyfinMedic/Tracks/Scan');
+                        renderTracksScan();
+                    } catch (e) {
+                        $('md-tracks-summary').innerHTML = '<p class="md-bad-text">Couldn\'t scan. Check the Jellyfin log for Jellyfin Medic errors.</p>';
+                    } finally {
+                        btn.disabled = false;
+                    }
+                });
+
+                function renderTracksScan() {
+                    if (!tracksScan) return;
+                    const scanned = pick(tracksScan, 'FilesScanned') || 0;
+                    const changing = pick(tracksScan, 'FilesWouldChange') || 0;
+                    $('md-tracks-summary').innerHTML = '';
+                    const dl = el('dl', 'so-kv');
+                    function row(k, v) { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); }
+                    row('Local files scanned', scanned.toLocaleString('en-GB'));
+                    row('Files that would change', changing.toLocaleString('en-GB'));
+                    row('Audio tracks to remove', (pick(tracksScan, 'AudioToRemove') || 0).toLocaleString('en-GB'));
+                    row('Subtitle tracks to remove', (pick(tracksScan, 'SubtitlesToRemove') || 0).toLocaleString('en-GB'));
+                    $('md-tracks-summary').appendChild(dl);
+
+                    // Undetermined groups
+                    const undet = pick(tracksScan, 'Undetermined') || [];
+                    $('md-tracks-undet-panel').hidden = undet.length === 0;
+                    const ubody = $('md-tracks-undet');
+                    if (ubody) {
+                        ubody.innerHTML = '';
+                        undet.forEach(function (g) {
+                            const tr = el('tr');
+                            tr.appendChild(el('td', null, pick(g, 'Kind')));
+                            tr.appendChild(el('td', null, pick(g, 'Codec') || '–'));
+                            tr.appendChild(el('td', null, pick(g, 'Channels') || '–'));
+                            tr.appendChild(el('td', null, (pick(g, 'Files') || 0).toLocaleString('en-GB')));
+                            tr.appendChild(el('td', 'so-muted', (pick(g, 'Examples') || []).slice(0, 3).join(', ')));
+                            ubody.appendChild(tr);
+                        });
+                    }
+
+                    // Preview
+                    const sample = pick(tracksScan, 'Sample') || [];
+                    $('md-tracks-preview-panel').hidden = sample.length === 0;
+                    const pv = $('md-tracks-preview');
+                    if (pv) {
+                        pv.innerHTML = '';
+                        sample.forEach(function (f) {
+                            const d = el('details');
+                            d.appendChild(el('summary', null, (pick(f, 'Path') || '').split(/[\\/]/).pop() + ' — removing ' + pick(f, 'RemovingAudio') + ' audio / ' + pick(f, 'RemovingSubtitles') + ' subs'));
+                            const tbl = el('table', 'so-table');
+                            const body = el('tbody');
+                            (pick(f, 'Tracks') || []).forEach(function (t) {
+                                const tr = el('tr');
+                                tr.appendChild(el('td', null, pick(t, 'Kind')));
+                                tr.appendChild(el('td', null, (pick(t, 'Language') || 'und')));
+                                tr.appendChild(el('td', null, pick(t, 'Codec') + (pick(t, 'Channels') ? ' ' + pick(t, 'Channels') : '')));
+                                tr.appendChild(el('td', pick(t, 'Keep') ? 'md-ok-text' : 'md-bad-text', pick(t, 'Keep') ? 'keep' : 'remove'));
+                                tr.appendChild(el('td', 'so-muted so-small', pick(t, 'KeepReason')));
+                                body.appendChild(tr);
+                            });
+                            tbl.appendChild(body);
+                            d.appendChild(tbl);
+                            pv.appendChild(d);
+                        });
+                        if (changing > sample.length) pv.appendChild(el('p', 'so-muted so-small', 'Showing ' + sample.length + ' of ' + changing.toLocaleString('en-GB') + ' changing files.'));
+                    }
+
+                    $('md-tracks-run-panel').hidden = changing === 0;
+                }
+
+                async function startTracks(dryRun) {
+                    if (!dryRun && !window.confirm('Strip tracks for real? This rewrites your media files. You have backed up and tested on a few files first, right?')) return;
+                    if (!dryRun && !window.confirm('Last check: this modifies real files. Continue?')) return;
+                    try {
+                        await postJson('/JellyfinMedic/Tracks/Run', { dryRun: dryRun });
+                        $('md-tracks-log').style.display = 'block';
+                        pollTracks(true);
+                    } catch (e) {
+                        showStatus('Couldn\'t start. A run may already be going.', 'error');
+                    }
+                }
+                $('md-tracks-dry').addEventListener('click', function () { startTracks(true); });
+                $('md-tracks-go').addEventListener('click', function () { startTracks(false); });
+                $('md-tracks-stop').addEventListener('click', function () { postJson('/JellyfinMedic/Tracks/Stop').catch(function(){}); });
+
+                async function pollTracks(force) {
+                    try {
+                        const p = await getJson('/JellyfinMedic/Tracks/Progress');
+                        const running = pick(p, 'Running');
+                        $('md-tracks-stop').hidden = !running;
+                        $('md-tracks-dry').disabled = running;
+                        $('md-tracks-go').disabled = running;
+                        const total = pick(p, 'Total') || 0, done = pick(p, 'Done') || 0;
+                        if (total > 0 || running || force) {
+                            $('md-tracks-progress').textContent = (pick(p, 'DryRun') ? 'Dry run: ' : 'Working: ') + done + ' of ' + total + ' · ' + (pick(p, 'Changed') || 0) + ' changed · ' + (pick(p, 'Failed') || 0) + ' failed' + (pick(p, 'BytesSaved') ? ' · saved ' + Math.round(pick(p, 'BytesSaved') / 1048576) + ' MB' : '') + (pick(p, 'Current') ? ' · ' + pick(p, 'Current') : '');
+                            const log = pick(p, 'Recent') || [];
+                            if (log.length) { $('md-tracks-log').style.display = 'block'; $('md-tracks-log').textContent = log.join('\n'); }
+                            // Offer the "replace originals" step after a real (non-dry) run that changed files and finished.
+                            $('md-tracks-delete-row').hidden = running || pick(p, 'DryRun') || (pick(p, 'Changed') || 0) === 0;
+                        }
+                        if (running) {
+                            clearTimeout(tracksTimer);
+                            tracksTimer = setTimeout(function () { if (activeTab === 'tracks') pollTracks(); }, 1500);
+                        }
+                    } catch (e) { /* ignore */ }
+                }
+
+                $('md-tracks-delete').addEventListener('click', async function () {
+                    if (!window.confirm('Replace the original files with the stripped copies Medic made? This deletes the originals of files it successfully processed.')) return;
+                    const btn = $('md-tracks-delete');
+                    btn.disabled = true;
+                    try {
+                        const r = await postJson('/JellyfinMedic/Tracks/DeleteOriginals');
+                        showStatus('Replaced ' + pick(r, 'Deleted') + ' file(s), freeing ' + pick(r, 'FreedText') + '.', 'info');
+                    } catch (e) {
+                        showStatus('Couldn\'t replace originals.', 'error');
+                    } finally {
+                        btn.disabled = false;
+                    }
+                });
+
                 // ---------- Loading ----------
 
                 async function loadReport() {
@@ -2463,6 +2674,8 @@
                         } else if (name === 'iptv') {
                             if (!iptv) { iptv = await getJson('/JellyfinMedic/Iptv'); }
                             renderIptv();
+                        } else if (name === 'tracks') {
+                            loadTracks();
                         } else if (name === 'tests') {
                             await loadTests();
                         } else if (name === 'plugins') {
@@ -2486,7 +2699,7 @@
 
                 // ---------- Tabs ----------
 
-                const tabNames = ['dashboard', 'schedule', 'history', 'recs', 'iptv', 'tests', 'plugins', 'directory', 'settings'];
+                const tabNames = ['dashboard', 'schedule', 'history', 'recs', 'iptv', 'tracks', 'tests', 'plugins', 'directory', 'settings'];
 
                 function selectTab(name) {
                     activeTab = name;

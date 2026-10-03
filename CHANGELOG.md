@@ -5,6 +5,19 @@ All notable changes to Jellyfin Medic are recorded here. The newest version is a
 This project uses [semantic versioning](https://semver.org): given a version X.Y.Z,
 Z changes for fixes, Y for new features, X for changes that break compatibility.
 
+## [1.0.4] – 2026-10-03
+
+### Added
+- **Track cleanup (Tracks tab).** Removes unwanted audio and subtitle tracks from local
+  files by remuxing (no re-encode, no quality loss). Keeps your languages, forced
+  subtitles, and the native track where it's the only one, so anime and foreign films
+  stay watchable. Scans and previews first, keeps the original beside a stripped copy by
+  default, groups undetermined tracks for review, and has concurrency and thread options.
+  Skips IPTV.
+
+### Fixed
+- The Tracks endpoints are now correctly registered, so the scan works.
+
 ## [1.0.3] – 2026-10-03
 
 ### Added
@@ -68,6 +81,7 @@ plugins into one, and adds a new dashboard, a timeline schedule and several new 
   system summary.
 - On first start, migrates data from Task Advisor and Setup Optimiser.
 
+[1.0.4]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.4
 [1.0.3]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.3
 [1.0.2]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.2
 [1.0.1]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.1

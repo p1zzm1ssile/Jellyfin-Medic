@@ -14,7 +14,6 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Tasks;
-using MediaBrowser.Model.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -128,6 +127,54 @@ public class MedicController : ControllerBase
     [HttpGet("LoadGuard")]
     public ActionResult<List<LoadGuardEvent>> GetLoadGuard() => Ok(LoadGuardLog.Load(_paths));
 
+    // ---------- Track cleaner ----------
+
+    /// <summary>Scans local files and previews which audio/subtitle tracks would be removed.</summary>
+    [HttpGet("Tracks/Scan")]
+    public ActionResult<TrackScanResult> TracksScan()
+    {
+        var cfg = Plugin.Instance?.Configuration ?? new PluginConfiguration();
+        return Ok(TrackCleaner.Scan(_library, _engine.Libraries, cfg));
+    }
+
+    /// <summary>Starts a run. dryRun=true (default) only reports; dryRun=false actually remuxes.</summary>
+    [HttpPost("Tracks/Run")]
+    public ActionResult<object> TracksRun([FromQuery] bool dryRun = true)
+    {
+        var cfg = Plugin.Instance?.Configuration ?? new PluginConfiguration();
+        string? ffmpeg = FfmpegPath();
+        if (!dryRun && ffmpeg is null)
+        {
+            return Problem("FFmpeg couldn't be found, so tracks can't be stripped.");
+        }
+
+        if (TrackCleaner.CurrentProgress().Running)
+        {
+            return StatusCode(StatusCodes.Status409Conflict, "A track run is already going.");
+        }
+
+        _ = TrackCleaner.RunAsync(_library, _engine.Libraries, ffmpeg ?? string.Empty, cfg, dryRun);
+        return Ok(new { Started = true, DryRun = dryRun });
+    }
+
+    [HttpGet("Tracks/Progress")]
+    public ActionResult<TrackRunProgress> TracksProgress() => Ok(TrackCleaner.CurrentProgress());
+
+    [HttpPost("Tracks/Stop")]
+    public ActionResult<object> TracksStop()
+    {
+        TrackCleaner.Stop();
+        return Ok(new { Stopped = true });
+    }
+
+    /// <summary>Replaces originals with the stripped copies Medic made (only files it successfully processed).</summary>
+    [HttpPost("Tracks/DeleteOriginals")]
+    public ActionResult<object> TracksDeleteOriginals()
+    {
+        var (deleted, freed) = TrackCleaner.DeleteOriginals(_library, _engine.Libraries);
+        return Ok(new { Deleted = deleted, Freed = freed, FreedText = SystemProbe.Size(freed) });
+    }
+
     /// <summary>The community plugin list from awesome-jellyfin (fetched live, credited to them).</summary>
     [HttpGet("Directory")]
     public async Task<ActionResult<PluginDirectory>> GetDirectory(CancellationToken cancellationToken) =>
@@ -236,7 +283,15 @@ public class MedicController : ControllerBase
     public ActionResult<MedicSettingsDto> GetMedicSettings()
     {
         var c = Plugin.Instance?.Configuration ?? new PluginConfiguration();
-        return Ok(new MedicSettingsDto { AvoidEnabled = c.AvoidEnabled, AvoidStartHour = c.AvoidStartHour, AvoidEndHour = c.AvoidEndHour, InactiveUserDays = c.InactiveUserDays, LoadGuardEnabled = c.LoadGuardEnabled, MemoryCeilingPercent = c.MemoryCeilingPercent });
+        return Ok(new MedicSettingsDto
+        {
+            AvoidEnabled = c.AvoidEnabled, AvoidStartHour = c.AvoidStartHour, AvoidEndHour = c.AvoidEndHour,
+            InactiveUserDays = c.InactiveUserDays, LoadGuardEnabled = c.LoadGuardEnabled,
+            MemoryCeilingPercent = c.MemoryCeilingPercent, ScheduleMode = c.ScheduleMode,
+            TracksKeepLanguages = c.TracksKeepLanguages, TracksRemoveUndetermined = c.TracksRemoveUndetermined,
+            TracksReplaceInPlace = c.TracksReplaceInPlace, TracksConcurrentFiles = c.TracksConcurrentFiles,
+            TracksFfmpegThreads = c.TracksFfmpegThreads
+        });
     }
 
     [HttpPost("MedicSettings")]
@@ -254,6 +309,12 @@ public class MedicController : ControllerBase
         c.InactiveUserDays = Math.Clamp(settings.InactiveUserDays, 7, 3650);
         c.LoadGuardEnabled = settings.LoadGuardEnabled;
         c.MemoryCeilingPercent = Math.Clamp(settings.MemoryCeilingPercent, 60, 95);
+        c.ScheduleMode = settings.ScheduleMode == "off" ? "off" : "suggest";
+        c.TracksKeepLanguages = string.IsNullOrWhiteSpace(settings.TracksKeepLanguages) ? "eng" : settings.TracksKeepLanguages.Trim();
+        c.TracksRemoveUndetermined = settings.TracksRemoveUndetermined;
+        c.TracksReplaceInPlace = settings.TracksReplaceInPlace;
+        c.TracksConcurrentFiles = Math.Clamp(settings.TracksConcurrentFiles, 1, 4);
+        c.TracksFfmpegThreads = Math.Clamp(settings.TracksFfmpegThreads, 0, 16);
         Plugin.Instance.SaveConfiguration();
         return GetMedicSettings();
     }
