@@ -53,15 +53,28 @@ jobs:
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
           echo "md5=$(md5sum "$ZIP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
+      - name: Build release notes from CHANGELOG
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          MD5: ${{ steps.package.outputs.md5 }}
+          COMMIT: ${{ steps.meta.outputs.changelog }}
+        run: |
+          # Pull the section for this version out of CHANGELOG.md, if present.
+          awk -v v="## [$VERSION]" '
+            index($0, v)==1 {grab=1; next}
+            /^## \[/ && grab {exit}
+            grab {print}
+          ' CHANGELOG.md > RELEASE_NOTES.md || true
+          if [ ! -s RELEASE_NOTES.md ]; then echo "$COMMIT" > RELEASE_NOTES.md; fi
+          echo "" >> RELEASE_NOTES.md
+          echo "MD5 checksum: \`$MD5\`" >> RELEASE_NOTES.md
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: Jellyfin Medic ${{ steps.meta.outputs.version }}
           files: ${{ steps.package.outputs.zip }}
-          body: |
-            ${{ steps.meta.outputs.changelog }}
-
-            MD5 checksum: `${{ steps.package.outputs.md5 }}`
+          body_path: RELEASE_NOTES.md
 
       - name: Add this version to manifest.json
         env:

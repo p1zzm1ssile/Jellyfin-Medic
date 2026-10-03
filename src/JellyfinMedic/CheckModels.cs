@@ -104,6 +104,12 @@ public class MedicSettingsDto
     public int AvoidEndHour { get; set; } = 23;
 
     public int InactiveUserDays { get; set; } = 90;
+
+    public bool LoadGuardEnabled { get; set; } = true;
+
+    public int MemoryCeilingPercent { get; set; } = 85;
+
+    public string ScheduleMode { get; set; } = "suggest";
 }
 
 /// <summary>Playback seen in one hour of the week (server local time).</summary>

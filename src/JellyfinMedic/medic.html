@@ -22,6 +22,7 @@
                 <button type="button" role="tab" class="so-tab" data-tab="iptv" aria-selected="false" tabindex="-1">IPTV</button>
                 <button type="button" role="tab" class="so-tab" data-tab="tests" aria-selected="false" tabindex="-1">Tests</button>
                 <button type="button" role="tab" class="so-tab" data-tab="plugins" aria-selected="false" tabindex="-1">Plugins</button>
+                <button type="button" role="tab" class="so-tab" data-tab="directory" aria-selected="false" tabindex="-1">Plugin directory</button>
                 <button type="button" role="tab" class="so-tab" data-tab="settings" aria-selected="false" tabindex="-1">Settings</button>
             </div>
 
@@ -51,6 +52,7 @@
                             <svg id="md-spark" width="150" height="46" viewBox="0 0 150 46" aria-hidden="true"><polyline id="md-spark-line" points="" fill="none" stroke="#5fd0b3" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline></svg>
                         </div>
                         <dl id="md-now" class="so-kv"></dl>
+                        <p id="md-guard" class="so-small" role="status"></p>
                     </section>
                     <section class="md-tile md-wide" aria-labelledby="md-t-issues">
                         <div class="md-row md-space">
@@ -275,23 +277,75 @@
                 <div id="so-plugins"></div>
             </section>
 
+            <!-- Plugin directory -->
+            <section class="so-tabpanel" data-panel="directory" role="tabpanel" hidden>
+                <div class="so-panel">
+                    <div class="md-row md-space md-wrap">
+                        <h3 class="md-inline-head">Community plugin directory</h3>
+                        <input id="md-dir-search" class="so-input" type="search" placeholder="Search plugins" aria-label="Search plugins" style="flex:1;min-width:200px;max-width:360px">
+                    </div>
+                    <p class="so-muted so-small">A browsable list of Jellyfin plugins — what they do and where to find them. This list is maintained by the <strong>awesome-jellyfin</strong> community project and shown here with thanks; Medic just displays it. Open any plugin's page for install instructions.</p>
+                    <p class="so-muted so-small" id="md-dir-credit"></p>
+                    <div id="md-directory"></div>
+                </div>
+            </section>
+
             <!-- Settings -->
             <section class="so-tabpanel" data-panel="settings" role="tabpanel" hidden>
                 <div class="so-panel">
                     <h3>Medic settings</h3>
                     <div class="md-form">
-                        <div class="md-row md-wrap">
-                            <label class="md-check"><input type="checkbox" id="md-avoid"> Never schedule tasks between</label>
-                            <select id="md-avoid-from" class="so-input" aria-label="From"></select>
-                            <span>and</span>
-                            <select id="md-avoid-to" class="so-input" aria-label="Until"></select>
+
+                        <div class="md-setting">
+                            <div class="md-row md-wrap">
+                                <strong>Scheduling help</strong>
+                                <button type="button" class="md-help" data-help="mode" aria-label="What does this do?">?</button>
+                            </div>
+                            <div class="md-seg" role="group" aria-label="Scheduling help">
+                                <button type="button" data-mode="off" aria-pressed="false">Off</button>
+                                <button type="button" data-mode="suggest" aria-pressed="true">Suggest</button>
+                            </div>
+                            <p class="md-help-text" data-help-for="mode" hidden></p>
                         </div>
-                        <p class="so-muted so-small">Normally Medic finds quiet times from your viewing pattern. Use this if you know a time should always be kept free.</p>
-                        <div class="md-row md-wrap">
-                            <label for="md-inactive">Report accounts unused for</label>
-                            <input type="number" id="md-inactive" class="so-input md-num" min="7" max="3650">
-                            <span>days</span>
+
+                        <div class="md-setting">
+                            <div class="md-row md-wrap">
+                                <label class="md-check"><input type="checkbox" id="md-avoid"> Never schedule tasks between</label>
+                                <select id="md-avoid-from" class="so-input" aria-label="From"></select>
+                                <span>and</span>
+                                <select id="md-avoid-to" class="so-input" aria-label="Until"></select>
+                                <button type="button" class="md-help" data-help="avoid" aria-label="What does this do?">?</button>
+                            </div>
+                            <p class="md-help-text" data-help-for="avoid" hidden></p>
                         </div>
+
+                        <div class="md-setting">
+                            <div class="md-row md-wrap">
+                                <label for="md-inactive">Report accounts unused for</label>
+                                <input type="number" id="md-inactive" class="so-input md-num" min="7" max="3650">
+                                <span>days</span>
+                                <button type="button" class="md-help" data-help="inactive" aria-label="What does this do?">?</button>
+                            </div>
+                            <p class="md-help-text" data-help-for="inactive" hidden></p>
+                        </div>
+
+                        <hr style="border:none;border-top:1px solid #2a2d34;width:100%">
+
+                        <div class="md-setting">
+                            <div class="md-row md-wrap">
+                                <label class="md-check"><input type="checkbox" id="md-guard-enabled"> Protect the server from memory overload</label>
+                                <button type="button" class="md-help" data-help="guard" aria-label="What does this do?">?</button>
+                            </div>
+                            <p class="md-help-text" data-help-for="guard" hidden></p>
+                            <div class="md-row md-wrap">
+                                <label for="md-ceiling">Memory ceiling</label>
+                                <input type="number" id="md-ceiling" class="so-input md-num" min="60" max="95">
+                                <span>% of what Jellyfin can use</span>
+                                <button type="button" class="md-help" data-help="ceiling" aria-label="What does this do?">?</button>
+                            </div>
+                            <p class="md-help-text" data-help-for="ceiling" hidden></p>
+                        </div>
+
                         <div class="md-row">
                             <button type="button" id="md-save-settings" class="so-btn so-btn-accent">Save</button>
                             <span id="md-settings-saved" class="so-muted so-small" role="status"></span>
@@ -315,6 +369,16 @@
                 </div>
             </section>
 
+        </div>
+
+        <div id="md-whatsnew" class="md-modal" hidden>
+            <div class="md-modal-box" role="dialog" aria-modal="true" aria-labelledby="md-whatsnew-title">
+                <h2 id="md-whatsnew-title">What's new</h2>
+                <div id="md-whatsnew-body"></div>
+                <div class="md-row" style="justify-content:flex-end;margin-top:14px">
+                    <button type="button" id="md-whatsnew-close" class="so-btn so-btn-accent">Got it</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -493,6 +557,24 @@
         #JellyfinMedicPage .md-export { width: 100%; min-height: 280px; font-family: ui-monospace, monospace; font-size: 0.8em; box-sizing: border-box; margin: 8px 0; }
         #JellyfinMedicPage .md-bar { height: 8px; background: #2a2d34; border-radius: 4px; overflow: hidden; min-width: 80px; }
         #JellyfinMedicPage .md-bar i { display: block; height: 100%; background: #6aa8ff; }
+        #JellyfinMedicPage .md-setting { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-bottom: 1px solid #23262d; }
+        #JellyfinMedicPage .md-help { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; border: 1px solid #3a3e46; background: transparent; color: #9fd0ff; font: 600 13px/1 'IBM Plex Sans', sans-serif; cursor: pointer; }
+        #JellyfinMedicPage .md-help:hover, #JellyfinMedicPage .md-help[aria-expanded="true"] { background: #16324d; color: #cfe8ff; }
+        #JellyfinMedicPage .md-help-text { margin: 0; padding: 10px 12px; background: #15171b; border-left: 3px solid #4fb3ff; border-radius: 6px; color: #c4c9d2; font-size: 0.88em; line-height: 1.5; }
+        #JellyfinMedicPage .md-dir-cat { margin: 18px 0 8px; color: #7cc0ff; font-size: 0.95em; }
+        #JellyfinMedicPage .md-dir-item { padding: 10px 0; border-top: 1px solid #262930; }
+        #JellyfinMedicPage .md-dir-item a { font-weight: 600; }
+        #JellyfinMedicPage .md-dir-desc { color: #c4c9d2; font-size: 0.9em; margin: 4px 0 0; }
+        #JellyfinMedicPage .md-dir-tag { display: inline-block; font-size: 0.72em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 10px; margin-left: 8px; background: #333; color: #ccc; }
+        #JellyfinMedicPage .md-dir-tag.Stale { background: #4a3a14; color: #ffd27a; }
+        #JellyfinMedicPage .md-dir-tag.Beta { background: #16324d; color: #9fd0ff; }
+        #JellyfinMedicPage .md-dir-tag.Paid { background: #3a2a4a; color: #d8b3ff; }
+        #JellyfinMedicPage .md-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px; }
+        #JellyfinMedicPage .md-modal-box { background: #1b1d22; border: 1px solid #2a2d34; border-radius: 12px; padding: 22px 24px; max-width: 540px; width: 100%; max-height: 80vh; overflow: auto; }
+        #JellyfinMedicPage .md-modal-box h2 { margin: 0 0 12px; }
+        #JellyfinMedicPage .md-modal-box h4 { margin: 14px 0 6px; color: #9fd0ff; }
+        #JellyfinMedicPage .md-modal-box ul { margin: 0; padding-left: 18px; }
+        #JellyfinMedicPage .md-modal-box li { margin: 3px 0; color: #d3d7de; }
         #JellyfinMedicPage .md-maint { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
         #JellyfinMedicPage .md-maint-col { display: flex; flex-direction: column; gap: 8px; }
         #JellyfinMedicPage .md-expose-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
@@ -1014,7 +1096,10 @@
                     const dl = $('md-now');
                     dl.innerHTML = '';
                     function row(k, v) { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); }
-                    row('Memory', (pick(nowData, 'MemoryGb') || 0) + ' GB of ' + (pick(nowData, 'MemoryLimitGb') || '?') + ' GB');
+                    var memPct = pick(nowData, 'MemoryPercent') || 0;
+                    var memText = (pick(nowData, 'MemoryGb') || 0) + ' GB of ' + (pick(nowData, 'MemoryLimitGb') || '?') + ' GB (' + memPct + '%)';
+                    dl.appendChild(el('dt', null, 'Memory'));
+                    dl.appendChild(el('dd', memPct >= 85 ? 'md-bad-text' : (memPct >= 70 ? 'md-warn-text' : null), memText));
                     const watching = pick(nowData, 'Watching') || 0;
                     const transcoding = pick(nowData, 'Transcoding') || 0;
                     row('Watching', watching === 0 ? 'Nobody' : watching + (watching === 1 ? ' person' : ' people') + (transcoding ? ', ' + transcoding + ' transcoding' : ''));
@@ -1031,6 +1116,23 @@
                         nowData = await getJson('/JellyfinMedic/Now');
                         renderNow();
                     } catch (e) { /* the tile just stays as it was */ }
+                    try {
+                        const events = await getJson('/JellyfinMedic/LoadGuard');
+                        const g = $('md-guard');
+                        if (events && events.length) {
+                            const last = events[0];
+                            const when = fmtShort(pick(last, 'TimestampUtc'));
+                            if (pick(last, 'Action') === 'stopped') {
+                                g.textContent = 'Load guard stopped "' + pick(last, 'TaskName') + '" at ' + when + ' (memory ' + pick(last, 'MemoryUsedGb') + ' GB). It restarts once memory recovers.';
+                                g.className = 'so-small md-warn-text';
+                            } else {
+                                g.textContent = 'Load guard restarted "' + pick(last, 'TaskName') + '" at ' + when + '.';
+                                g.className = 'so-small md-ok-text';
+                            }
+                        } else {
+                            g.textContent = '';
+                        }
+                    } catch (e) { /* no guard history yet */ }
                 }
 
                 function renderToday() {
@@ -2025,6 +2127,35 @@
                     }
                 }
 
+                const HELP = {
+                    mode: 'How much Medic helps with task timing. "Off": you open Schedule and press Preview, then Apply, yourself — nothing changes on its own. "Suggest" (recommended): Medic watches when people actually watch and, when it spots a clearly better schedule, flags it in Checks — but it still waits for you to Apply, so you always see the plan first. Either way, Medic backs up your schedule before any change and logs what it did.',
+                    avoid: 'A time window Medic will always keep free, on top of what it learns from your viewing. Use it if you know a period should never have maintenance in it — for example a daily family viewing slot — even if the data looks quiet. Leave it off to let Medic choose purely from your real viewing pattern. It can wrap past midnight (e.g. 22:00 to 02:00).',
+                    inactive: 'How long an account can go unused before Medic lists it as inactive in Checks and on the Dashboard. Inactive accounts are worth disabling because their old passwords still work. This only reports them; it never disables anyone. Default 90 days.',
+                    guard: 'A safety net against the server running out of memory. If memory climbs past the ceiling while more than one heavy task (a scan, image extraction, a big sync) is running, Medic stops the extra heavy ones to keep the server up, then restarts them one at a time once memory recovers. It only ever stops heavy tasks, never light upkeep, and it records every action on the Dashboard. The real fix is spacing tasks out (the Schedule does this); the guard catches times when something unexpected stacks them anyway.',
+                    ceiling: 'How full memory has to get before the guard steps in, as a percentage of what Jellyfin is actually allowed to use (its container limit, not the whole machine). Lower means it acts sooner and more cautiously; higher means it waits longer. 85% suits most servers. Below about 70% it may act when there was no real danger.'
+                };
+
+                let scheduleMode = 'suggest';
+                function showMode() {
+                    page.querySelectorAll('.md-seg button[data-mode]').forEach(function (b) {
+                        b.setAttribute('aria-pressed', b.getAttribute('data-mode') === scheduleMode ? 'true' : 'false');
+                    });
+                }
+                page.querySelectorAll('.md-seg button[data-mode]').forEach(function (b) {
+                    b.addEventListener('click', function () { scheduleMode = b.getAttribute('data-mode'); showMode(); });
+                });
+                page.querySelectorAll('.md-help').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        const key = btn.getAttribute('data-help');
+                        const box = page.querySelector('.md-help-text[data-help-for="' + key + '"]');
+                        if (!box) return;
+                        const open = box.hidden;
+                        box.hidden = !open;
+                        box.textContent = open ? (HELP[key] || '') : '';
+                        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+                    });
+                });
+
                 async function loadMedicSettings() {
                     fillHours($('md-avoid-from'));
                     fillHours($('md-avoid-to'));
@@ -2034,6 +2165,10 @@
                         $('md-avoid-from').value = String(pick(s, 'AvoidStartHour'));
                         $('md-avoid-to').value = String((pick(s, 'AvoidEndHour') || 0) % 24);
                         $('md-inactive').value = String(pick(s, 'InactiveUserDays'));
+                        $('md-guard-enabled').checked = pick(s, 'LoadGuardEnabled') !== false;
+                        $('md-ceiling').value = String(pick(s, 'MemoryCeilingPercent') || 85);
+                        scheduleMode = pick(s, 'ScheduleMode') === 'off' ? 'off' : 'suggest';
+                        showMode();
                     } catch (e) { /* defaults stay */ }
                 }
 
@@ -2042,7 +2177,10 @@
                         AvoidEnabled: $('md-avoid').checked,
                         AvoidStartHour: parseInt($('md-avoid-from').value, 10),
                         AvoidEndHour: parseInt($('md-avoid-to').value, 10),
-                        InactiveUserDays: parseInt($('md-inactive').value, 10) || 90
+                        InactiveUserDays: parseInt($('md-inactive').value, 10) || 90,
+                        LoadGuardEnabled: $('md-guard-enabled').checked,
+                        MemoryCeilingPercent: parseInt($('md-ceiling').value, 10) || 85,
+                        ScheduleMode: scheduleMode
                     };
                     try {
                         await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JellyfinMedic/MedicSettings'), data: JSON.stringify(body), contentType: 'application/json', dataType: 'json' });
@@ -2179,6 +2317,104 @@
                     }
                 });
 
+                // ---------- Plugin directory ----------
+
+                let directory = null;
+                function renderDirectory() {
+                    const box = $('md-directory');
+                    box.innerHTML = '';
+                    if (!directory) return;
+                    $('md-dir-credit').innerHTML = '';
+                    const credit = el('span', null, 'Source: ');
+                    const link = el('a', null, pick(directory, 'Source') + ' (' + pick(directory, 'SourceUrl').replace('https://', '') + ')');
+                    link.href = pick(directory, 'SourceUrl'); link.target = '_blank'; link.rel = 'noopener';
+                    credit.appendChild(link);
+                    if (pick(directory, 'GeneratedUtc')) credit.appendChild(el('span', null, ' · refreshed ' + fmtDateTime(pick(directory, 'GeneratedUtc'))));
+                    $('md-dir-credit').appendChild(credit);
+
+                    if (pick(directory, 'Error')) {
+                        box.appendChild(el('p', 'so-muted', pick(directory, 'Error')));
+                        return;
+                    }
+
+                    const query = ($('md-dir-search').value || '').trim().toLowerCase();
+                    let shown = 0;
+                    (pick(directory, 'Categories') || []).forEach(function (cat) {
+                        const plugins = (pick(cat, 'Plugins') || []).filter(function (p) {
+                            if (!query) return true;
+                            return (pick(p, 'Name') + ' ' + pick(p, 'Description')).toLowerCase().indexOf(query) >= 0;
+                        });
+                        if (plugins.length === 0) return;
+                        box.appendChild(el('h4', 'md-dir-cat', pick(cat, 'Name')));
+                        plugins.forEach(function (p) {
+                            shown++;
+                            const item = el('div', 'md-dir-item');
+                            const head = el('div');
+                            const a = el('a', null, pick(p, 'Name'));
+                            a.href = pick(p, 'Url'); a.target = '_blank'; a.rel = 'noopener';
+                            head.appendChild(a);
+                            (pick(p, 'Tags') || []).forEach(function (t) { head.appendChild(el('span', 'md-dir-tag ' + t, t)); });
+                            item.appendChild(head);
+                            if (pick(p, 'Description')) item.appendChild(el('p', 'md-dir-desc', pick(p, 'Description')));
+                            box.appendChild(item);
+                        });
+                    });
+                    if (shown === 0) box.appendChild(el('p', 'so-muted', 'No plugins match your search.'));
+                }
+
+                async function loadDirectory() {
+                    if (directory) { renderDirectory(); return; }
+                    $('md-directory').innerHTML = '';
+                    $('md-directory').appendChild(el('p', 'so-muted', 'Loading the community plugin list…'));
+                    try {
+                        directory = await getJson('/JellyfinMedic/Directory');
+                        renderDirectory();
+                    } catch (e) {
+                        $('md-directory').innerHTML = '';
+                        $('md-directory').appendChild(el('p', 'so-muted', 'Couldn\'t load the list. Open awesome-jellyfin directly: https://github.com/awesome-jellyfin/awesome-jellyfin'));
+                    }
+                }
+                $('md-dir-search').addEventListener('input', function () { if (directory) renderDirectory(); });
+
+                // ---------- What's new (after an update) ----------
+
+                async function maybeShowWhatsNew() {
+                    let info;
+                    try { info = await getJson('/JellyfinMedic/Version'); } catch (e) { return; }
+                    const version = pick(info, 'Version');
+                    if (!version) return;
+                    let seen = null;
+                    try { seen = window.localStorage.getItem('jellyfinMedicSeenVersion'); } catch (e) { /* ignore */ }
+                    if (seen === version) return; // already shown for this version
+
+                    const log = pick(info, 'Changelog') || [];
+                    const entry = log.find(function (e) { return pick(e, 'Version') === version; }) || log[0];
+                    const body = $('md-whatsnew-body');
+                    body.innerHTML = '';
+                    if (!entry) { try { window.localStorage.setItem('jellyfinMedicSeenVersion', version); } catch (e) {} return; }
+
+                    $('md-whatsnew-title').textContent = "What's new in " + pick(entry, 'Version');
+                    let list = null;
+                    (pick(entry, 'Lines') || []).forEach(function (line) {
+                        const t = line.replace(/^###\s*/, '').trim();
+                        if (/^###/.test(line) || /^[A-Z][a-z]+$/.test(t.replace(':', ''))) {
+                            body.appendChild(el('h4', null, t.replace(/[:#]/g, '').trim()));
+                            list = null;
+                        } else if (/^[-*]/.test(t)) {
+                            if (!list) { list = el('ul'); body.appendChild(list); }
+                            list.appendChild(el('li', null, t.replace(/^[-*]\s*/, '').replace(/\*\*/g, '')));
+                        } else if (t) {
+                            body.appendChild(el('p', 'so-muted', t.replace(/\*\*/g, '')));
+                        }
+                    });
+                    const foot = el('p', 'so-muted so-small', 'Full history is on the Plugin directory source and the project\'s GitHub.');
+                    body.appendChild(foot);
+                    $('md-whatsnew').hidden = false;
+                    try { window.localStorage.setItem('jellyfinMedicSeenVersion', version); } catch (e) {}
+                }
+                $('md-whatsnew-close').addEventListener('click', function () { $('md-whatsnew').hidden = true; });
+                $('md-whatsnew').addEventListener('click', function (e) { if (e.target === $('md-whatsnew')) $('md-whatsnew').hidden = true; });
+
                 // ---------- Loading ----------
 
                 async function loadReport() {
@@ -2232,6 +2468,8 @@
                         } else if (name === 'plugins') {
                             plugins = await getJson('/JellyfinMedic/Plugins');
                             renderPlugins();
+                        } else if (name === 'directory') {
+                            await loadDirectory();
                         } else if (name === 'settings') {
                             await loadMedicSettings();
                             if (!settings) {
@@ -2248,7 +2486,7 @@
 
                 // ---------- Tabs ----------
 
-                const tabNames = ['dashboard', 'schedule', 'history', 'recs', 'iptv', 'tests', 'plugins', 'settings'];
+                const tabNames = ['dashboard', 'schedule', 'history', 'recs', 'iptv', 'tests', 'plugins', 'directory', 'settings'];
 
                 function selectTab(name) {
                     activeTab = name;
@@ -2332,6 +2570,8 @@
                     link.click();
                     setTimeout(function () { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
                 });
+
+                maybeShowWhatsNew();
 
                 return function refresh() {
                     loadReport();

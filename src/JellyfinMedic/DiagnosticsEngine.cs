@@ -174,6 +174,21 @@ public sealed class DiagnosticsEngine
         Guard(AreaUsage, () => CheckUsage(usage, encoding, hw));
         Guard("Plugins", () => CheckLinks(links, linkResults));
 
+        Guard(AreaTasks, () =>
+        {
+            var events = LoadGuardLog.Load(_paths);
+            var recent = events.Where(e => e.TimestampUtc > DateTime.UtcNow.AddDays(-7) && e.Action == "stopped").ToList();
+            if (recent.Count > 0)
+            {
+                var last = recent[0];
+                Add(AreaTasks, Sev.Improve, "Tasks have been overloading memory",
+                    $"Medic stopped {recent.Count} heavy task run(s) in the last 7 days to keep the server up (last: {last.TaskName}, memory {last.MemoryUsedGb:0.#} GB)",
+                    "Space these tasks out, or give the container more memory",
+                    "When several heavy scans run at once they can use all the memory and crash the server. Medic's load guard stopped the extras and restarted them later, but it's better to stop them colliding: Apply the recommended schedule so they don't overlap, and check whether another plugin or a manual scan is starting them at the same time.",
+                    "Medic → Schedule");
+            }
+        });
+
         _report.Findings.AddRange(pluginReports.SelectMany(p => p.Findings));
         if (extra is not null)
         {
@@ -904,6 +919,45 @@ public sealed class DiagnosticsEngine
                 $"Move them into your quiet hours ({usage.QuietWindow})",
                 "Heavy maintenance during viewing competes for disk and CPU and can cause buffering.",
                 "Medic → Schedule → Apply recommended");
+        }
+    }
+
+    /// <summary>
+    /// In "suggest" mode, flags when Medic could schedule tasks noticeably better than they run now
+    /// (for example tasks sitting in busy hours). It never changes anything itself; it points you at
+    /// Preview → Apply. "Off" mode skips this entirely.
+    /// </summary>
+    private void SuggestSchedule(UsageSummary usage)
+    {
+        if ((Plugin.Instance?.Configuration.ScheduleMode ?? "suggest") == "off")
+        {
+            return;
+        }
+
+        List<PlannedTask> plan;
+        try
+        {
+            var busy = BusyProfile.Create(usage, Plugin.Instance?.Configuration);
+            plan = SchedulePlanner.Build(_tasks.ScheduledTasks.Where(IsVisibleTask).ToList(),
+                ScheduleStorage.LoadProfile(_paths), ScheduleStorage.LoadManaged(_paths), busy);
+        }
+        catch
+        {
+            return;
+        }
+
+        var changing = plan.Where(p => p.Changes).ToList();
+        // Only raise it when the change is worth making: a task currently in a busy hour, or several moves.
+        bool worthwhile = changing.Count >= 3 || changing.Any(p => !string.IsNullOrEmpty(p.Warning));
+        if (changing.Count > 0 && worthwhile)
+        {
+            Add(AreaTasks, Sev.Improve, "A better schedule is available",
+                $"{changing.Count} task(s) could move to quieter times",
+                "Open Schedule → Preview changes, then Apply if you're happy",
+                usage.Ready
+                    ? "Based on when people actually watch, Medic can space these tasks into quieter hours so they don't compete with playback. It won't change anything until you Apply."
+                    : "Medic is still learning when people watch, but it can already tidy how these tasks are spread. It won't change anything until you Apply.",
+                "Medic → Schedule");
         }
     }
 

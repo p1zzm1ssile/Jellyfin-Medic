@@ -25,6 +25,16 @@ public class PluginConfiguration : BasePluginConfiguration
 
     // Accounts with no activity for this many days are reported as inactive.
     public int InactiveUserDays { get; set; } = 90;
+
+    // Load guard: stop extra heavy tasks if memory climbs past the ceiling, then restart them
+    // one at a time once it recovers. On by default at a safe ceiling.
+    public bool LoadGuardEnabled { get; set; } = true;
+
+    public int MemoryCeilingPercent { get; set; } = 85;
+
+    // Scheduling help: "off" (you run Preview/Apply) or "suggest" (Medic flags a better schedule
+    // in the report but waits for you to Apply). Default: suggest.
+    public string ScheduleMode { get; set; } = "suggest";
 }
 
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
@@ -70,6 +80,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService<TaskLifecycleListener>();
         serviceCollection.AddHostedService<ManagedScheduleRunner>();
         serviceCollection.AddHostedService<UsageSampler>();
+        serviceCollection.AddHostedService<LoadGuard>();
     }
 }
 

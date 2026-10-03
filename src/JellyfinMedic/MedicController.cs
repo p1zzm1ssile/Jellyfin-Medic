@@ -124,6 +124,23 @@ public class MedicController : ControllerBase
     [HttpGet("Now")]
     public ActionResult<NowSnapshot> GetNow() => Ok(ServerNow.Snapshot(_sessions, _tasks));
 
+    /// <summary>Recent times the load guard stopped or restarted a task under memory pressure.</summary>
+    [HttpGet("LoadGuard")]
+    public ActionResult<List<LoadGuardEvent>> GetLoadGuard() => Ok(LoadGuardLog.Load(_paths));
+
+    /// <summary>The community plugin list from awesome-jellyfin (fetched live, credited to them).</summary>
+    [HttpGet("Directory")]
+    public async Task<ActionResult<PluginDirectory>> GetDirectory(CancellationToken cancellationToken) =>
+        Ok(await PluginDirectoryService.GetAsync(cancellationToken).ConfigureAwait(false));
+
+    /// <summary>Medic's current version and its changelog, for the "what's new" panel after an update.</summary>
+    [HttpGet("Version")]
+    public ActionResult<object> GetVersion()
+    {
+        string version = typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+        return Ok(new { Version = version, Changelog = ChangelogReader.Read() });
+    }
+
     /// <summary>The last IPTV analysis, if one has been run since Jellyfin started.</summary>
     [HttpGet("Iptv")]
     public ActionResult<IptvReport?> GetIptv() => Ok(IptvAnalyzer.Last);
@@ -219,7 +236,7 @@ public class MedicController : ControllerBase
     public ActionResult<MedicSettingsDto> GetMedicSettings()
     {
         var c = Plugin.Instance?.Configuration ?? new PluginConfiguration();
-        return Ok(new MedicSettingsDto { AvoidEnabled = c.AvoidEnabled, AvoidStartHour = c.AvoidStartHour, AvoidEndHour = c.AvoidEndHour, InactiveUserDays = c.InactiveUserDays });
+        return Ok(new MedicSettingsDto { AvoidEnabled = c.AvoidEnabled, AvoidStartHour = c.AvoidStartHour, AvoidEndHour = c.AvoidEndHour, InactiveUserDays = c.InactiveUserDays, LoadGuardEnabled = c.LoadGuardEnabled, MemoryCeilingPercent = c.MemoryCeilingPercent });
     }
 
     [HttpPost("MedicSettings")]
@@ -235,6 +252,8 @@ public class MedicController : ControllerBase
         c.AvoidStartHour = Math.Clamp(settings.AvoidStartHour, 0, 23);
         c.AvoidEndHour = Math.Clamp(settings.AvoidEndHour, 0, 24);
         c.InactiveUserDays = Math.Clamp(settings.InactiveUserDays, 7, 3650);
+        c.LoadGuardEnabled = settings.LoadGuardEnabled;
+        c.MemoryCeilingPercent = Math.Clamp(settings.MemoryCeilingPercent, 60, 95);
         Plugin.Instance.SaveConfiguration();
         return GetMedicSettings();
     }

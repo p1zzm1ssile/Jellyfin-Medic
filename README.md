@@ -54,7 +54,7 @@ Change Medic's own options, browse every Jellyfin setting, and build a masked co
 
 - **Jellyfin 12.1 or later.**
 - **Server language set to English** (tasks are recognised by their English names).
-- Developed and tested on **Unraid** with the linuxserver.io Jellyfin container. Any Linux install should work; the Unraid-specific checks (user shares, SMART) simply skip elsewhere. GPU checks cover NVIDIA, Intel and AMD.
+- Developed and tested on **Unraid**, with both the **binhex-Jellyfin** and **linuxserver.io Jellyfin** containers. Any Linux install should work; the Unraid-specific checks (user shares, SMART) simply skip elsewhere. GPU checks cover NVIDIA, Intel and AMD.
 
 ## Installation
 
@@ -106,6 +106,19 @@ So I built the tools I wanted: first Task Advisor to schedule tasks sensibly, th
 Medic was built with AI assistance for the development, directed and tested by me against my own server and its real problems. I'm sharing it for anyone running something similar.
 
 Issues, suggestions and pull requests are welcome. Translations especially: Medic keeps all its wording in one place so other languages can be added, and I'd rather have them checked by people who speak the language than machine-translated.
+
+## Thanks
+
+Jellyfin Medic stands on other people's work:
+
+- **The Jellyfin team**, for the server this is built on.
+- **The LinuxServer.io team** and **binhex**, whose Jellyfin containers are what Medic
+  is developed and tested against.
+- **Unraid (Lime Technology)**, the platform it was built for.
+- **The [awesome-jellyfin](https://github.com/awesome-jellyfin/awesome-jellyfin)
+  community project**, whose plugin list powers Medic's Plugin directory tab.
+
+Thank you to all of them.
 
 ## Licence
 

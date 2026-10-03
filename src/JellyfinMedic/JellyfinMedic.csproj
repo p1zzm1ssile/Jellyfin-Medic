@@ -5,8 +5,8 @@
     <Nullable>enable</Nullable>
     <RootNamespace>JellyfinMedic</RootNamespace>
     <AssemblyName>JellyfinMedic</AssemblyName>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.3.0</AssemblyVersion>
+    <FileVersion>1.0.3.0</FileVersion>
   </PropertyGroup>
 
   <!--
@@ -25,5 +25,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="medic.html" />
+    <EmbeddedResource Include="CHANGELOG.md" />
+    <None Remove="thumb.png" />
+    <Content Remove="thumb.png" />
   </ItemGroup>
 </Project>
