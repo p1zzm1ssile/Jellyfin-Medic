@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Which Jellyfin server this build is for.
+      12    = Jellyfin 12.x (.NET 10)  <- default
+      10.11 = Jellyfin 10.11.x (.NET 9)
+    Override on the command line with:  -p:JellyfinTarget=10.11
+  -->
+  <PropertyGroup>
+    <JellyfinTarget Condition="'$(JellyfinTarget)' == ''">12</JellyfinTarget>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(JellyfinTarget)' == '12'">
+    <TargetFramework>net10.0</TargetFramework>
+    <JellyfinPackageVersion>12.0.0</JellyfinPackageVersion>
+    <DefineConstants>$(DefineConstants);JELLYFIN12</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(JellyfinTarget)' == '10.11'">
+    <TargetFramework>net9.0</TargetFramework>
+    <JellyfinPackageVersion>10.11.11</JellyfinPackageVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RootNamespace>Jellyfin.Plugin.MedicPicks</RootNamespace>
+    <AssemblyName>Jellyfin.Plugin.MedicPicks</AssemblyName>
+    <Version>1.0.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ExcludeAssets=runtime keeps Jellyfin's own DLLs out of the build output,
+         so the release zip only contains this plugin's DLL. -->
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinPackageVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinPackageVersion)" ExcludeAssets="runtime" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Configuration\configPage.html" />
+    <EmbeddedResource Include="Configuration\configPage.html" />
+    <None Remove="Web\picks.html" />
+    <EmbeddedResource Include="Web\picks.html" />
+  </ItemGroup>
+
+</Project>

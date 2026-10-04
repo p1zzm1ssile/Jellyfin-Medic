@@ -180,6 +180,11 @@ public class MedicController : ControllerBase
     public async Task<ActionResult<PluginDirectory>> GetDirectory(CancellationToken cancellationToken) =>
         Ok(await PluginDirectoryService.GetAsync(cancellationToken).ConfigureAwait(false));
 
+    /// <summary>Plugins worth adding, considering or removing, from this server's libraries, viewing and installed plugins.</summary>
+    [HttpGet("PluginSuggestions")]
+    public async Task<ActionResult<PluginAdvice>> GetPluginSuggestions(CancellationToken cancellationToken) =>
+        Ok(await PluginAdvisor.BuildAsync(_library, _users, _pluginManager, _installs, cancellationToken).ConfigureAwait(false));
+
     /// <summary>Medic's current version and its changelog, for the "what's new" panel after an update.</summary>
     [HttpGet("Version")]
     public ActionResult<object> GetVersion()
@@ -289,6 +294,9 @@ public class MedicController : ControllerBase
             InactiveUserDays = c.InactiveUserDays, LoadGuardEnabled = c.LoadGuardEnabled,
             MemoryCeilingPercent = c.MemoryCeilingPercent, ScheduleMode = c.ScheduleMode,
             TracksKeepLanguages = c.TracksKeepLanguages, TracksRemoveUndetermined = c.TracksRemoveUndetermined,
+            TracksRemoveUntaggedSubtitles = c.TracksRemoveUntaggedSubtitles,
+            TracksKeepFirstUntaggedSubtitle = c.TracksKeepFirstUntaggedSubtitle,
+            TracksAllowRemovingOnlySubtitle = c.TracksAllowRemovingOnlySubtitle,
             TracksReplaceInPlace = c.TracksReplaceInPlace, TracksConcurrentFiles = c.TracksConcurrentFiles,
             TracksFfmpegThreads = c.TracksFfmpegThreads
         });
@@ -312,6 +320,9 @@ public class MedicController : ControllerBase
         c.ScheduleMode = settings.ScheduleMode == "off" ? "off" : "suggest";
         c.TracksKeepLanguages = string.IsNullOrWhiteSpace(settings.TracksKeepLanguages) ? "eng" : settings.TracksKeepLanguages.Trim();
         c.TracksRemoveUndetermined = settings.TracksRemoveUndetermined;
+        c.TracksRemoveUntaggedSubtitles = settings.TracksRemoveUntaggedSubtitles;
+        c.TracksKeepFirstUntaggedSubtitle = settings.TracksKeepFirstUntaggedSubtitle;
+        c.TracksAllowRemovingOnlySubtitle = settings.TracksAllowRemovingOnlySubtitle;
         c.TracksReplaceInPlace = settings.TracksReplaceInPlace;
         c.TracksConcurrentFiles = Math.Clamp(settings.TracksConcurrentFiles, 1, 4);
         c.TracksFfmpegThreads = Math.Clamp(settings.TracksFfmpegThreads, 0, 16);

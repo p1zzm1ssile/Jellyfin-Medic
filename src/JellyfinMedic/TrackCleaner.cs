@@ -68,7 +68,11 @@ public class UndeterminedGroup
 
     public string Channels { get; set; } = string.Empty;
 
+    // Files that have at least one track in this group (a file counts once, however many it has).
     public int Files { get; set; }
+
+    // Every untagged track in this group, across all files.
+    public int Tracks { get; set; }
 
     public List<string> Examples { get; set; } = new();
 }
@@ -193,13 +197,22 @@ public static class TrackCleaner
                     }
                 }
 
-                foreach (var t in plan.Tracks.Where(t => t.Language is "und" or ""))
+                var countedInThisFile = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var t in plan.Tracks.Where(IsUntagged))
                 {
                     string key = t.Kind + "|" + t.Codec + "|" + t.Channels;
                     if (!undetermined.TryGetValue(key, out var g))
                     {
                         g = new UndeterminedGroup { Kind = t.Kind, Codec = t.Codec, Channels = t.Channels };
                         undetermined[key] = g;
+                    }
+
+                    g.Tracks++;
+
+                    // A file with several untagged tracks of the same kind counts once, and is listed once.
+                    if (!countedInThisFile.Add(key))
+                    {
+                        continue;
                     }
 
                     g.Files++;
@@ -256,17 +269,23 @@ public static class TrackCleaner
 
     /// <summary>
     /// The safety-first keep logic:
-    ///  - keep chosen languages, forced subtitles, and (by default) undetermined tracks
-    ///  - never remove the last audio track, or the last subtitle track when audio isn't in the keep list.
+    ///  - keep chosen languages and forced subtitles
+    ///  - untagged audio is kept unless "remove all untagged tracks" is on
+    ///  - untagged subtitles are kept unless either untagged option is on; with "remove untagged
+    ///    subtitles", the first untagged subtitle stays in films with no subtitle in your languages
+    ///  - never remove the last audio track
+    ///  - never leave a film whose audio is in a language you don't keep without subtitles
+    ///    (an untagged "only subtitle" may go only if you allow it and the audio isn't known to be foreign)
     /// </summary>
     private static void ApplyKeepRules(FilePlan plan, HashSet<string> keep, PluginConfiguration cfg)
     {
-        bool removeUndet = cfg.TracksRemoveUndetermined;
+        bool removeAllUntagged = cfg.TracksRemoveUndetermined;
+        bool removeUntaggedSubs = cfg.TracksRemoveUntaggedSubtitles;
 
         foreach (var t in plan.Tracks)
         {
-            bool isUnd = t.Language is "und" or "";
-            if (keep.Contains(t.Language) || keep.Contains(ThreeToTwo(t.Language)))
+            bool untagged = IsUntagged(t);
+            if (InLanguage(t, keep))
             {
                 t.Keep = true; t.KeepReason = "chosen language";
             }
@@ -274,13 +293,17 @@ public static class TrackCleaner
             {
                 t.Keep = true; t.KeepReason = "forced subtitles";
             }
-            else if (isUnd && !removeUndet)
+            else if (untagged && t.Kind == "audio" && !removeAllUntagged)
+            {
+                t.Keep = true; t.KeepReason = removeUntaggedSubs ? "untagged audio (always kept)" : "undetermined (kept by default)";
+            }
+            else if (untagged && t.Kind == "subtitle" && !removeAllUntagged && !removeUntaggedSubs)
             {
                 t.Keep = true; t.KeepReason = "undetermined (kept by default)";
             }
             else
             {
-                t.Keep = false; t.KeepReason = "other language";
+                t.Keep = false; t.KeepReason = untagged ? "untagged" : "other language";
             }
         }
 
@@ -291,15 +314,43 @@ public static class TrackCleaner
             foreach (var t in audio) { t.Keep = true; t.KeepReason = "only audio in the file"; }
         }
 
+        var subs = plan.Tracks.Where(t => t.Kind == "subtitle").ToList();
+
+        // An untagged "only subtitle" may go when the user allows it.
+        bool onlySubtitleMayGo = cfg.TracksAllowRemovingOnlySubtitle && subs.Count == 1 && IsUntagged(subs[0]);
+
+        // Keep the first untagged subtitle when nothing in your languages is kept: on most discs the
+        // first subtitle track is the film's own language.
+        if (removeUntaggedSubs && cfg.TracksKeepFirstUntaggedSubtitle && !onlySubtitleMayGo && !subs.Any(t => t.Keep && InLanguage(t, keep)))
+        {
+            var first = subs.Where(IsUntagged).OrderBy(t => t.Index).FirstOrDefault();
+            if (first is not null && !first.Keep)
+            {
+                first.Keep = true; first.KeepReason = "first untagged subtitle (usually the film's own language)";
+            }
+        }
+
         // Never leave a foreign-language film with no subtitles: if no audio is in the keep list and
         // all subtitles would go, keep the subtitles so it stays watchable.
-        bool keptAudioInLanguage = audio.Any(t => t.Keep && (keep.Contains(t.Language) || keep.Contains(ThreeToTwo(t.Language))));
-        var subs = plan.Tracks.Where(t => t.Kind == "subtitle").ToList();
+        bool keptAudioInLanguage = audio.Any(t => t.Keep && InLanguage(t, keep));
+        bool audioKnownForeign = !keptAudioInLanguage && audio.Any(t => t.Keep && !IsUntagged(t));
         if (!keptAudioInLanguage && subs.Count > 0 && subs.All(t => !t.Keep))
         {
-            foreach (var t in subs) { t.Keep = true; t.KeepReason = "only subtitles, audio not in your language"; }
+            // When the audio is untagged too, Medic can't tell the film is foreign. In that case it goes
+            // with the untagged-subtitle choices above (keep-first is the safeguard) instead of keeping everything.
+            bool untaggedChoice = !audioKnownForeign
+                && (onlySubtitleMayGo || (removeUntaggedSubs && subs.All(IsUntagged)));
+            if (!untaggedChoice)
+            {
+                foreach (var t in subs) { t.Keep = true; t.KeepReason = "only subtitles, audio not in your language"; }
+            }
         }
     }
+
+    private static bool IsUntagged(TrackInfo t) => t.Language is "und" or "";
+
+    private static bool InLanguage(TrackInfo t, HashSet<string> keep) =>
+        keep.Contains(t.Language) || keep.Contains(ThreeToTwo(t.Language));
 
     // ---------- Run ----------
 

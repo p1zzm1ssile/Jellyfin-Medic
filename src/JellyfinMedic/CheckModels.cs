@@ -115,6 +115,12 @@ public class MedicSettingsDto
 
     public bool TracksRemoveUndetermined { get; set; }
 
+    public bool TracksRemoveUntaggedSubtitles { get; set; }
+
+    public bool TracksKeepFirstUntaggedSubtitle { get; set; } = true;
+
+    public bool TracksAllowRemovingOnlySubtitle { get; set; }
+
     public bool TracksReplaceInPlace { get; set; }
 
     public int TracksConcurrentFiles { get; set; } = 1;

@@ -5,6 +5,23 @@ All notable changes to Jellyfin Medic are recorded here. The newest version is a
 This project uses [semantic versioning](https://semver.org): given a version X.Y.Z,
 Z changes for fixes, Y for new features, X for changes that break compatibility.
 
+## [1.0.5] – 2026-10-04
+
+### Added
+- **Plugin suggestions.** The Plugin directory tab now opens with plugins suggested for your server, based on what's in your libraries, what your users actually watch and the plugins you already have.
+- Suggests plugins worth adding, such as Intro Skipper when most viewing is TV, an anime metadata provider when anime is found, or lyrics for a music library.
+- Flags plugins you probably don't need, such as an anime provider with no anime on the server, or Bookshelf, which Jellyfin 12 has replaced.
+- Each suggestion explains why, says how important it is, and shows whether it's in your plugin catalogue. Nothing is installed or removed for you.
+- **Untagged subtitles.** A new Track cleanup setting removes subtitle tracks with no language tag, often a whole disc's worth of foreign subtitles, while always keeping untagged audio, which is often a film's main soundtrack.
+- It keeps the first untagged subtitle in films that have no subtitle in your languages, since that's usually the film's own language. An optional setting also removes a film's only subtitle when it's untagged.
+- Films whose audio is tagged as a language you don't keep always keep their subtitles, so foreign films and anime stay watchable.
+
+### Changed
+- The old "allow removing undetermined tracks" setting is now labelled "Remove all untagged tracks, audio included", to make clear it can remove a film's soundtrack.
+
+### Fixed
+- The Undetermined tracks list counted a file once for every untagged track in it, so the file counts were too high and the same file repeated in the examples. Files and tracks are now counted separately.
+
 ## [1.0.4] – 2026-10-03
 
 ### Added
@@ -81,6 +98,7 @@ plugins into one, and adds a new dashboard, a timeline schedule and several new 
   system summary.
 - On first start, migrates data from Task Advisor and Setup Optimiser.
 
+[1.0.5]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/medic-v1.0.5
 [1.0.4]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.4
 [1.0.3]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.3
 [1.0.2]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.2

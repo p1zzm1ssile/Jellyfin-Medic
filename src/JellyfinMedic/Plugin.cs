@@ -41,6 +41,15 @@ public class PluginConfiguration : BasePluginConfiguration
 
     public bool TracksRemoveUndetermined { get; set; }          // off = keep undetermined tracks
 
+    // Remove untagged subtitles while always keeping untagged audio.
+    public bool TracksRemoveUntaggedSubtitles { get; set; }
+
+    // With the above: keep the first untagged subtitle in a file that has no subtitle in your languages.
+    public bool TracksKeepFirstUntaggedSubtitle { get; set; } = true;
+
+    // Let a file's only subtitle go when it's untagged (never for films whose audio is tagged as a language you don't keep).
+    public bool TracksAllowRemovingOnlySubtitle { get; set; }
+
     public bool TracksReplaceInPlace { get; set; }              // off = write a copy beside the original
 
     public int TracksConcurrentFiles { get; set; } = 1;

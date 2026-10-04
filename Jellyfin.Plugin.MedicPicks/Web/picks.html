@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Your picks</title>
+<style>
+  :root {
+    --bg: #141a2a;
+    --surface: #1d2538;
+    --text: #e9edf5;
+    --muted: #9aa6bd;
+    --line: #2c3650;
+    --tag: #f3e3b3;
+    --tag-ink: #2a2318;
+    --accent: #00a4dc;
+    --brand: linear-gradient(90deg, #aa5cc3, #00a4dc);
+    --radius-poster: 6px;
+    --body: "Segoe UI", Roboto, "Noto Sans", system-ui, -apple-system, sans-serif;
+    --display: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", "Segoe UI", sans-serif;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f2f4f9;
+      --surface: #ffffff;
+      --text: #141a2a;
+      --muted: #56607a;
+      --line: #d9deea;
+      --accent: #0079a8;
+    }
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body { font: 16px/1.5 var(--body); -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 16px 20px 48px; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .back { text-decoration: none; font-weight: 600; padding: 8px 0; }
+  .updated { color: var(--muted); font-size: 0.875rem; }
+
+  h1 {
+    font-family: var(--display);
+    font-stretch: condensed;
+    font-weight: 700;
+    font-size: clamp(2.25rem, 7vw, 4rem);
+    line-height: 1;
+    letter-spacing: -0.01em;
+    margin: 28px 0 8px;
+  }
+  h1::after {
+    content: "";
+    display: block;
+    width: 72px;
+    height: 4px;
+    margin-top: 14px;
+    border-radius: 2px;
+    background: var(--brand);
+  }
+  .lede { color: var(--muted); max-width: 60ch; margin: 0 0 8px; }
+
+  section { margin-top: 40px; }
+  h2 {
+    font-family: var(--display);
+    font-stretch: condensed;
+    font-weight: 700;
+    font-size: 1.75rem;
+    line-height: 1.1;
+    margin: 0 0 4px;
+  }
+  .section-note { color: var(--muted); margin: 0 0 18px; max-width: 65ch; }
+
+  .shelf {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 28px 18px;
+  }
+  @media (max-width: 420px) {
+    .shelf { grid-template-columns: repeat(2, 1fr); gap: 24px 14px; }
+  }
+
+  .pick { display: flex; flex-direction: column; min-width: 0; }
+  .poster-link { display: block; color: inherit; text-decoration: none; }
+  .poster {
+    aspect-ratio: 2 / 3;
+    width: 100%;
+    border-radius: var(--radius-poster);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    object-fit: cover;
+    display: block;
+  }
+  .poster.missing {
+    display: flex;
+    align-items: flex-end;
+    padding: 10px;
+    font-family: var(--display);
+    font-stretch: condensed;
+    font-weight: 700;
+    font-size: 1.1rem;
+    line-height: 1.15;
+    color: var(--muted);
+  }
+  .title { font-weight: 600; margin: 10px 0 0; line-height: 1.3; overflow-wrap: anywhere; }
+  .year { color: var(--muted); font-weight: 400; }
+
+  /* The shelf talker: the one loud thing on the page. */
+  .talker {
+    margin-top: 8px;
+    background: var(--tag);
+    color: var(--tag-ink);
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    padding: 7px 9px 8px;
+    border-radius: 2px 2px 8px 2px;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  }
+
+  .overview { color: var(--muted); font-size: 0.8125rem; margin: 8px 0 0; }
+  .overview summary { cursor: pointer; color: var(--text); }
+
+  .action {
+    margin-top: 10px;
+    align-self: flex-start;
+    display: inline-block;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-decoration: none;
+  }
+  .action:hover { background: var(--accent); color: var(--bg); }
+
+  .message {
+    margin-top: 40px;
+    padding: 20px;
+    border-left: 4px solid var(--accent);
+    background: var(--surface);
+    max-width: 60ch;
+  }
+  .message p { margin: 0 0 8px; }
+  .message p:last-child { margin: 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="back" href="../web/">Back to Jellyfin</a>
+    <span class="updated" id="updated"></span>
+  </div>
+
+  <h1 id="heading">Your picks</h1>
+  <p class="lede" id="lede">Chosen from what you've been watching. They're rebuilt every night.</p>
+
+  <div class="message" id="message" hidden></div>
+
+  <section id="library-section" hidden>
+    <h2>On your server</h2>
+    <p class="section-note" id="library-note">Ready to watch now.</p>
+    <ul class="shelf" id="library"></ul>
+  </section>
+
+  <section id="discover-section" hidden>
+    <h2>Not on the server yet</h2>
+    <p class="section-note" id="discover-note"></p>
+    <ul class="shelf" id="discover"></ul>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var VERSION = '0.0.1';
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function show(id) { document.getElementById(id).hidden = false; }
+
+  function message(lines) {
+    var box = document.getElementById('message');
+    box.textContent = '';
+    lines.forEach(function (line) { box.appendChild(el('p', null, line)); });
+    box.hidden = false;
+  }
+
+  // The Jellyfin web client (also used by Jellyfin Desktop and the Android/iOS apps)
+  // keeps the signed-in session in localStorage on this same address.
+  function getSession() {
+    try {
+      var creds = JSON.parse(localStorage.getItem('jellyfin_credentials') || '{}');
+      var servers = (creds.Servers || []).filter(function (s) { return s.AccessToken && s.UserId; });
+      servers.sort(function (a, b) { return (b.DateLastAccessed || 0) - (a.DateLastAccessed || 0); });
+      return servers[0] || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function authHeader(session) {
+    var deviceId = 'medic-picks-web';
+    try { deviceId = localStorage.getItem('_deviceId2') || deviceId; } catch (e) { /* ignore */ }
+    var q = function (v) { return String(v).replace(/"/g, ''); };
+    return 'MediaBrowser Client="Medic Picks", Device="Web", DeviceId="' + q(deviceId) +
+      '", Version="' + VERSION + '", Token="' + q(session.AccessToken) + '"';
+  }
+
+  function getJson(url, session) {
+    return fetch(url, { headers: { 'Authorization': authHeader(session), 'Accept': 'application/json' } })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 403) throw new Error('auth');
+        if (!r.ok) throw new Error('http ' + r.status);
+        return r.json();
+      });
+  }
+
+  function titleLine(name, year) {
+    var p = el('p', 'title', name);
+    if (year) {
+      p.appendChild(document.createTextNode(' '));
+      p.appendChild(el('span', 'year', '(' + year + ')'));
+    }
+    return p;
+  }
+
+  function poster(src, alt, fallbackText) {
+    if (!src) {
+      return el('div', 'poster missing', fallbackText);
+    }
+    var img = el('img', 'poster');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.alt = alt;
+    img.src = src;
+    img.addEventListener('error', function () {
+      img.replaceWith(el('div', 'poster missing', fallbackText));
+    });
+    return img;
+  }
+
+  function renderLibrary(items, session) {
+    var list = document.getElementById('library');
+    items.forEach(function (pick) {
+      var li = el('li', 'pick');
+      var link = el('a', 'poster-link');
+      link.href = '../web/#/details?id=' + encodeURIComponent(pick.itemId) +
+        (session.Id ? '&serverId=' + encodeURIComponent(session.Id) : '');
+      link.appendChild(poster('../Items/' + encodeURIComponent(pick.itemId) + '/Images/Primary?fillWidth=320&quality=90',
+        'Poster for ' + pick.name, pick.name));
+      link.appendChild(titleLine(pick.name, pick.year));
+      li.appendChild(link);
+      if (pick.reason) li.appendChild(el('div', 'talker', pick.reason));
+      list.appendChild(li);
+    });
+  }
+
+  function renderDiscover(items, seerr) {
+    var list = document.getElementById('discover');
+    items.forEach(function (pick) {
+      var li = el('li', 'pick');
+      var src = pick.posterPath ? 'https://image.tmdb.org/t/p/w342' + pick.posterPath : null;
+      li.appendChild(poster(src, 'Poster for ' + pick.title, pick.title));
+      li.appendChild(titleLine(pick.title, pick.year));
+      if (pick.becauseOf) li.appendChild(el('div', 'talker', 'Because you watched ' + pick.becauseOf));
+
+      if (pick.overview) {
+        var details = el('details', 'overview');
+        details.appendChild(el('summary', null, 'What it\u2019s about'));
+        details.appendChild(el('p', null, pick.overview));
+        li.appendChild(details);
+      }
+
+      var type = pick.mediaType === 'tv' ? 'tv' : 'movie';
+      var action = el('a', 'action');
+      action.rel = 'noopener';
+      action.target = '_blank';
+      if (seerr) {
+        action.href = seerr + '/' + type + '/' + encodeURIComponent(pick.tmdbId);
+        action.textContent = 'Request it';
+      } else {
+        action.href = 'https://www.themoviedb.org/' + type + '/' + encodeURIComponent(pick.tmdbId);
+        action.textContent = 'Read more on TMDb';
+      }
+      li.appendChild(action);
+      list.appendChild(li);
+    });
+  }
+
+  var session = getSession();
+  if (!session) {
+    message([
+      'Sign in to Jellyfin first, then open this page again.',
+      'If you\u2019re already signed in, open Jellyfin in this same browser or app and come back from the menu link.'
+    ]);
+    return;
+  }
+
+  getJson('../Users/Me', session)
+    .then(function (me) {
+      if (me && me.Name) {
+        document.getElementById('heading').textContent = 'Picks for ' + me.Name;
+        document.title = 'Picks for ' + me.Name;
+      }
+    })
+    .catch(function () { /* the heading falls back to "Your picks" */ });
+
+  getJson('Me', session)
+    .then(function (data) {
+      if (data.generatedUtc) {
+        var when = new Date(data.generatedUtc);
+        document.getElementById('updated').textContent =
+          'Updated ' + when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      }
+
+      var lib = data.inLibrary || [];
+      var disc = data.discover || [];
+
+      if (lib.length) {
+        if (data.playlistName) {
+          document.getElementById('library-note').textContent =
+            'Ready to watch now. They\u2019re also in your playlist \u201c' + data.playlistName +
+            '\u201d, which you\u2019ll find in every Jellyfin app.';
+        }
+        renderLibrary(lib, session);
+        show('library-section');
+      }
+
+      if (disc.length) {
+        document.getElementById('discover-note').textContent = data.jellyseerrUrl
+          ? 'Ask for any of these and they\u2019ll be added once they\u2019re approved.'
+          : 'Titles you might like that aren\u2019t here. Mention any you\u2019d want to whoever runs this server.';
+        renderDiscover(disc, data.jellyseerrUrl);
+        show('discover-section');
+      }
+
+      if (!lib.length && !disc.length) {
+        message([data.note || 'Nothing to suggest yet. Picks are built overnight from what you watch.']);
+      }
+    })
+    .catch(function (err) {
+      if (err && err.message === 'auth') {
+        message(['Your Jellyfin sign-in has expired. Sign in again, then reopen this page.']);
+      } else {
+        message([
+          'Picks couldn\u2019t be loaded from the server.',
+          'Check that the Medic Picks plugin is installed and enabled, then reload this page.'
+        ]);
+      }
+    });
+})();
+</script>
+</body>
+</html>

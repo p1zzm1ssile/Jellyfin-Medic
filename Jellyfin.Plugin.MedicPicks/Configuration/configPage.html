@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Medic Picks</title>
+</head>
+<body>
+<div id="MedicPicksConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+     data-require="emby-input,emby-button,emby-select,emby-checkbox">
+    <div data-role="content">
+        <div class="content-primary">
+            <h2 class="sectionTitle">Medic Picks</h2>
+            <p>Builds personal picks for every user from what they watch. Picks run nightly as the
+               <em>Build personal picks</em> scheduled task.</p>
+
+            <form id="MedicPicksConfigForm">
+                <h3>On your server</h3>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="EnableLibraryPicks" />
+                        <span>Suggest titles already on the server</span>
+                    </label>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" id="LibraryPickCount" min="1" max="100" label="Picks per user" />
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="CreatePlaylists" />
+                        <span>Give each user a private playlist of their picks</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        Playlists show in every Jellyfin app, including TV apps. Each one is visible only to its owner
+                        and is replaced on every run.
+                    </div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="PlaylistName" label="Playlist name" />
+                </div>
+
+                <h3>Not on the server yet</h3>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="EnableDiscover" />
+                        <span>Suggest titles that aren't on the server</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        Uses TMDb recommendations for each user's most-watched titles. Needs a free TMDb API key.
+                    </div>
+                </div>
+
+                <div class="inputContainer">
+                    <input is="emby-input" type="password" id="TmdbKey" autocomplete="off" label="TMDb API key or read access token" />
+                    <div class="fieldDescription" id="TmdbKeyStatus">Checking…</div>
+                </div>
+                <button is="emby-button" type="button" id="SaveTmdbKey" class="raised button-alt block">
+                    <span>Save key</span>
+                </button>
+                <button is="emby-button" type="button" id="ClearTmdbKey" class="raised button-alt block">
+                    <span>Remove key</span>
+                </button>
+
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" id="DiscoverPickCount" min="1" max="100" label="Discover picks per user" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="TmdbLanguage" label="Language for titles and summaries" />
+                    <div class="fieldDescription">For example en-GB or en-US.</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="url" id="JellyseerrUrl" label="Jellyseerr address (optional)" />
+                    <div class="fieldDescription">When set, each suggestion gets a <em>Request it</em> button that opens
+                        Jellyseerr, so requests follow your Jellyseerr permissions.</div>
+                </div>
+
+                <h3>Who gets Discover picks</h3>
+                <div class="fieldDescription" style="margin-bottom:0.8em;">
+                    Untick children's accounts. Discover titles come from TMDb, so your parental controls can't filter them.
+                    Picks from your own library always follow each user's parental controls.
+                </div>
+                <div id="DiscoverUsers"></div>
+
+                <h3>Minimum history</h3>
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" id="MinimumWatchedTitles" min="1" max="50" label="Watched titles needed before picks are built" />
+                </div>
+
+                <div>
+                    <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                        <span>Save</span>
+                    </button>
+                </div>
+            </form>
+
+            <h3>Run now</h3>
+            <p id="RunStatus"></p>
+            <button is="emby-button" type="button" id="RunNow" class="raised button-alt block">
+                <span>Build picks now</span>
+            </button>
+
+            <h3>Add the picks page to Jellyfin's menu</h3>
+            <p>Users see their picks at:</p>
+            <p><code id="PicksUrl"></code></p>
+            <p>To add a menu link in the web app, Jellyfin Desktop and the Android and iOS apps, add this to the
+               web client's <code>config.json</code>, then refresh the browser:</p>
+            <pre id="MenuSnippet" style="white-space:pre-wrap;overflow-x:auto;padding:1em;border-radius:6px;background:rgba(127,127,127,0.15);"></pre>
+            <p class="fieldDescription">TV apps such as Android TV, Swiftfin and Roku don't show custom pages.
+               Those users get their picks through the private playlist instead.</p>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginId = 'b34ec5d1-b70f-435f-b77d-9b76979b03c7';
+            var page = document.querySelector('#MedicPicksConfigPage');
+
+            function $(id) { return page.querySelector('#' + id); }
+
+            function refreshStatus() {
+                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('MedicPicks/Admin/Status'), dataType: 'json' })
+                    .then(function (s) {
+                        $('TmdbKeyStatus').textContent = s.tmdbKeySet
+                            ? 'A key is saved. It is stored separately from these settings and is never shown again.'
+                            : 'No key saved. Discover picks are off until you add one.';
+                        $('RunStatus').textContent = s.usersWithPicks + ' user(s) have picks.';
+                    })
+                    .catch(function () { $('TmdbKeyStatus').textContent = 'Could not check the key.'; });
+            }
+
+            function renderUsers(users, disabled) {
+                var box = $('DiscoverUsers');
+                box.innerHTML = '';
+                users.forEach(function (u) {
+                    var wrap = document.createElement('div');
+                    wrap.className = 'checkboxContainer';
+                    var label = document.createElement('label');
+                    var input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.setAttribute('is', 'emby-checkbox');
+                    input.className = 'discoverUser';
+                    input.setAttribute('data-userid', u.Id);
+                    input.checked = disabled.indexOf(u.Id.replace(/-/g, '').toLowerCase()) === -1;
+                    var span = document.createElement('span');
+                    span.textContent = u.Name;
+                    label.appendChild(input);
+                    label.appendChild(span);
+                    wrap.appendChild(label);
+                    box.appendChild(wrap);
+                });
+            }
+
+            function norm(id) { return String(id).replace(/-/g, '').toLowerCase(); }
+
+            page.addEventListener('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                var picksUrl = ApiClient.serverAddress() + '/MedicPicks/Page';
+                $('PicksUrl').textContent = picksUrl;
+                $('MenuSnippet').textContent =
+                    '"menuLinks": [\n  { "name": "My picks", "icon": "recommend", "url": "' + picksUrl + '" }\n]';
+
+                Promise.all([ApiClient.getPluginConfiguration(pluginId), ApiClient.getUsers()])
+                    .then(function (results) {
+                        var config = results[0];
+                        var users = results[1] || [];
+                        $('EnableLibraryPicks').checked = config.EnableLibraryPicks;
+                        $('LibraryPickCount').value = config.LibraryPickCount;
+                        $('CreatePlaylists').checked = config.CreatePlaylists;
+                        $('PlaylistName').value = config.PlaylistName || '';
+                        $('EnableDiscover').checked = config.EnableDiscover;
+                        $('DiscoverPickCount').value = config.DiscoverPickCount;
+                        $('TmdbLanguage').value = config.TmdbLanguage || 'en-GB';
+                        $('JellyseerrUrl').value = config.JellyseerrUrl || '';
+                        $('MinimumWatchedTitles').value = config.MinimumWatchedTitles;
+                        renderUsers(users, (config.DiscoverDisabledUserIds || []).map(norm));
+                        refreshStatus();
+                        Dashboard.hideLoadingMsg();
+                    })
+                    .catch(function () { Dashboard.hideLoadingMsg(); });
+            });
+
+            $('MedicPicksConfigForm').addEventListener('submit', function (e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    config.EnableLibraryPicks = $('EnableLibraryPicks').checked;
+                    config.LibraryPickCount = parseInt($('LibraryPickCount').value, 10) || 20;
+                    config.CreatePlaylists = $('CreatePlaylists').checked;
+                    config.PlaylistName = $('PlaylistName').value.trim() || 'Picks for you';
+                    config.EnableDiscover = $('EnableDiscover').checked;
+                    config.DiscoverPickCount = parseInt($('DiscoverPickCount').value, 10) || 20;
+                    config.TmdbLanguage = $('TmdbLanguage').value.trim() || 'en-GB';
+                    config.JellyseerrUrl = $('JellyseerrUrl').value.trim();
+                    config.MinimumWatchedTitles = parseInt($('MinimumWatchedTitles').value, 10) || 3;
+                    config.DiscoverDisabledUserIds = Array.prototype.slice
+                        .call(page.querySelectorAll('.discoverUser'))
+                        .filter(function (box) { return !box.checked; })
+                        .map(function (box) { return box.getAttribute('data-userid'); });
+                    ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    });
+                });
+                return false;
+            });
+
+            function postKey(key) {
+                return ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('MedicPicks/Admin/TmdbKey'),
+                    data: JSON.stringify({ key: key }),
+                    contentType: 'application/json'
+                });
+            }
+
+            $('SaveTmdbKey').addEventListener('click', function () {
+                var key = $('TmdbKey').value.trim();
+                if (!key) {
+                    Dashboard.alert('Paste a TMDb API key or read access token first.');
+                    return;
+                }
+                postKey(key).then(function () {
+                    $('TmdbKey').value = '';
+                    refreshStatus();
+                    Dashboard.alert('TMDb key saved.');
+                });
+            });
+
+            $('ClearTmdbKey').addEventListener('click', function () {
+                postKey(null).then(function () {
+                    refreshStatus();
+                    Dashboard.alert('TMDb key removed.');
+                });
+            });
+
+            $('RunNow').addEventListener('click', function () {
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('MedicPicks/Admin/Refresh') }).then(function () {
+                    Dashboard.alert('Building picks now. Progress shows under Scheduled Tasks.');
+                });
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>

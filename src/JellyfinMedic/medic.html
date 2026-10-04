@@ -247,8 +247,8 @@
                 </div>
                 <div class="so-panel" id="md-tracks-undet-panel" hidden>
                     <h3>Undetermined tracks</h3>
-                    <p class="so-muted so-small">Tracks with no language tag. Kept by default, because an untagged track is often the one you want. To allow removing them, turn on "Remove undetermined tracks" in Settings; the "never remove the last audio/subtitle track" safety still applies.</p>
-                    <div class="so-scroll"><table class="so-table"><thead><tr><th>Type</th><th>Codec</th><th>Channels</th><th>Files</th><th>Examples</th></tr></thead><tbody id="md-tracks-undet"></tbody></table></div>
+                    <p class="so-muted so-small">Tracks with no language tag. Kept by default, because an untagged track is often the one you want. To clear untagged subtitles while keeping untagged audio, tick "Remove untagged subtitles" on the Settings tab. The safety rules still apply, and Scan and preview shows exactly what each file keeps.</p>
+                    <div class="so-scroll"><table class="so-table"><thead><tr><th>Type</th><th>Codec</th><th>Channels</th><th>Files</th><th>Tracks</th><th>Examples</th></tr></thead><tbody id="md-tracks-undet"></tbody></table></div>
                 </div>
                 <div class="so-panel" id="md-tracks-preview-panel" hidden>
                     <h3>Preview (first files that would change)</h3>
@@ -322,6 +322,15 @@
             <section class="so-tabpanel" data-panel="directory" role="tabpanel" hidden>
                 <div class="so-panel">
                     <div class="md-row md-space md-wrap">
+                        <h3 class="md-inline-head">Suggested for this server</h3>
+                        <button type="button" id="md-advice-refresh" class="so-btn so-btn-plain">Check again</button>
+                    </div>
+                    <p class="so-muted so-small">Based on what's in your libraries, what gets watched and the plugins you already have. Medic never installs or removes anything for you.</p>
+                    <p class="so-muted so-small" id="md-advice-summary"></p>
+                    <div id="md-advice"></div>
+                </div>
+                <div class="so-panel">
+                    <div class="md-row md-space md-wrap">
                         <h3 class="md-inline-head">Community plugin directory</h3>
                         <input id="md-dir-search" class="so-input" type="search" placeholder="Search plugins" aria-label="Search plugins" style="flex:1;min-width:200px;max-width:360px">
                     </div>
@@ -382,7 +391,12 @@
                                 <label for="md-tracks-langs-in">Keep languages</label>
                                 <input type="text" id="md-tracks-langs-in" class="so-input" style="width:160px" placeholder="eng">
                             </div>
-                            <label class="md-check"><input type="checkbox" id="md-tracks-undet-in"> Allow removing undetermined (untagged) tracks</label>
+                            <label class="md-check"><input type="checkbox" id="md-tracks-untagsubs-in"> Remove untagged subtitles (untagged audio is always kept)</label>
+                            <div style="margin-left:26px; display:flex; flex-direction:column; gap:8px">
+                                <label class="md-check"><input type="checkbox" id="md-tracks-keepfirst-in"> Keep the first untagged subtitle in films with no subtitle in your languages</label>
+                                <label class="md-check"><input type="checkbox" id="md-tracks-onlysub-in"> Also remove a film's only subtitle when it's untagged</label>
+                            </div>
+                            <label class="md-check"><input type="checkbox" id="md-tracks-undet-in"> Remove all untagged tracks, audio included (not recommended)</label>
                             <label class="md-check"><input type="checkbox" id="md-tracks-inplace-in"> Replace files in place (default: keep original beside a copy)</label>
                             <div class="md-row md-wrap">
                                 <label for="md-tracks-conc">Files at once</label>
@@ -2195,7 +2209,7 @@
                     avoid: 'A time window Medic will always keep free, on top of what it learns from your viewing. Use it if you know a period should never have maintenance in it — for example a daily family viewing slot — even if the data looks quiet. Leave it off to let Medic choose purely from your real viewing pattern. It can wrap past midnight (e.g. 22:00 to 02:00).',
                     inactive: 'How long an account can go unused before Medic lists it as inactive in Checks and on the Dashboard. Inactive accounts are worth disabling because their old passwords still work. This only reports them; it never disables anyone. Default 90 days.',
                     guard: 'A safety net against the server running out of memory. If memory climbs past the ceiling while more than one heavy task (a scan, image extraction, a big sync) is running, Medic stops the extra heavy ones to keep the server up, then restarts them one at a time once memory recovers. It only ever stops heavy tasks, never light upkeep, and it records every action on the Dashboard. The real fix is spacing tasks out (the Schedule does this); the guard catches times when something unexpected stacks them anyway.',
-                    tracks: 'Settings for the Tracks tab, which removes unwanted audio and subtitle tracks from your LOCAL files by remuxing (no re-encode, no quality loss, so the GPU isn\'t used). "Keep languages": 3-letter codes, comma-separated (eng, jpn...). It always keeps forced subtitles and never removes the last audio or last subtitle track, so foreign films and anime stay watchable. "Files at once" and "FFmpeg threads": remuxing is disk-bound, so 1 of each is usually best; higher just thrashes the disk. By default the original is kept beside a stripped copy until you choose to replace it.',
+                    tracks: 'Settings for the Tracks tab, which removes unwanted audio and subtitle tracks from your LOCAL files by remuxing (no re-encode, no quality loss, so the GPU isn\'t used). "Keep languages": 3-letter codes, comma-separated (eng, jpn...). It always keeps forced subtitles and never removes the last audio track. "Remove untagged subtitles" clears subtitle tracks with no language tag (often a whole disc\'s worth of foreign subtitles) while keeping untagged audio, which is often the main soundtrack. With it, "Keep the first untagged subtitle" keeps one in films that have no subtitle in your languages, because the first subtitle on most discs is the film\'s own language. "Also remove a film\'s only subtitle" lets a lone untagged subtitle go too, except in films whose audio is tagged as a language you don\'t keep. "Remove all untagged tracks" also removes untagged audio, which can take out a film\'s main soundtrack, so preview first. "Files at once" and "FFmpeg threads": remuxing is disk-bound, so 1 of each is usually best; higher just thrashes the disk. By default the original is kept beside a stripped copy until you choose to replace it.',
                     ceiling: 'How full memory has to get before the guard steps in, as a percentage of what Jellyfin is actually allowed to use (its container limit, not the whole machine). Lower means it acts sooner and more cautiously; higher means it waits longer. 85% suits most servers. Below about 70% it may act when there was no real danger.'
                 };
 
@@ -2235,11 +2249,24 @@
                         showMode();
                         $('md-tracks-langs-in').value = pick(s, 'TracksKeepLanguages') || 'eng';
                         $('md-tracks-undet-in').checked = !!pick(s, 'TracksRemoveUndetermined');
+                        $('md-tracks-untagsubs-in').checked = !!pick(s, 'TracksRemoveUntaggedSubtitles');
+                        $('md-tracks-keepfirst-in').checked = pick(s, 'TracksKeepFirstUntaggedSubtitle') !== false;
+                        $('md-tracks-onlysub-in').checked = !!pick(s, 'TracksAllowRemovingOnlySubtitle');
+                        syncSubtitleOptions();
                         $('md-tracks-inplace-in').checked = !!pick(s, 'TracksReplaceInPlace');
                         $('md-tracks-conc').value = String(pick(s, 'TracksConcurrentFiles') || 1);
                         $('md-tracks-threads').value = String(pick(s, 'TracksFfmpegThreads') || 1);
                     } catch (e) { /* defaults stay */ }
                 }
+
+                // The two subtitle sub-options only apply when untagged subtitles are being removed.
+                function syncSubtitleOptions() {
+                    const on = $('md-tracks-untagsubs-in').checked || $('md-tracks-undet-in').checked;
+                    $('md-tracks-keepfirst-in').disabled = !$('md-tracks-untagsubs-in').checked;
+                    $('md-tracks-onlysub-in').disabled = !on;
+                }
+                $('md-tracks-untagsubs-in').addEventListener('change', syncSubtitleOptions);
+                $('md-tracks-undet-in').addEventListener('change', syncSubtitleOptions);
 
                 $('md-save-settings').addEventListener('click', async function () {
                     const body = {
@@ -2252,6 +2279,9 @@
                         ScheduleMode: scheduleMode,
                         TracksKeepLanguages: $('md-tracks-langs-in').value || 'eng',
                         TracksRemoveUndetermined: $('md-tracks-undet-in').checked,
+                        TracksRemoveUntaggedSubtitles: $('md-tracks-untagsubs-in').checked,
+                        TracksKeepFirstUntaggedSubtitle: $('md-tracks-keepfirst-in').checked,
+                        TracksAllowRemovingOnlySubtitle: $('md-tracks-onlysub-in').checked,
                         TracksReplaceInPlace: $('md-tracks-inplace-in').checked,
                         TracksConcurrentFiles: parseInt($('md-tracks-conc').value, 10) || 1,
                         TracksFfmpegThreads: parseInt($('md-tracks-threads').value, 10)
@@ -2391,6 +2421,81 @@
                     }
                 });
 
+                // ---------- Plugin suggestions ----------
+
+                let advice = null;
+                const ADVICE_LABEL = { Add: 'Add', Consider: 'Consider', Remove: 'Remove' };
+                const ADVICE_PRIORITY = { High: 'High priority', Medium: 'Worth doing', Low: 'Optional' };
+
+                function adviceSeverity(s) {
+                    if (pick(s, 'Priority') === 'High') return 'Improve';
+                    return 'Tip';
+                }
+
+                function renderAdvice() {
+                    const box = $('md-advice');
+                    box.innerHTML = '';
+                    if (!advice) return;
+
+                    const p = pick(advice, 'Profile') || {};
+                    let summary = 'Looked at ' + (pick(p, 'Movies') || 0) + ' films, ' + (pick(p, 'Series') || 0) + ' series, ' +
+                        (pick(p, 'AudioTracks') || 0) + ' music tracks, ' + (pick(p, 'Books') || 0) + ' books and ' +
+                        (pick(p, 'InstalledPlugins') || []).length + ' installed plugins.';
+                    if (pick(p, 'RepositoriesReachable') === false) {
+                        summary += ' Your plugin repositories couldn\'t be reached, so Medic can\'t say which suggestions are in your catalogue.';
+                    }
+                    $('md-advice-summary').textContent = summary;
+
+                    const list = pick(advice, 'Suggestions') || [];
+                    if (list.length === 0) {
+                        box.appendChild(el('p', 'so-muted', 'Nothing to suggest. Your plugins fit how this server is used.'));
+                        return;
+                    }
+
+                    list.forEach(function (s) {
+                        const action = pick(s, 'Action');
+                        const card = el('div', 'so-card sev-' + adviceSeverity(s));
+                        const head = el('div');
+                        head.appendChild(el('span', 'so-badge', ADVICE_LABEL[action] || action));
+                        head.appendChild(el('span', 'so-area', ADVICE_PRIORITY[pick(s, 'Priority')] || pick(s, 'Priority')));
+                        card.appendChild(head);
+                        card.appendChild(el('h4', null, pick(s, 'Plugin')));
+                        card.appendChild(el('p', null, pick(s, 'Reason')));
+
+                        if (action !== 'Remove') {
+                            if (pick(s, 'Availability')) card.appendChild(el('p', 'so-muted so-small', pick(s, 'Availability')));
+                            if (!pick(s, 'InCatalogue')) {
+                                const find = el('button', 'so-btn so-btn-plain', 'Look it up in the directory');
+                                find.type = 'button';
+                                find.addEventListener('click', function () {
+                                    $('md-dir-search').value = pick(s, 'Plugin');
+                                    if (directory) renderDirectory();
+                                    $('md-dir-search').scrollIntoView({ block: 'start' });
+                                });
+                                card.appendChild(find);
+                            }
+                        } else {
+                            card.appendChild(el('p', 'so-muted so-small', 'To remove it: Dashboard → Plugins → My Plugins, then restart Jellyfin.'));
+                        }
+                        box.appendChild(card);
+                    });
+                }
+
+                async function loadAdvice(force) {
+                    if (advice && !force) { renderAdvice(); return; }
+                    $('md-advice').innerHTML = '';
+                    $('md-advice-summary').textContent = '';
+                    $('md-advice').appendChild(el('p', 'so-muted', 'Checking your libraries and plugins…'));
+                    try {
+                        advice = await getJson('/JellyfinMedic/PluginSuggestions');
+                        renderAdvice();
+                    } catch (e) {
+                        $('md-advice').innerHTML = '';
+                        $('md-advice').appendChild(el('p', 'so-muted', 'Couldn\'t check your plugins this time. Press Check again, and if it keeps failing, look in the Jellyfin log for Jellyfin Medic errors.'));
+                    }
+                }
+                $('md-advice-refresh').addEventListener('click', function () { loadAdvice(true); });
+
                 // ---------- Plugin directory ----------
 
                 let directory = null;
@@ -2496,7 +2601,7 @@
 
                 function loadTracks() {
                     getJson('/JellyfinMedic/MedicSettings').then(function (s) {
-                        $('md-tracks-langs').textContent = 'Keeping: ' + (pick(s, 'TracksKeepLanguages') || 'eng') + (pick(s, 'TracksReplaceInPlace') ? ' · replacing files in place' : ' · keeping originals beside copies') + (pick(s, 'TracksRemoveUndetermined') ? ' · removing undetermined' : ' · keeping undetermined');
+                        $('md-tracks-langs').textContent = 'Keeping: ' + (pick(s, 'TracksKeepLanguages') || 'eng') + (pick(s, 'TracksReplaceInPlace') ? ' · replacing files in place' : ' · keeping originals beside copies') + (pick(s, 'TracksRemoveUndetermined') ? ' · removing all untagged tracks' : pick(s, 'TracksRemoveUntaggedSubtitles') ? ' · removing untagged subtitles' + (pick(s, 'TracksKeepFirstUntaggedSubtitle') !== false ? ' (keeping the first where needed)' : '') + (pick(s, 'TracksAllowRemovingOnlySubtitle') ? ', including a lone one' : '') : ' · keeping untagged tracks');
                     }).catch(function () {});
                     pollTracks();
                 }
@@ -2540,6 +2645,7 @@
                             tr.appendChild(el('td', null, pick(g, 'Codec') || '–'));
                             tr.appendChild(el('td', null, pick(g, 'Channels') || '–'));
                             tr.appendChild(el('td', null, (pick(g, 'Files') || 0).toLocaleString('en-GB')));
+                            tr.appendChild(el('td', null, (pick(g, 'Tracks') || pick(g, 'Files') || 0).toLocaleString('en-GB')));
                             tr.appendChild(el('td', 'so-muted', (pick(g, 'Examples') || []).slice(0, 3).join(', ')));
                             ubody.appendChild(tr);
                         });
@@ -2682,6 +2788,7 @@
                             plugins = await getJson('/JellyfinMedic/Plugins');
                             renderPlugins();
                         } else if (name === 'directory') {
+                            loadAdvice();
                             await loadDirectory();
                         } else if (name === 'settings') {
                             await loadMedicSettings();

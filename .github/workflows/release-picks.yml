@@ -1,0 +1,107 @@
+# Builds and releases Medic Picks when you push a tag like picks-v1.0.0,
+# then adds it to manifest.json beside Jellyfin Medic.
+# Jellyfin Medic keeps its own release.yml and its v1.x.x tags; this file doesn't touch them.
+
+name: Release Medic Picks
+
+on:
+  push:
+    tags:
+      - 'picks-v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manifest-update
+  cancel-in-progress: false
+
+env:
+  PROJECT: 'Jellyfin.Plugin.MedicPicks/Jellyfin.Plugin.MedicPicks.csproj'
+  DLL: 'Jellyfin.Plugin.MedicPicks.dll'
+  GUID: 'b34ec5d1-b70f-435f-b77d-9b76979b03c7'
+  NAME: 'Medic Picks'
+  OWNER: 'P1zzm1ssile'
+  TARGET_ABI: '12.0.0.0'   # built against Jellyfin 12.0, so it loads on 12.0 and 12.1
+  DESCRIPTION: "Personal picks for every user, from what they watch."
+  OVERVIEW: "A private playlist of picks in every Jellyfin app, plus a My picks page with titles that aren't on the server yet and optional Jellyseerr requests."
+  IMAGE: 'https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPicks/thumb.png'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Version from the tag
+        id: meta
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#picks-v}"
+          IFS='.' read -r A B C D <<< "$VER"
+          VER4="${A:-0}.${B:-0}.${C:-0}.${D:-0}"
+          echo "version=$VER4" >> "$GITHUB_OUTPUT"
+          echo "zip=MedicPicks-v${VER}.zip" >> "$GITHUB_OUTPUT"
+          if [ "${A:-0}" = "0" ]; then echo "prerelease=true"; else echo "prerelease=false"; fi >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        shell: bash
+        run: |
+          dotnet publish "$PROJECT" -c Release -o out \
+            -p:JellyfinTarget=12 \
+            -p:Version="${{ steps.meta.outputs.version }}" \
+            -p:AssemblyVersion="${{ steps.meta.outputs.version }}" \
+            -p:FileVersion="${{ steps.meta.outputs.version }}"
+
+      - name: Package
+        id: pkg
+        shell: bash
+        run: |
+          zip -j "${{ steps.meta.outputs.zip }}" "out/$DLL"
+          echo "md5=$(md5sum "${{ steps.meta.outputs.zip }}" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          NOTES="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/-----BEGIN/,$d')"
+          [ -z "$NOTES" ] && NOTES="$NAME ${{ steps.meta.outputs.version }}"
+          printf '%s\n' "$NOTES" > notes.txt
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRE=""
+          [ "${{ steps.meta.outputs.prerelease }}" = "true" ] && PRE="--prerelease"
+          gh release create "$GITHUB_REF_NAME" "${{ steps.meta.outputs.zip }}" \
+            --title "$NAME ${{ steps.meta.outputs.version }}" \
+            --notes-file notes.txt $PRE
+
+      - name: Add the version to manifest.json on main
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 scripts/update_manifest.py \
+            --guid "$GUID" \
+            --name "$NAME" \
+            --version "${{ steps.meta.outputs.version }}" \
+            --abi "$TARGET_ABI" \
+            --url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${{ steps.meta.outputs.zip }}" \
+            --checksum "${{ steps.pkg.outputs.md5 }}" \
+            --changelog-file notes.txt \
+            --owner "$OWNER" \
+            --description "$DESCRIPTION" \
+            --overview "$OVERVIEW" \
+            --image-url "$IMAGE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "manifest: $NAME ${{ steps.meta.outputs.version }}"
+          for attempt in 1 2 3; do
+            git push origin main && break
+            git pull --rebase origin main
+          done
