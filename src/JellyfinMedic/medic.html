@@ -235,7 +235,7 @@
             <section class="so-tabpanel" data-panel="tracks" role="tabpanel" hidden>
                 <div class="md-banner" style="background:#2a1a1c;border-color:#5a2a2a;color:#ffc9cc">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"></path><path d="M12 17h.01"></path><circle cx="12" cy="12" r="9"></circle></svg>
-                    <span style="flex:1 1 400px">This is the one tool that changes your actual media files. It removes audio and subtitle tracks by remuxing (no quality loss), but <strong>back up and run it on a few files first</strong>. It skips IPTV, never removes the last audio or subtitle track, always keeps forced subtitles, and by default keeps the original file beside a stripped copy.</span>
+                    <span style="flex:1 1 400px">This is the one tool that changes your actual media files. It removes audio and subtitle tracks by remuxing (no quality loss), but <strong>back up and run it on a few files first</strong>. It skips IPTV, never removes the last audio or subtitle track, always keeps forced subtitles, and by default moves each original into a hidden .medic-originals folder next to it, so your library still has one file per title.</span>
                 </div>
                 <div class="so-panel">
                         <div class="md-setting">
@@ -254,7 +254,7 @@
                                 <label class="md-check"><input type="checkbox" id="md-tracks-onlysub-in"> Also remove a film's only subtitle when it's untagged</label>
                             </div>
                             <label class="md-check"><input type="checkbox" id="md-tracks-undet-in"> Remove all untagged tracks, audio included (not recommended)</label>
-                            <label class="md-check"><input type="checkbox" id="md-tracks-inplace-in"> Replace files in place (default: keep original beside a copy)</label>
+                            <label class="md-check"><input type="checkbox" id="md-tracks-inplace-in"> Don't keep the originals (by default each one is kept in a hidden .medic-originals folder next to it)</label>
                             <div class="md-row md-wrap">
                                 <label for="md-tracks-conc">Files at once</label>
                                 <input type="number" id="md-tracks-conc" class="so-input md-num" min="1" max="4">
@@ -276,6 +276,22 @@
                     </div>
                     <div id="md-tracks-summary"></div>
                 </div>
+                <div class="so-panel">
+                    <h3>Remove duplicate files</h3>
+                    <p class="so-muted so-small">Medic 1.0.4 to 1.0.7 left a stripped copy beside each original (for example "Film.medic-stripped.mkv"), and could strip that copy again. This puts each title back to a single file under its original name and deletes the copies of copies. The original is kept in a hidden .medic-originals folder unless you tick the box below.</p>
+                    <label class="md-check"><input type="checkbox" id="md-tracks-tidy-delorig"> Delete the originals too, keeping only the cleaned file (frees the most space; can't be undone)</label>
+                    <div class="md-row md-wrap" style="margin-top:10px">
+                        <button type="button" id="md-tracks-tidy" class="so-btn so-btn-accent">Remove duplicate files</button>
+                        <span id="md-tracks-tidy-result" class="so-muted so-small" aria-live="polite"></span>
+                    </div>
+                    <hr style="border:none;border-top:1px solid #2a2d34;margin:14px 0">
+                    <div class="md-row md-wrap">
+                        <span id="md-tracks-kept" class="so-small">Checking kept originals…</span>
+                        <button type="button" id="md-tracks-delete2" class="so-btn so-btn-plain" disabled>Delete the kept originals</button>
+                    </div>
+                    <p class="so-muted so-small" id="md-tracks-rescan-hint"></p>
+                </div>
+
                 <div class="so-panel" id="md-tracks-undet-panel" hidden>
                     <h3>Undetermined tracks</h3>
                     <p class="so-muted so-small">Tracks with no language tag. Kept by default, because an untagged track is often the one you want. To clear untagged subtitles while keeping untagged audio, tick "Remove untagged subtitles" in Track settings at the top of this tab. The safety rules still apply, and Scan and preview shows exactly what each file keeps.</p>
@@ -295,7 +311,7 @@
                     <div id="md-tracks-progress" class="so-muted so-small" style="margin-top:10px"></div>
                     <div id="md-tracks-log" class="md-fulltext" style="margin-top:8px;display:none"></div>
                     <div class="md-row md-wrap" id="md-tracks-delete-row" style="margin-top:12px" hidden>
-                        <button type="button" id="md-tracks-delete" class="so-btn so-btn-plain">Replace all originals with stripped copies</button>
+                        <button type="button" id="md-tracks-delete" class="so-btn so-btn-plain">Delete the kept originals</button>
                         <span class="so-muted so-small">Only affects files Medic successfully stripped. Do this once you've checked the copies play correctly.</span>
                     </div>
                 </div>
@@ -2360,7 +2376,7 @@
                     avoid: 'A time window Medic will always keep free, on top of what it learns from your viewing. Use it if you know a period should never have maintenance in it — for example a daily family viewing slot — even if the data looks quiet. Leave it off to let Medic choose purely from your real viewing pattern. It can wrap past midnight (e.g. 22:00 to 02:00).',
                     inactive: 'How long an account can go unused before Medic lists it as inactive in Checks and on the Dashboard. Inactive accounts are worth disabling because their old passwords still work. This only reports them; it never disables anyone. Default 90 days.',
                     guard: 'A safety net against the server running out of memory. If memory climbs past the ceiling while more than one heavy task (a scan, image extraction, a big sync) is running, Medic stops the extra heavy ones to keep the server up, then restarts them one at a time once memory recovers. It only ever stops heavy tasks, never light upkeep, and it records every action on the Dashboard. The real fix is spacing tasks out (the Schedule does this); the guard catches times when something unexpected stacks them anyway.',
-                    tracks: 'Settings for the Tracks tab, which removes unwanted audio and subtitle tracks from your LOCAL files by remuxing (no re-encode, no quality loss, so the GPU isn\'t used). "Keep languages": 3-letter codes, comma-separated (eng, jpn...). It always keeps forced subtitles and never removes the last audio track. "Remove untagged subtitles" clears subtitle tracks with no language tag (often a whole disc\'s worth of foreign subtitles) while keeping untagged audio, which is often the main soundtrack. With it, "Keep the first untagged subtitle" keeps one in films that have no subtitle in your languages, because the first subtitle on most discs is the film\'s own language. "Also remove a film\'s only subtitle" lets a lone untagged subtitle go too, except in films whose audio is tagged as a language you don\'t keep. "Remove all untagged tracks" also removes untagged audio, which can take out a film\'s main soundtrack, so preview first. "Files at once" and "FFmpeg threads": remuxing is disk-bound, so 1 of each is usually best; higher just thrashes the disk. By default the original is kept beside a stripped copy until you choose to replace it.',
+                    tracks: 'Settings for the Tracks tab, which removes unwanted audio and subtitle tracks from your LOCAL files by remuxing (no re-encode, no quality loss, so the GPU isn\'t used). "Keep languages": 3-letter codes, comma-separated (eng, jpn...). It always keeps forced subtitles and never removes the last audio track. "Remove untagged subtitles" clears subtitle tracks with no language tag (often a whole disc\'s worth of foreign subtitles) while keeping untagged audio, which is often the main soundtrack. With it, "Keep the first untagged subtitle" keeps one in films that have no subtitle in your languages, because the first subtitle on most discs is the film\'s own language. "Also remove a film\'s only subtitle" lets a lone untagged subtitle go too, except in films whose audio is tagged as a language you don\'t keep. "Remove all untagged tracks" also removes untagged audio, which can take out a film\'s main soundtrack, so preview first. "Files at once" and "FFmpeg threads": remuxing is disk-bound, so 1 of each is usually best; higher just thrashes the disk. By default each original is kept in a hidden .medic-originals folder next to it, which Jellyfin, Sonarr and Radarr ignore, until you delete the kept originals.',
                     ceiling: 'How full memory has to get before the guard steps in, as a percentage of what Jellyfin is actually allowed to use (its container limit, not the whole machine). Lower means it acts sooner and more cautiously; higher means it waits longer. 85% suits most servers. Below about 70% it may act when there was no real danger.'
                 };
 
@@ -2786,23 +2802,57 @@
 
                 function loadTracks() {
                     getJson('/JellyfinMedic/MedicSettings').then(function (s) {
-                        $('md-tracks-langs').textContent = 'Keeping: ' + (pick(s, 'TracksKeepLanguages') || 'eng') + (pick(s, 'TracksReplaceInPlace') ? ' · replacing files in place' : ' · keeping originals beside copies') + (pick(s, 'TracksRemoveUndetermined') ? ' · removing all untagged tracks' : pick(s, 'TracksRemoveUntaggedSubtitles') ? ' · removing untagged subtitles' + (pick(s, 'TracksKeepFirstUntaggedSubtitle') !== false ? ' (keeping the first where needed)' : '') + (pick(s, 'TracksAllowRemovingOnlySubtitle') ? ', including a lone one' : '') : ' · keeping untagged tracks');
+                        $('md-tracks-langs').textContent = 'Keeping: ' + (pick(s, 'TracksKeepLanguages') || 'eng') + (pick(s, 'TracksReplaceInPlace') ? ' · replacing files in place' : ' · keeping originals in .medic-originals') + (pick(s, 'TracksRemoveUndetermined') ? ' · removing all untagged tracks' : pick(s, 'TracksRemoveUntaggedSubtitles') ? ' · removing untagged subtitles' + (pick(s, 'TracksKeepFirstUntaggedSubtitle') !== false ? ' (keeping the first where needed)' : '') + (pick(s, 'TracksAllowRemovingOnlySubtitle') ? ', including a lone one' : '') : ' · keeping untagged tracks');
                     }).catch(function () {});
                     pollTracks();
+                    pollScan();
+                    loadKept();
+                }
+
+                // The scan runs on the server, so leaving the tab or the page doesn't lose it.
+                let scanTimer = null;
+
+                async function pollScan() {
+                    clearTimeout(scanTimer);
+                    try {
+                        const st = await getJson('/JellyfinMedic/Tracks/Scan/Status');
+                        const running = !!pick(st, 'Running');
+                        $('md-tracks-scan').disabled = running;
+                        if (running) {
+                            const total = pick(st, 'Total') || 0, done = pick(st, 'Done') || 0;
+                            $('md-tracks-summary').innerHTML = '';
+                            $('md-tracks-summary').appendChild(el('p', 'so-muted', total
+                                ? 'Scanning ' + done.toLocaleString('en-GB') + ' of ' + total.toLocaleString('en-GB') + ' files… You can leave this tab; the scan carries on.'
+                                : 'Gathering your local files…'));
+                            scanTimer = setTimeout(function () { if (activeTab === 'tracks') pollScan(); }, 1500);
+                            return;
+                        }
+
+                        if (pick(st, 'Error')) {
+                            $('md-tracks-summary').innerHTML = '';
+                            $('md-tracks-summary').appendChild(el('p', 'md-bad-text', 'The scan stopped with an error: ' + pick(st, 'Error')));
+                            return;
+                        }
+
+                        const result = pick(st, 'Result');
+                        if (result) {
+                            tracksScan = result;
+                            renderTracksScan();
+                        }
+                    } catch (e) { /* leave whatever is shown */ }
                 }
 
                 $('md-tracks-scan').addEventListener('click', async function () {
-                    const btn = $('md-tracks-scan');
-                    btn.disabled = true;
-                    $('md-tracks-summary').innerHTML = '<p class="so-muted">Scanning your local files…</p>';
+                    $('md-tracks-scan').disabled = true;
+                    $('md-tracks-summary').innerHTML = '<p class="so-muted">Starting the scan…</p>';
                     try {
-                        tracksScan = await getJson('/JellyfinMedic/Tracks/Scan');
-                        renderTracksScan();
+                        await postJson('/JellyfinMedic/Tracks/Scan/Start');
                     } catch (e) {
-                        $('md-tracks-summary').innerHTML = '<p class="md-bad-text">Couldn\'t scan. Check the Jellyfin log for Jellyfin Medic errors.</p>';
-                    } finally {
-                        btn.disabled = false;
+                        $('md-tracks-summary').innerHTML = '<p class="md-bad-text">Couldn\'t start the scan. Check the Jellyfin log for Jellyfin Medic errors.</p>';
+                        $('md-tracks-scan').disabled = false;
+                        return;
                     }
+                    pollScan();
                 });
 
                 function renderTracksScan() {
@@ -2810,6 +2860,9 @@
                     const scanned = pick(tracksScan, 'FilesScanned') || 0;
                     const changing = pick(tracksScan, 'FilesWouldChange') || 0;
                     $('md-tracks-summary').innerHTML = '';
+                    if (pick(tracksScan, 'GeneratedUtc')) {
+                        $('md-tracks-summary').appendChild(el('p', 'so-muted so-small', 'Scanned ' + new Date(pick(tracksScan, 'GeneratedUtc')).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '. Scan again after changing settings.'));
+                    }
                     const dl = el('dl', 'so-kv');
                     function row(k, v) { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); }
                     row('Local files scanned', scanned.toLocaleString('en-GB'));
@@ -3156,19 +3209,69 @@
                     } catch (e) { /* ignore */ }
                 }
 
-                $('md-tracks-delete').addEventListener('click', async function () {
-                    if (!window.confirm('Replace the original files with the stripped copies Medic made? This deletes the originals of files it successfully processed.')) return;
-                    const btn = $('md-tracks-delete');
-                    btn.disabled = true;
+                async function loadKept() {
                     try {
-                        const r = await postJson('/JellyfinMedic/Tracks/DeleteOriginals');
-                        showStatus('Replaced ' + pick(r, 'Deleted') + ' file(s), freeing ' + pick(r, 'FreedText') + '.', 'info');
+                        const k = await getJson('/JellyfinMedic/Tracks/KeptOriginals');
+                        const n = pick(k, 'Files') || 0;
+                        $('md-tracks-kept').textContent = n === 0
+                            ? 'No kept originals.'
+                            : 'Kept originals: ' + n.toLocaleString('en-GB') + ' file' + (n === 1 ? '' : 's') + ', ' + pick(k, 'SizeText') + '.';
+                        $('md-tracks-delete2').disabled = n === 0;
                     } catch (e) {
-                        showStatus('Couldn\'t replace originals.', 'error');
+                        $('md-tracks-kept').textContent = '';
+                    }
+                }
+
+                function rescanHint() {
+                    const hint = $('md-tracks-rescan-hint');
+                    hint.textContent = 'Now run a library scan so the removed files disappear from Jellyfin: ';
+                    hint.appendChild(linkify('Dashboard → Libraries'));
+                    hint.appendChild(document.createTextNode(', then Scan All Libraries.'));
+                }
+
+                $('md-tracks-tidy').addEventListener('click', async function () {
+                    const delOrig = $('md-tracks-tidy-delorig').checked;
+                    const question = delOrig
+                        ? 'Keep only the cleaned file for each title? Stripped copies, copies of copies AND the originals will be deleted. This can\'t be undone.'
+                        : 'Put each title back to one file? The first stripped copy takes the original\'s name, the original moves to .medic-originals, and copies of copies are deleted.';
+                    if (!window.confirm(question)) return;
+                    const btn = $('md-tracks-tidy');
+                    btn.disabled = true;
+                    $('md-tracks-tidy-result').textContent = 'Removing duplicates…';
+                    try {
+                        const r = await postJson('/JellyfinMedic/Tracks/TidyCopies?deleteOriginals=' + (delOrig ? 'true' : 'false'));
+                        const titles = pick(r, 'Titles') || 0, extra = pick(r, 'CopiesDeleted') || 0;
+                        $('md-tracks-tidy-result').textContent = titles === 0
+                            ? 'Nothing to tidy: no duplicate files found.'
+                            : titles + ' title(s) back to one file. ' + extra + ' extra file' + (extra === 1 ? '' : 's') + ' deleted, freeing ' + pick(r, 'FreedText') + '.';
+                        if (titles > 0) rescanHint();
+                        tracksScan = null;
+                        $('md-tracks-summary').innerHTML = '';
+                        loadKept();
+                    } catch (e) {
+                        $('md-tracks-tidy-result').textContent = 'Couldn\'t remove duplicates. If a track run is going, wait for it to finish.';
                     } finally {
                         btn.disabled = false;
                     }
                 });
+
+                async function deleteKeptOriginals(btn) {
+                    if (!window.confirm('Delete the originals Medic kept in .medic-originals folders? Only originals whose cleaned file is still in place are deleted. This can\'t be undone.')) return false;
+                    btn.disabled = true;
+                    try {
+                        const r = await postJson('/JellyfinMedic/Tracks/DeleteOriginals');
+                        showStatus('Deleted ' + pick(r, 'Deleted') + ' kept original(s), freeing ' + pick(r, 'FreedText') + '.', 'info');
+                        return true;
+                    } catch (e) {
+                        showStatus('Couldn\'t delete the kept originals.', 'error');
+                        return false;
+                    } finally {
+                        btn.disabled = false;
+                    }
+                }
+                function afterDelete(ok) { loadKept(); if (ok) rescanHint(); }
+                $('md-tracks-delete').addEventListener('click', function () { deleteKeptOriginals($('md-tracks-delete')).then(afterDelete); });
+                $('md-tracks-delete2').addEventListener('click', function () { deleteKeptOriginals($('md-tracks-delete2')).then(afterDelete); });
 
                 // ---------- Loading ----------
 

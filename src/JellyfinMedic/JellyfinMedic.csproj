@@ -5,8 +5,8 @@
     <Nullable>enable</Nullable>
     <RootNamespace>JellyfinMedic</RootNamespace>
     <AssemblyName>JellyfinMedic</AssemblyName>
-    <AssemblyVersion>1.0.6.0</AssemblyVersion>
-    <FileVersion>1.0.6.0</FileVersion>
+    <AssemblyVersion>1.0.8.0</AssemblyVersion>
+    <FileVersion>1.0.8.0</FileVersion>
   </PropertyGroup>
 
   <!--
