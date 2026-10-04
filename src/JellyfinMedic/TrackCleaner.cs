@@ -80,6 +80,19 @@ public class UndeterminedGroup
     public List<string> Examples { get; set; } = new();
 }
 
+public class TrackScanStatus
+{
+    public bool Running { get; set; }
+
+    public int Done { get; set; }
+
+    public int Total { get; set; }
+
+    public TrackScanResult? Result { get; set; }
+
+    public string? Error { get; set; }
+}
+
 public class TrackScanResult
 {
     public DateTime GeneratedUtc { get; set; } = DateTime.UtcNow;
@@ -150,7 +163,8 @@ public static class TrackCleaner
     private static readonly object Sync = new();
     private static readonly TrackRunProgress Progress = new();
     private static CancellationTokenSource? _cancel;
-    private const string StrippedSuffix = ".medic-stripped";
+    private const string StrippedSuffix = ".medic-stripped";   // used by Medic 1.0.4–1.0.7; tidied up by TidyEarlierCopies
+    private const string OriginalsFolder = ".medic-originals"; // hidden, and ignored by Jellyfin, Sonarr and Radarr
 
     public static TrackRunProgress CurrentProgress()
     {
@@ -162,12 +176,14 @@ public static class TrackCleaner
 
     // ---------- Scan / preview ----------
 
-    public static TrackScanResult Scan(ILibraryManager library, IEnumerable<LibraryFacts> libraries, PluginConfiguration cfg, int sampleSize = 50)
+    public static TrackScanResult Scan(ILibraryManager library, IEnumerable<LibraryFacts> libraries, PluginConfiguration cfg, int sampleSize = 50, Action<int, int>? progress = null)
     {
         var result = new TrackScanResult();
         var keep = KeepLanguages(cfg);
         var undetermined = new Dictionary<string, UndeterminedGroup>(StringComparer.Ordinal);
 
+        // Gather first, so progress can say "x of y".
+        var work = new List<(LibraryFacts Lib, BaseItem Item)>();
         foreach (var lib in libraries.Where(l => !l.IsStreamed))
         {
             if (!Guid.TryParse(lib.Id, out var id))
@@ -175,20 +191,28 @@ public static class TrackCleaner
                 continue;
             }
 
-            List<BaseItem> items;
             try
             {
-                items = library.GetItemList(new InternalItemsQuery { ParentId = id, Recursive = true, IsFolder = false }).ToList();
+                work.AddRange(library.GetItemList(new InternalItemsQuery { ParentId = id, Recursive = true, IsFolder = false }).Select(i => (lib, i)));
             }
             catch
             {
-                continue;
+                // Skip a library that can't be read.
+            }
+        }
+
+        int done = 0;
+        progress?.Invoke(0, work.Count);
+        foreach (var (lib, item) in work)
+        {
+            if (++done % 50 == 0)
+            {
+                progress?.Invoke(done, work.Count);
             }
 
-            foreach (var item in items)
             {
                 string path = item.Path ?? string.Empty;
-                if (string.IsNullOrEmpty(path) || path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase) || !LooksLocal(path))
+                if (string.IsNullOrEmpty(path) || path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase) || !LooksLocal(path) || IsMedicFile(path))
                 {
                     continue;
                 }
@@ -238,8 +262,77 @@ public static class TrackCleaner
             }
         }
 
+        progress?.Invoke(work.Count, work.Count);
         result.Undetermined = undetermined.Values.OrderByDescending(g => g.Files).ToList();
         return result;
+    }
+
+    // ---------- Background scan, so leaving the tab or page doesn't lose it ----------
+
+    private static readonly object ScanSync = new();
+    private static bool _scanRunning;
+    private static int _scanDone;
+    private static int _scanTotal;
+    private static TrackScanResult? _lastScan;
+    private static string? _scanError;
+
+    public static TrackScanStatus ScanStatus()
+    {
+        lock (ScanSync)
+        {
+            return new TrackScanStatus { Running = _scanRunning, Done = _scanDone, Total = _scanTotal, Result = _lastScan, Error = _scanError };
+        }
+    }
+
+    /// <summary>Starts a scan in the background. Returns false if one is already running.</summary>
+    public static bool StartScan(ILibraryManager library, IEnumerable<LibraryFacts> libraries, PluginConfiguration cfg)
+    {
+        lock (ScanSync)
+        {
+            if (_scanRunning)
+            {
+                return false;
+            }
+
+            _scanRunning = true;
+            _scanDone = 0;
+            _scanTotal = 0;
+            _scanError = null;
+        }
+
+        var libs = libraries.ToList();
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var result = Scan(library, libs, cfg, 50, (done, total) =>
+                {
+                    lock (ScanSync) { _scanDone = done; _scanTotal = total; }
+                });
+                lock (ScanSync) { _lastScan = result; }
+            }
+            catch (Exception ex)
+            {
+                lock (ScanSync) { _scanError = ex.Message; }
+            }
+            finally
+            {
+                lock (ScanSync) { _scanRunning = false; }
+            }
+        });
+        return true;
+    }
+
+    /// <summary>Forgets the last scan, e.g. after settings change or files are stripped.</summary>
+    public static void ClearScan()
+    {
+        lock (ScanSync)
+        {
+            if (!_scanRunning)
+            {
+                _lastScan = null;
+            }
+        }
     }
 
     /// <summary>Works out the keep/remove decision for one item's tracks, or null if it has no media streams.</summary>
@@ -277,7 +370,7 @@ public static class TrackCleaner
         ApplyKeepRules(plan, keep, cfg);
         plan.RemovingAudio = plan.Tracks.Count(t => t.Kind == "audio" && !t.Keep);
         plan.RemovingSubtitles = plan.Tracks.Count(t => t.Kind == "subtitle" && !t.Keep);
-        plan.HasStrippedCopy = File.Exists(StrippedPath(plan.Path));
+        plan.HasStrippedCopy = File.Exists(OriginalPath(plan.Path)); // already cleaned once; its original is kept
         return plan;
     }
 
@@ -411,7 +504,7 @@ public static class TrackCleaner
                 foreach (var item in items)
                 {
                     string path = item.Path ?? string.Empty;
-                    if (string.IsNullOrEmpty(path) || path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase) || !LooksLocal(path) || !File.Exists(path))
+                    if (string.IsNullOrEmpty(path) || path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase) || !LooksLocal(path) || IsMedicFile(path) || !File.Exists(path))
                     {
                         continue;
                     }
@@ -534,8 +627,21 @@ public static class TrackCleaner
             }
             else
             {
-                // Safe default: keep the original, leave the stripped copy beside it.
-                File.Move(temp, StrippedPath(plan.Path), overwrite: true);
+                // Safe default: move the original into the hidden .medic-originals folder beside it, then put
+                // the cleaned file in its place under the same name. The library keeps one file per title, and
+                // Jellyfin keeps the same item, artwork and watched status. If a kept original is already there
+                // (this file was cleaned before), that one is the true original, so it's left alone.
+                string kept = OriginalPath(plan.Path);
+                if (File.Exists(kept))
+                {
+                    File.Move(temp, plan.Path, overwrite: true);
+                }
+                else
+                {
+                    EnsureOriginalsFolder(plan.Path);
+                    File.Move(plan.Path, kept);
+                    File.Move(temp, plan.Path);
+                }
             }
 
             lock (Sync) { Progress.Changed++; Progress.Done++; Progress.BytesSaved += saved; Progress.BytesDone += plan.SizeBytes; }
@@ -554,45 +660,38 @@ public static class TrackCleaner
         }
     }
 
-    // ---------- Delete originals (only ones we successfully replaced) ----------
+    // ---------- Delete kept originals (only ones Medic kept) ----------
 
     public static (int Deleted, long Freed) DeleteOriginals(ILibraryManager library, IEnumerable<LibraryFacts> libraries)
     {
         int deleted = 0;
         long freed = 0;
-        foreach (var lib in libraries.Where(l => !l.IsStreamed))
+        foreach (var dir in LibraryFolders(library, libraries))
         {
-            if (!Guid.TryParse(lib.Id, out var id))
+            string folder = Path.Combine(dir, OriginalsFolder);
+            if (!Directory.Exists(folder))
             {
                 continue;
             }
 
-            List<BaseItem> items;
-            try
+            foreach (var kept in SafeFiles(folder))
             {
-                items = library.GetItemList(new InternalItemsQuery { ParentId = id, Recursive = true, IsFolder = false }).ToList();
-            }
-            catch
-            {
-                continue;
-            }
+                if (Path.GetFileName(kept) == ".ignore")
+                {
+                    continue;
+                }
 
-            foreach (var item in items)
-            {
-                string path = item.Path ?? string.Empty;
-                string stripped = StrippedPath(path);
-                if (string.IsNullOrEmpty(path) || !File.Exists(stripped) || !File.Exists(path))
+                // Only delete an original whose cleaned version is still in place.
+                if (!File.Exists(Path.Combine(dir, Path.GetFileName(kept))))
                 {
                     continue;
                 }
 
                 try
                 {
-                    long size = Size(path);
-                    // Replace the original with the stripped copy, keeping the original's name.
-                    File.Delete(path);
-                    File.Move(stripped, path);
-                    freed += size - Size(path);
+                    long size = Size(kept);
+                    File.Delete(kept);
+                    freed += size;
                     deleted++;
                 }
                 catch
@@ -600,9 +699,191 @@ public static class TrackCleaner
                     // Skip anything locked.
                 }
             }
+
+            RemoveIfEmpty(folder);
         }
 
         return (deleted, freed);
+    }
+
+    // ---------- Tidy up copies left by Medic 1.0.4–1.0.7 ----------
+
+    /// <summary>
+    /// Earlier versions left "Name.medic-stripped.mkv" beside the original, and could then strip that copy
+    /// again ("Name.medic-stripped.medic-stripped.mkv"). This puts each title back to one file: the first
+    /// stripped copy takes the original's name, the original moves to .medic-originals, and copies of
+    /// copies are deleted. Nothing is deleted unless a good file remains under the original name.
+    /// </summary>
+    public static (int Titles, int CopiesDeleted, long Freed) TidyEarlierCopies(ILibraryManager library, IEnumerable<LibraryFacts> libraries, bool deleteOriginals = false)
+    {
+        int titles = 0, deletedCopies = 0;
+        long freed = 0;
+        foreach (var dir in LibraryFolders(library, libraries))
+        {
+            var copies = SafeFiles(dir).Where(f => Path.GetFileName(f).Contains(StrippedSuffix, StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var group in copies.GroupBy(f => OriginalNameFor(f), StringComparer.Ordinal))
+            {
+                try
+                {
+                    string original = group.Key;
+                    // Shallowest copy first: "Name.medic-stripped.mkv" before "Name.medic-stripped.medic-stripped.mkv".
+                    var ordered = group.OrderBy(f => CountSuffix(f)).ThenBy(f => f.Length).ToList();
+                    string best = ordered[0];
+
+                    string keptOriginal = OriginalPath(original);
+                    if (File.Exists(original))
+                    {
+                        if (deleteOriginals || File.Exists(keptOriginal))
+                        {
+                            // Either you asked to keep only the cleaned file, or a true original is already
+                            // kept and the file in place is an older cleaned copy.
+                            freed += Size(original);
+                            File.Delete(original);
+                            deletedCopies++;
+                        }
+                        else
+                        {
+                            EnsureOriginalsFolder(original);
+                            File.Move(original, keptOriginal);
+                        }
+                    }
+
+                    File.Move(best, original);
+                    titles++;
+
+                    if (deleteOriginals && File.Exists(keptOriginal))
+                    {
+                        freed += Size(keptOriginal);
+                        File.Delete(keptOriginal);
+                        RemoveIfEmpty(Path.GetDirectoryName(keptOriginal)!);
+                    }
+
+                    foreach (var extra in ordered.Skip(1))
+                    {
+                        freed += Size(extra);
+                        File.Delete(extra);
+                        deletedCopies++;
+                    }
+                }
+                catch
+                {
+                    // Leave anything locked or odd exactly as it is.
+                }
+            }
+
+            // Temp files from interrupted runs.
+            foreach (var tmp in SafeFiles(dir).Where(f => Path.GetFileName(f).Contains(".medic-tmp", StringComparison.OrdinalIgnoreCase)))
+            {
+                try { freed += Size(tmp); File.Delete(tmp); } catch { /* skip */ }
+            }
+        }
+
+        return (titles, deletedCopies, freed);
+    }
+
+    /// <summary>How many originals Medic is keeping in .medic-originals folders, and their total size.</summary>
+    public static (int Files, long Bytes) KeptOriginals(ILibraryManager library, IEnumerable<LibraryFacts> libraries)
+    {
+        int files = 0;
+        long bytes = 0;
+        foreach (var dir in LibraryFolders(library, libraries))
+        {
+            string folder = Path.Combine(dir, OriginalsFolder);
+            if (!Directory.Exists(folder))
+            {
+                continue;
+            }
+
+            foreach (var f in SafeFiles(folder).Where(f => Path.GetFileName(f) != ".ignore"))
+            {
+                files++;
+                bytes += Size(f);
+            }
+        }
+
+        return (files, bytes);
+    }
+
+    private static string OriginalNameFor(string copy)
+    {
+        string dir = Path.GetDirectoryName(copy) ?? string.Empty;
+        string name = Path.GetFileNameWithoutExtension(copy);
+        while (name.EndsWith(StrippedSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            name = name[..^StrippedSuffix.Length];
+        }
+
+        return Path.Combine(dir, name + Path.GetExtension(copy));
+    }
+
+    private static int CountSuffix(string path)
+    {
+        string name = Path.GetFileNameWithoutExtension(path);
+        int n = 0, i = 0;
+        while ((i = name.IndexOf(StrippedSuffix, i, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            n++;
+            i += StrippedSuffix.Length;
+        }
+
+        return n;
+    }
+
+    /// <summary>Every folder that holds a local file in a non-streamed library.</summary>
+    private static HashSet<string> LibraryFolders(ILibraryManager library, IEnumerable<LibraryFacts> libraries)
+    {
+        var folders = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var lib in libraries.Where(l => !l.IsStreamed))
+        {
+            if (!Guid.TryParse(lib.Id, out var id))
+            {
+                continue;
+            }
+
+            try
+            {
+                foreach (var item in library.GetItemList(new InternalItemsQuery { ParentId = id, Recursive = true, IsFolder = false }))
+                {
+                    string path = item.Path ?? string.Empty;
+                    if (path.Length > 0 && LooksLocal(path) && !path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string? dir = Path.GetDirectoryName(path);
+                        if (!string.IsNullOrEmpty(dir) && !dir.EndsWith(OriginalsFolder, StringComparison.Ordinal))
+                        {
+                            folders.Add(dir);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Skip a library that can't be read.
+            }
+        }
+
+        return folders;
+    }
+
+    private static IEnumerable<string> SafeFiles(string dir)
+    {
+        try { return Directory.GetFiles(dir); } catch { return Array.Empty<string>(); }
+    }
+
+    private static void RemoveIfEmpty(string folder)
+    {
+        try
+        {
+            var left = Directory.GetFileSystemEntries(folder);
+            if (left.All(e => Path.GetFileName(e) == ".ignore"))
+            {
+                foreach (var e in left) { File.Delete(e); }
+                Directory.Delete(folder);
+            }
+        }
+        catch
+        {
+            // Leave it.
+        }
     }
 
     public static void Stop()
@@ -668,6 +949,32 @@ public static class TrackCleaner
 
     private static string StrippedPath(string path) =>
         Path.Combine(Path.GetDirectoryName(path) ?? string.Empty, Path.GetFileNameWithoutExtension(path) + StrippedSuffix + Path.GetExtension(path));
+
+    /// <summary>Where the untouched original of a file is kept: a hidden folder beside it.</summary>
+    private static string OriginalPath(string path) =>
+        Path.Combine(Path.GetDirectoryName(path) ?? string.Empty, OriginalsFolder, Path.GetFileName(path));
+
+    /// <summary>Files Medic must never treat as library media: its kept originals, temp files and old-style copies.</summary>
+    private static bool IsMedicFile(string path) =>
+        path.Contains(Path.DirectorySeparatorChar + OriginalsFolder + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        || path.Contains("/" + OriginalsFolder + "/", StringComparison.Ordinal)
+        || path.Contains(StrippedSuffix, StringComparison.OrdinalIgnoreCase)
+        || path.Contains(".medic-tmp", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(".medic-orig", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Makes the originals folder, with a .ignore file so Jellyfin never adds what's inside it to the library.</summary>
+    private static string EnsureOriginalsFolder(string mediaPath)
+    {
+        string folder = Path.Combine(Path.GetDirectoryName(mediaPath) ?? string.Empty, OriginalsFolder);
+        Directory.CreateDirectory(folder);
+        string ignore = Path.Combine(folder, ".ignore");
+        if (!File.Exists(ignore))
+        {
+            File.WriteAllText(ignore, string.Empty);
+        }
+
+        return folder;
+    }
 
     private static bool LooksLocal(string path) =>
         path.StartsWith('/') || (path.Length > 2 && path[1] == ':');

@@ -49,7 +49,7 @@ Counts your IPTV films and series by genre and country, shows how much of each a
 
 ### Tracks
 
-Removes unwanted audio and subtitle tracks from your local files by remuxing, so there's no re-encode and no quality loss. It keeps your languages and forced subtitles, never removes a file's last audio track, and keeps subtitles in films whose audio isn't in your languages. Tracks with no language tag are grouped for review, and you can clear untagged subtitles while keeping untagged audio, which is often a film's main soundtrack. Its settings sit at the top of the tab, next to the tool. **Scan and preview** shows what every file would keep before anything changes, and by default the original stays beside the stripped copy. While it runs, it shows how much is done and roughly when it will finish. IPTV is skipped.
+Removes unwanted audio and subtitle tracks from your local files by remuxing, so there's no re-encode and no quality loss. It keeps your languages and forced subtitles, never removes a file's last audio track, and keeps subtitles in films whose audio isn't in your languages. Tracks with no language tag are grouped for review, and you can clear untagged subtitles while keeping untagged audio, which is often a film's main soundtrack. Its settings sit at the top of the tab, next to the tool. **Scan and preview** shows what every file would keep before anything changes. The cleaned file keeps the original's name, so your library still has one file per title, and by default the original is kept in a hidden .medic-originals folder next to it until you delete it. While it runs, it shows how much is done and roughly when it will finish. IPTV is skipped.
 
 ### Media report
 

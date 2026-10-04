@@ -152,6 +152,19 @@ public class MedicController : ControllerBase
         return Ok(TrackCleaner.Scan(_library, _engine.Libraries, cfg));
     }
 
+    /// <summary>Starts a scan in the background; poll Tracks/Scan/Status for progress and the result.</summary>
+    [HttpPost("Tracks/Scan/Start")]
+    public ActionResult<TrackScanStatus> TracksScanStart()
+    {
+        var cfg = Plugin.Instance?.Configuration ?? new PluginConfiguration();
+        TrackCleaner.StartScan(_library, _engine.Libraries, cfg);
+        return Ok(TrackCleaner.ScanStatus());
+    }
+
+    /// <summary>The background scan's progress, and the last finished scan.</summary>
+    [HttpGet("Tracks/Scan/Status")]
+    public ActionResult<TrackScanStatus> TracksScanStatus() => Ok(TrackCleaner.ScanStatus());
+
     /// <summary>Starts a run. dryRun=true (default) only reports; dryRun=false actually remuxes.</summary>
     [HttpPost("Tracks/Run")]
     public ActionResult<object> TracksRun([FromQuery] bool dryRun = true)
@@ -168,6 +181,11 @@ public class MedicController : ControllerBase
             return StatusCode(StatusCodes.Status409Conflict, "A track run is already going.");
         }
 
+        if (!dryRun)
+        {
+            TrackCleaner.ClearScan(); // files are about to change, so the last scan goes out of date
+        }
+
         _ = TrackCleaner.RunAsync(_library, _engine.Libraries, ffmpeg ?? string.Empty, cfg, dryRun);
         return Ok(new { Started = true, DryRun = dryRun });
     }
@@ -182,7 +200,29 @@ public class MedicController : ControllerBase
         return Ok(new { Stopped = true });
     }
 
-    /// <summary>Replaces originals with the stripped copies Medic made (only files it successfully processed).</summary>
+    /// <summary>Puts titles left with several copies by earlier versions back to a single file.</summary>
+    [HttpPost("Tracks/TidyCopies")]
+    public ActionResult<object> TracksTidyCopies([FromQuery] bool deleteOriginals = false)
+    {
+        if (TrackCleaner.CurrentProgress().Running)
+        {
+            return StatusCode(StatusCodes.Status409Conflict, "Wait for the track run to finish first.");
+        }
+
+        var (titles, copies, freed) = TrackCleaner.TidyEarlierCopies(_library, _engine.Libraries, deleteOriginals);
+        TrackCleaner.ClearScan();
+        return Ok(new { Titles = titles, CopiesDeleted = copies, Freed = freed, FreedText = SystemProbe.Size(freed) });
+    }
+
+    /// <summary>How many originals Medic is keeping, and how much space they take.</summary>
+    [HttpGet("Tracks/KeptOriginals")]
+    public ActionResult<object> TracksKeptOriginals()
+    {
+        var (files, bytes) = TrackCleaner.KeptOriginals(_library, _engine.Libraries);
+        return Ok(new { Files = files, Bytes = bytes, SizeText = SystemProbe.Size(bytes) });
+    }
+
+    /// <summary>Deletes the originals Medic kept in .medic-originals folders (only where the cleaned file is in place).</summary>
     [HttpPost("Tracks/DeleteOriginals")]
     public ActionResult<object> TracksDeleteOriginals()
     {
@@ -342,6 +382,7 @@ public class MedicController : ControllerBase
         c.TracksConcurrentFiles = Math.Clamp(settings.TracksConcurrentFiles, 1, 4);
         c.TracksFfmpegThreads = Math.Clamp(settings.TracksFfmpegThreads, 0, 16);
         Plugin.Instance.SaveConfiguration();
+        TrackCleaner.ClearScan(); // the last track scan was made with the old settings
         return GetMedicSettings();
     }
 

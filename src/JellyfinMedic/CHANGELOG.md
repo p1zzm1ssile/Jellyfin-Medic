@@ -5,6 +5,23 @@ All notable changes to Jellyfin Medic are recorded here. The newest version is a
 This project uses [semantic versioning](https://semver.org): given a version X.Y.Z,
 Z changes for fixes, Y for new features, X for changes that break compatibility.
 
+## [1.0.8] – 2026-10-04
+
+### Changed
+- **One file per title.** Track cleanup no longer leaves a stripped copy beside the original. The cleaned file takes the original's place under the same name, so Jellyfin keeps the same item, artwork and watched status. The original is kept in a hidden .medic-originals folder next to it, which Jellyfin, Sonarr and Radarr ignore, until you choose "Delete the kept originals".
+
+### Added
+- **Remove duplicate files.** A button on the Tracks tab puts every title left with several copies by earlier versions back to a single file under its original name, and deletes the copies of copies. Tick "Delete the originals too" to keep only the cleaned file and free the most space.
+- **Kept originals at a glance.** The Tracks tab shows how many originals Medic is keeping and how much space they take, with a button to delete them once you're happy.
+
+### Fixed
+- Track cleanup could pick up its own stripped copies and strip them again, leaving files like "Film.medic-stripped.medic-stripped.mkv". It now never touches its own files.
+
+## [1.0.7] – 2026-10-04
+
+### Fixed
+- **Track scans carry on when you leave the tab.** Scan and preview now runs on the server, with a "Scanning x of y files" progress line. Switching tabs, or leaving Medic and coming back, shows the scan's live progress or its last result, so there's no need to scan again. The last result is cleared when you change track settings or strip tracks, because it would be out of date.
+
 ## [1.0.6] – 2026-10-04
 
 ### Added
@@ -116,6 +133,8 @@ plugins into one, and adds a new dashboard, a timeline schedule and several new 
   system summary.
 - On first start, migrates data from Task Advisor and Setup Optimiser.
 
+[1.0.8]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.8
+[1.0.7]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.7
 [1.0.6]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.6
 [1.0.5]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.5
 [1.0.4]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.4
