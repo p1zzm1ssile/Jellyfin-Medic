@@ -54,6 +54,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPicks/thumb.png",
     "versions": [
       {
+        "version": "1.0.1.0",
+        "changelog": "chore: add 1.0.6.0 to manifest",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/picks-v1.0.1/MedicPicks-v1.0.1.zip",
+        "checksum": "4441e61c3aaf502dcc09b1e8b3cdac1f",
+        "timestamp": "2026-10-04T18:23:21Z"
+      },
+      {
         "version": "1.0.0.0",
         "changelog": "Medic 1.0.5 and Medic Picks 1.0.0",
         "targetAbi": "12.0.0.0",
