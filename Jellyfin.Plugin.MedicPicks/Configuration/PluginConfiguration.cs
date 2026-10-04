@@ -36,6 +36,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Users who should not get Discover picks (e.g. children's accounts). Library picks still respect parental controls.</summary>
     public string[] DiscoverDisabledUserIds { get; set; } = Array.Empty<string>();
 
+    /// <summary>Add a link to the picks page to every user's Jellyfin menu (web, Desktop, Android and iOS apps).</summary>
+    public bool AddMenuLink { get; set; } = true;
+
+    /// <summary>Text of that menu link.</summary>
+    public string MenuLinkName { get; set; } = "My picks";
+
     /// <summary>Minimum watched titles before picks are built for a user.</summary>
     public int MinimumWatchedTitles { get; set; } = 3;
 }

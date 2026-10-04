@@ -59,6 +59,19 @@ public static class SystemProbe
             .FirstOrDefault(l => l.StartsWith("model name", StringComparison.OrdinalIgnoreCase))?
             .Split(':', 2).ElementAtOrDefault(1)?.Trim();
 
+        if (info.CpuModel is null && OperatingSystem.IsWindows())
+        {
+            try
+            {
+                info.CpuModel = (Microsoft.Win32.Registry.GetValue(
+                    @"HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString", null) as string)?.Trim();
+            }
+            catch
+            {
+                // Unknown is fine.
+            }
+        }
+
         var memLine = ReadLines("/proc/meminfo").FirstOrDefault(l => l.StartsWith("MemTotal:", StringComparison.Ordinal));
         if (memLine is not null)
         {
@@ -184,6 +197,9 @@ public static class SystemProbe
 
         return best;
     }
+
+    /// <summary>True on Unraid. Kept for older callers; HostPlatform has the full picture.</summary>
+    public static bool OnUnraid => HostPlatform.Kind == HostKind.Unraid;
 
     public static long FileSize(string path)
     {

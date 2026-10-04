@@ -57,6 +57,9 @@ public class FilePlan
 
     public bool HasStrippedCopy { get; set; }
 
+    // File size when the run started; remuxing time tracks size far better than file count.
+    public long SizeBytes { get; set; }
+
     public string? Error { get; set; }
 }
 
@@ -117,6 +120,17 @@ public class TrackRunProgress
     public DateTime? StartedUtc { get; set; }
 
     public DateTime? FinishedUtc { get; set; }
+
+    // Size of every file in this run, and of the files finished so far.
+    public long BytesTotal { get; set; }
+
+    public long BytesDone { get; set; }
+
+    // When remuxing began (after the file list was built).
+    public DateTime? WorkStartedUtc { get; set; }
+
+    // Estimated seconds left, from the rate data has been processed so far. Null until there's enough to go on.
+    public int? SecondsLeft { get; set; }
 
     public List<string> Recent { get; set; } = new();
 }
@@ -373,6 +387,9 @@ public static class TrackCleaner
             Progress.Current = null;
             Progress.StartedUtc = DateTime.UtcNow;
             Progress.FinishedUtc = null;
+            Progress.BytesTotal = 0;
+            Progress.BytesDone = 0;
+            Progress.WorkStartedUtc = null;
             Progress.Recent.Clear();
             _cancel = new CancellationTokenSource();
         }
@@ -407,7 +424,17 @@ public static class TrackCleaner
                 }
             }
 
-            lock (Sync) { Progress.Total = plans.Count; }
+            foreach (var plan in plans)
+            {
+                try { plan.SizeBytes = new FileInfo(plan.Path).Length; } catch { plan.SizeBytes = 0; }
+            }
+
+            lock (Sync)
+            {
+                Progress.Total = plans.Count;
+                Progress.BytesTotal = plans.Sum(p => p.SizeBytes);
+                Progress.WorkStartedUtc = DateTime.UtcNow;
+            }
 
             int concurrency = Math.Clamp(cfg.TracksConcurrentFiles, 1, 4);
             int threads = Math.Clamp(cfg.TracksFfmpegThreads, 0, 16);
@@ -490,7 +517,7 @@ public static class TrackCleaner
             if (exit != 0 || !File.Exists(temp) || Size(temp) < before / 3)
             {
                 SafeDelete(temp);
-                lock (Sync) { Progress.Failed++; Progress.Done++; }
+                lock (Sync) { Progress.Failed++; Progress.Done++; Progress.BytesDone += plan.SizeBytes; }
                 Note($"Skipped {Path.GetFileName(plan.Path)} (remux failed or output looked wrong)");
                 return;
             }
@@ -511,7 +538,7 @@ public static class TrackCleaner
                 File.Move(temp, StrippedPath(plan.Path), overwrite: true);
             }
 
-            lock (Sync) { Progress.Changed++; Progress.Done++; Progress.BytesSaved += saved; }
+            lock (Sync) { Progress.Changed++; Progress.Done++; Progress.BytesSaved += saved; Progress.BytesDone += plan.SizeBytes; }
             Note($"Stripped {Path.GetFileName(plan.Path)} (removed {plan.RemovingAudio} audio / {plan.RemovingSubtitles} subs)");
         }
         catch (OperationCanceledException)
@@ -522,7 +549,7 @@ public static class TrackCleaner
         catch (Exception ex)
         {
             SafeDelete(temp);
-            lock (Sync) { Progress.Failed++; Progress.Done++; }
+            lock (Sync) { Progress.Failed++; Progress.Done++; Progress.BytesDone += plan.SizeBytes; }
             Note($"Error on {Path.GetFileName(plan.Path)}: {ex.Message}");
         }
     }
@@ -667,10 +694,30 @@ public static class TrackCleaner
         }
     }
 
+    // Time left = time so far × data left ÷ data done. Waits for 20 seconds and one finished file so the
+    // first estimate isn't wild; dry runs are near-instant, so they get none.
+    private static int? EstimateSecondsLeft(TrackRunProgress p)
+    {
+        if (!p.Running || p.DryRun || p.WorkStartedUtc is not { } start || p.BytesDone <= 0 || p.BytesTotal <= p.BytesDone)
+        {
+            return null;
+        }
+
+        double elapsed = (DateTime.UtcNow - start).TotalSeconds;
+        if (elapsed < 20)
+        {
+            return null;
+        }
+
+        double left = elapsed * (p.BytesTotal - p.BytesDone) / p.BytesDone;
+        return left > int.MaxValue ? int.MaxValue : (int)Math.Round(left);
+    }
+
     private static TrackRunProgress Clone(TrackRunProgress p) => new()
     {
         Running = p.Running, DryRun = p.DryRun, Total = p.Total, Done = p.Done, Changed = p.Changed,
         Failed = p.Failed, BytesSaved = p.BytesSaved, Current = p.Current, StartedUtc = p.StartedUtc,
+        BytesTotal = p.BytesTotal, BytesDone = p.BytesDone, WorkStartedUtc = p.WorkStartedUtc, SecondsLeft = EstimateSecondsLeft(p),
         FinishedUtc = p.FinishedUtc, Recent = p.Recent.ToList()
     };
 

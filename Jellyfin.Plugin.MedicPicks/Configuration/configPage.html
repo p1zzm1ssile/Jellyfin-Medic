@@ -98,14 +98,23 @@
                 <span>Build picks now</span>
             </button>
 
-            <h3>Add the picks page to Jellyfin's menu</h3>
-            <p>Users see their picks at:</p>
-            <p><code id="PicksUrl"></code></p>
-            <p>To add a menu link in the web app, Jellyfin Desktop and the Android and iOS apps, add this to the
-               web client's <code>config.json</code>, then refresh the browser:</p>
-            <pre id="MenuSnippet" style="white-space:pre-wrap;overflow-x:auto;padding:1em;border-radius:6px;background:rgba(127,127,127,0.15);"></pre>
-            <p class="fieldDescription">TV apps such as Android TV, Swiftfin and Roku don't show custom pages.
-               Those users get their picks through the private playlist instead.</p>
+            <h3>Menu link</h3>
+            <div class="checkboxContainer checkboxContainer-withDescription">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="AddMenuLink" form="MedicPicksConfigForm" />
+                    <span>Add a link to everyone's Jellyfin menu</span>
+                </label>
+                <div class="fieldDescription checkboxFieldDescription">
+                    Appears in the side menu of the web app, Jellyfin Desktop and the Android and iOS apps, with nothing
+                    to edit. People may need to refresh the page once to see it. TV apps such as Android TV, Swiftfin and
+                    Roku can't show extra pages, so those users get the private playlist instead.
+                </div>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" type="text" id="MenuLinkName" form="MedicPicksConfigForm" label="Menu link name" />
+            </div>
+            <p class="fieldDescription">The page itself is at <code id="PicksUrl"></code></p>
+            <p class="fieldDescription">Changes here apply once you press Save above.</p>
         </div>
     </div>
 
@@ -155,8 +164,6 @@
                 Dashboard.showLoadingMsg();
                 var picksUrl = ApiClient.serverAddress() + '/MedicPicks/Page';
                 $('PicksUrl').textContent = picksUrl;
-                $('MenuSnippet').textContent =
-                    '"menuLinks": [\n  { "name": "My picks", "icon": "recommend", "url": "' + picksUrl + '" }\n]';
 
                 Promise.all([ApiClient.getPluginConfiguration(pluginId), ApiClient.getUsers()])
                     .then(function (results) {
@@ -171,6 +178,8 @@
                         $('TmdbLanguage').value = config.TmdbLanguage || 'en-GB';
                         $('JellyseerrUrl').value = config.JellyseerrUrl || '';
                         $('MinimumWatchedTitles').value = config.MinimumWatchedTitles;
+                        $('AddMenuLink').checked = config.AddMenuLink !== false;
+                        $('MenuLinkName').value = config.MenuLinkName || 'My picks';
                         renderUsers(users, (config.DiscoverDisabledUserIds || []).map(norm));
                         refreshStatus();
                         Dashboard.hideLoadingMsg();
@@ -191,6 +200,8 @@
                     config.TmdbLanguage = $('TmdbLanguage').value.trim() || 'en-GB';
                     config.JellyseerrUrl = $('JellyseerrUrl').value.trim();
                     config.MinimumWatchedTitles = parseInt($('MinimumWatchedTitles').value, 10) || 3;
+                    config.AddMenuLink = $('AddMenuLink').checked;
+                    config.MenuLinkName = $('MenuLinkName').value.trim() || 'My picks';
                     config.DiscoverDisabledUserIds = Array.prototype.slice
                         .call(page.querySelectorAll('.discoverUser'))
                         .filter(function (box) { return !box.checked; })

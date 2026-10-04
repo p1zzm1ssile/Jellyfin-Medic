@@ -1,6 +1,8 @@
 using Jellyfin.Plugin.MedicPicks.Picks;
+using Jellyfin.Plugin.MedicPicks.Web;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Jellyfin.Plugin.MedicPicks;
@@ -16,5 +18,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<PicksStore>();
         serviceCollection.AddSingleton<TmdbClient>();
         serviceCollection.AddSingleton<PicksEngine>();
+
+        // Adds the "My picks" link to everyone's web menu (see Web/MenuLink.cs).
+        serviceCollection.AddTransient<IStartupFilter, MenuLinkStartupFilter>();
     }
 }

@@ -21,6 +21,7 @@
                 <button type="button" role="tab" class="so-tab" data-tab="recs" aria-selected="false" tabindex="-1">Checks</button>
                 <button type="button" role="tab" class="so-tab" data-tab="iptv" aria-selected="false" tabindex="-1">IPTV</button>
                 <button type="button" role="tab" class="so-tab" data-tab="tracks" aria-selected="false" tabindex="-1">Tracks</button>
+                <button type="button" role="tab" class="so-tab" data-tab="media" aria-selected="false" tabindex="-1">Media report</button>
                 <button type="button" role="tab" class="so-tab" data-tab="tests" aria-selected="false" tabindex="-1">Tests</button>
                 <button type="button" role="tab" class="so-tab" data-tab="plugins" aria-selected="false" tabindex="-1">Plugins</button>
                 <button type="button" role="tab" class="so-tab" data-tab="directory" aria-selected="false" tabindex="-1">Plugin directory</button>
@@ -237,8 +238,38 @@
                     <span style="flex:1 1 400px">This is the one tool that changes your actual media files. It removes audio and subtitle tracks by remuxing (no quality loss), but <strong>back up and run it on a few files first</strong>. It skips IPTV, never removes the last audio or subtitle track, always keeps forced subtitles, and by default keeps the original file beside a stripped copy.</span>
                 </div>
                 <div class="so-panel">
+                        <div class="md-setting">
+                            <div class="md-row md-wrap">
+                                <h3 class="md-inline-head" style="margin:0">Track settings</h3>
+                                <button type="button" class="md-help" data-help="tracks" aria-label="What does this do?">?</button>
+                            </div>
+                            <p class="md-help-text" data-help-for="tracks" hidden></p>
+                            <div class="md-row md-wrap">
+                                <label for="md-tracks-langs-in">Keep languages</label>
+                                <input type="text" id="md-tracks-langs-in" class="so-input" style="width:160px" placeholder="eng">
+                            </div>
+                            <label class="md-check"><input type="checkbox" id="md-tracks-untagsubs-in"> Remove untagged subtitles (untagged audio is always kept)</label>
+                            <div style="margin-left:26px; display:flex; flex-direction:column; gap:8px">
+                                <label class="md-check"><input type="checkbox" id="md-tracks-keepfirst-in"> Keep the first untagged subtitle in films with no subtitle in your languages</label>
+                                <label class="md-check"><input type="checkbox" id="md-tracks-onlysub-in"> Also remove a film's only subtitle when it's untagged</label>
+                            </div>
+                            <label class="md-check"><input type="checkbox" id="md-tracks-undet-in"> Remove all untagged tracks, audio included (not recommended)</label>
+                            <label class="md-check"><input type="checkbox" id="md-tracks-inplace-in"> Replace files in place (default: keep original beside a copy)</label>
+                            <div class="md-row md-wrap">
+                                <label for="md-tracks-conc">Files at once</label>
+                                <input type="number" id="md-tracks-conc" class="so-input md-num" min="1" max="4">
+                                <label for="md-tracks-threads">FFmpeg threads</label>
+                                <input type="number" id="md-tracks-threads" class="so-input md-num" min="0" max="16">
+                            </div>
+                        </div>
+                    <div class="md-row md-wrap" style="margin-top:12px">
+                        <button type="button" id="md-tracks-save" class="so-btn so-btn-accent" disabled>Save track settings</button>
+                        <span id="md-tracks-saved" class="so-muted so-small" aria-live="polite"></span>
+                    </div>
+                </div>
+                <div class="so-panel">
                     <h3>Remove unwanted tracks</h3>
-                    <p class="so-muted so-small">Keeps your languages plus the native track where it's the only one (so anime and foreign films stay watchable). Set the languages and options on the Settings tab.</p>
+                    <p class="so-muted so-small">Keeps your languages plus the native track where it's the only one (so anime and foreign films stay watchable). Set the languages and options in Track settings above.</p>
                     <div class="md-row md-wrap">
                         <button type="button" id="md-tracks-scan" class="so-btn so-btn-accent">Scan and preview</button>
                         <span id="md-tracks-langs" class="so-muted so-small"></span>
@@ -247,7 +278,7 @@
                 </div>
                 <div class="so-panel" id="md-tracks-undet-panel" hidden>
                     <h3>Undetermined tracks</h3>
-                    <p class="so-muted so-small">Tracks with no language tag. Kept by default, because an untagged track is often the one you want. To clear untagged subtitles while keeping untagged audio, tick "Remove untagged subtitles" on the Settings tab. The safety rules still apply, and Scan and preview shows exactly what each file keeps.</p>
+                    <p class="so-muted so-small">Tracks with no language tag. Kept by default, because an untagged track is often the one you want. To clear untagged subtitles while keeping untagged audio, tick "Remove untagged subtitles" in Track settings at the top of this tab. The safety rules still apply, and Scan and preview shows exactly what each file keeps.</p>
                     <div class="so-scroll"><table class="so-table"><thead><tr><th>Type</th><th>Codec</th><th>Channels</th><th>Files</th><th>Tracks</th><th>Examples</th></tr></thead><tbody id="md-tracks-undet"></tbody></table></div>
                 </div>
                 <div class="so-panel" id="md-tracks-preview-panel" hidden>
@@ -271,6 +302,61 @@
             </section>
 
             <!-- Tests -->
+            <section class="so-tabpanel" data-panel="media" role="tabpanel" hidden>
+                <div class="so-panel">
+                    <div class="md-row md-space md-wrap">
+                        <h3 class="md-inline-head">Media report</h3>
+                        <button type="button" id="md-media-build" class="so-btn so-btn-accent">Build report</button>
+                    </div>
+                    <p class="so-muted so-small">A read-only look at your local files: what formats they're in, roughly how much space converting them could save, and which files make Jellyfin transcode. It uses what Jellyfin already knows about each file, so nothing is rescanned and nothing is changed.</p>
+                    <p id="md-media-status" class="so-muted so-small" aria-live="polite"></p>
+                </div>
+
+                <div id="md-media-body" hidden>
+                    <div class="md-tiles" id="md-media-tiles"></div>
+
+                    <div class="so-panel">
+                        <h3>Biggest savings</h3>
+                        <p class="so-muted so-small">Files where converting to HEVC would free the most space, using your GPU encoder's estimate. Remuxes and high-bitrate files save the most.</p>
+                        <div class="so-scroll"><table class="so-table"><thead><tr><th>Title</th><th>Format</th><th>Resolution</th><th>Bitrate</th><th>Size</th><th>Could free</th></tr></thead><tbody id="md-media-big"></tbody></table></div>
+                    </div>
+
+                    <div class="so-panel">
+                        <h3>Video formats</h3>
+                        <div class="so-scroll"><table class="so-table"><thead><tr><th>Format</th><th>Files</th><th>Size</th><th style="width:30%">Share of space</th></tr></thead><tbody id="md-media-codecs"></tbody></table></div>
+                    </div>
+
+                    <div class="md-tiles">
+                        <section class="md-tile"><h3 class="md-tile-head">Resolution</h3><table class="so-table"><tbody id="md-media-res"></tbody></table></section>
+                        <section class="md-tile"><h3 class="md-tile-head">HDR</h3><table class="so-table"><tbody id="md-media-hdr"></tbody></table></section>
+                        <section class="md-tile"><h3 class="md-tile-head">File types</h3><table class="so-table"><tbody id="md-media-ext"></tbody></table></section>
+                    </div>
+
+                    <div class="so-panel">
+                        <h3>Likely to cause transcodes</h3>
+                        <div id="md-media-compat"></div>
+                    </div>
+                </div>
+
+                <div class="so-panel">
+                    <h3>Files that get transcoded</h3>
+                    <p id="md-media-tx-note" class="so-muted so-small"></p>
+                    <div class="so-scroll" id="md-media-tx-wrap" hidden><table class="so-table"><thead><tr><th>Title</th><th>Why Jellyfin transcoded it</th><th>Caught</th><th>Apps</th></tr></thead><tbody id="md-media-tx"></tbody></table></div>
+                </div>
+
+                <div class="so-panel">
+                    <h3>Before converting anything</h3>
+                    <ul class="so-small" style="margin:0;padding-left:20px;line-height:1.6">
+                        <li>These are estimates. Real savings depend on the source and the quality you choose.</li>
+                        <li>GPU encoders are fast but make bigger files than slow software encoding at the same quality, so both figures are shown.</li>
+                        <li>Keep the same file name and file type when converting, so Jellyfin keeps the item, its artwork and watched status.</li>
+                        <li>If Sonarr or Radarr manage these files, check their quality profiles first. If they score HEVC or x265 differently, converted files can trigger re-downloads.</li>
+                        <li>Re-encoding always loses a little quality. Many people leave 4K and remux files alone.</li>
+                        <li>Medic doesn't convert anything. Tools like Tdarr or Unmanic can, using these numbers as a guide, and Medic's Tracks tab can remove unwanted audio and subtitle tracks without re-encoding.</li>
+                    </ul>
+                </div>
+            </section>
+
             <section class="so-tabpanel" data-panel="tests" role="tabpanel" hidden>
                 <p class="so-muted">These tests use your GPU, CPU and internet connection for a minute or two. Run them when nobody's watching.</p>
                 <div class="so-panel">
@@ -382,28 +468,7 @@
                         <hr style="border:none;border-top:1px solid #2a2d34;width:100%">
 
                         <div class="md-setting">
-                            <div class="md-row md-wrap">
-                                <strong>Track cleanup (Tracks tab)</strong>
-                                <button type="button" class="md-help" data-help="tracks" aria-label="What does this do?">?</button>
-                            </div>
-                            <p class="md-help-text" data-help-for="tracks" hidden></p>
-                            <div class="md-row md-wrap">
-                                <label for="md-tracks-langs-in">Keep languages</label>
-                                <input type="text" id="md-tracks-langs-in" class="so-input" style="width:160px" placeholder="eng">
-                            </div>
-                            <label class="md-check"><input type="checkbox" id="md-tracks-untagsubs-in"> Remove untagged subtitles (untagged audio is always kept)</label>
-                            <div style="margin-left:26px; display:flex; flex-direction:column; gap:8px">
-                                <label class="md-check"><input type="checkbox" id="md-tracks-keepfirst-in"> Keep the first untagged subtitle in films with no subtitle in your languages</label>
-                                <label class="md-check"><input type="checkbox" id="md-tracks-onlysub-in"> Also remove a film's only subtitle when it's untagged</label>
-                            </div>
-                            <label class="md-check"><input type="checkbox" id="md-tracks-undet-in"> Remove all untagged tracks, audio included (not recommended)</label>
-                            <label class="md-check"><input type="checkbox" id="md-tracks-inplace-in"> Replace files in place (default: keep original beside a copy)</label>
-                            <div class="md-row md-wrap">
-                                <label for="md-tracks-conc">Files at once</label>
-                                <input type="number" id="md-tracks-conc" class="so-input md-num" min="1" max="4">
-                                <label for="md-tracks-threads">FFmpeg threads</label>
-                                <input type="number" id="md-tracks-threads" class="so-input md-num" min="0" max="16">
-                            </div>
+                            <p class="so-muted so-small" style="margin:0">Track cleanup settings are on the <a href="#" class="md-where-link" id="md-goto-tracks">Tracks tab</a>, next to the tool they control.</p>
                         </div>
 
                         <hr style="border:none;border-top:1px solid #2a2d34;width:100%">
@@ -521,6 +586,9 @@
         #JellyfinMedicPage .so-suggest { color: #52b788; }
         #JellyfinMedicPage .so-why { margin: 0 0 6px; color: #ddd; font-size: 0.92em; }
         #JellyfinMedicPage .so-where { margin: 0; color: #aaa; font-size: 0.85em; }
+        #JellyfinMedicPage .md-where-link { color: #00a4dc; text-decoration: underline; text-underline-offset: 2px; }
+        #JellyfinMedicPage .md-where-link:hover { color: #4fc3f7; }
+        #JellyfinMedicPage .md-where-link:focus-visible { outline: 2px solid #00a4dc; outline-offset: 2px; border-radius: 2px; }
 
         #JellyfinMedicPage .so-specs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
         #JellyfinMedicPage .so-spec-group h4 { margin: 0 0 6px; color: #00a4dc; }
@@ -832,8 +900,91 @@
                     }
 
                     if (pick(f, 'Why')) card.appendChild(el('p', 'so-why', fmtTimes(pick(f, 'Why'))));
-                    if (pick(f, 'Where')) card.appendChild(el('p', 'so-where', 'Where: ' + pick(f, 'Where')));
+                    if (pick(f, 'Where')) card.appendChild(whereLine(pick(f, 'Where')));
                     return card;
+                }
+
+                // ---------- "Where" links ----------
+                // Turns "Dashboard → Playback → Transcoding" and similar into links that open that page in a new
+                // tab, and "Medic → Schedule" into a jump to that tab. Anything unrecognised stays plain text.
+
+                const WHERE_LINKS = [
+                    ['Dashboard → Playback → Transcoding', '#/dashboard/playback/transcoding'],
+                    ['Dashboard → Playback → Streaming', '#/dashboard/playback/streaming'],
+                    ['Dashboard → Playback → Trickplay', '#/dashboard/playback/trickplay'],
+                    ['Dashboard → Playback → Resume', '#/dashboard/playback/resume'],
+                    ['Dashboard → Playback', '#/dashboard/playback/transcoding'],
+                    ['Dashboard → Plugins → Repositories', '#/dashboard/plugins/repositories'],
+                    ['Dashboard → Plugins → Catalog', '#/dashboard/plugins/catalog'],
+                    ['Dashboard → Plugins', '#/dashboard/plugins'],
+                    ['Dashboard → Libraries → Display', '#/dashboard/libraries/display'],
+                    ['Dashboard → Libraries → Metadata', '#/dashboard/libraries/metadata'],
+                    ['Dashboard → Libraries → NFO', '#/dashboard/libraries/nfo'],
+                    ['Dashboard → Libraries', '#/dashboard/libraries'],
+                    ['Dashboard → General', '#/dashboard/settings'],
+                    ['Dashboard → Users', '#/dashboard/users'],
+                    ['Dashboard → Networking', '#/dashboard/networking'],
+                    ['Dashboard → Live TV', '#/dashboard/livetv'],
+                    ['Dashboard → Scheduled Tasks', '#/dashboard/tasks'],
+                    ['Dashboard → Logs', '#/dashboard/logs'],
+                    ['Dashboard → Devices', '#/dashboard/devices'],
+                    ['Dashboard → Activity', '#/dashboard/activity'],
+                    ['Dashboard → API Keys', '#/dashboard/keys'],
+                    ['Dashboard → Branding', '#/dashboard/branding'],
+                    ['Dashboard → Backups', '#/dashboard/backups']
+                ];
+                const MEDIC_TABS = [
+                    ['Medic → Plugin directory', 'directory'], ['Medic → Schedule', 'schedule'], ['Medic → Checks', 'recs'],
+                    ['Medic → History', 'history'], ['Medic → IPTV', 'iptv'], ['Medic → Tracks', 'tracks'], ['Medic → Tests', 'tests'],
+                    ['Medic → Plugins', 'plugins'], ['Medic → Settings', 'settings'], ['Medic → Dashboard', 'dashboard']
+                ];
+
+                function webRoot() {
+                    return window.location.pathname.replace(/[^/]*$/, '');
+                }
+
+                function linkify(text) {
+                    const out = document.createDocumentFragment();
+                    const s = String(text || '');
+                    let plain = '';
+                    let i = 0;
+                    const flush = function () { if (plain) { out.appendChild(document.createTextNode(plain)); plain = ''; } };
+                    while (i < s.length) {
+                        const rest = s.slice(i);
+                        const web = WHERE_LINKS.find(function (w) { return rest.startsWith(w[0]); });
+                        const tab = web ? null : MEDIC_TABS.find(function (t) { return rest.startsWith(t[0]); });
+                        if (web) {
+                            // Include the rest of the path (e.g. "→ Xtream Library → categories") in the link text.
+                            const m = rest.slice(web[0].length).match(/^( → [^,.;(]+)*/);
+                            const label = web[0] + (m ? m[0] : '');
+                            flush();
+                            const a = el('a', 'md-where-link', label + ' ↗');
+                            a.href = webRoot() + web[1];
+                            a.target = '_blank';
+                            a.rel = 'noopener';
+                            a.title = 'Opens in a new tab';
+                            out.appendChild(a);
+                            i += label.length;
+                        } else if (tab) {
+                            flush();
+                            const a = el('a', 'md-where-link', tab[0]);
+                            a.href = '#';
+                            a.addEventListener('click', function (e) { e.preventDefault(); selectTab(tab[1]); window.scrollTo(0, 0); });
+                            out.appendChild(a);
+                            i += tab[0].length;
+                        } else {
+                            plain += s[i];
+                            i++;
+                        }
+                    }
+                    flush();
+                    return out;
+                }
+
+                function whereLine(text) {
+                    const p = el('p', 'so-where', 'Where: ');
+                    p.appendChild(linkify(text));
+                    return p;
                 }
 
                 // ---------- Ignoring findings ----------
@@ -2256,7 +2407,9 @@
                         $('md-tracks-inplace-in').checked = !!pick(s, 'TracksReplaceInPlace');
                         $('md-tracks-conc').value = String(pick(s, 'TracksConcurrentFiles') || 1);
                         $('md-tracks-threads').value = String(pick(s, 'TracksFfmpegThreads') || 1);
-                    } catch (e) { /* defaults stay */ }
+                        medicSettingsLoaded = true;
+                        $('md-tracks-save').disabled = false;
+                    } catch (e) { /* defaults stay; saving stays off so nothing is overwritten with defaults */ }
                 }
 
                 // The two subtitle sub-options only apply when untagged subtitles are being removed.
@@ -2268,7 +2421,13 @@
                 $('md-tracks-untagsubs-in').addEventListener('change', syncSubtitleOptions);
                 $('md-tracks-undet-in').addEventListener('change', syncSubtitleOptions);
 
-                $('md-save-settings').addEventListener('click', async function () {
+                let medicSettingsLoaded = false;
+
+                async function saveMedicSettings(statusEl, okMessage) {
+                    if (!medicSettingsLoaded) {
+                        statusEl.textContent = 'Settings are still loading. Try again in a moment.';
+                        return false;
+                    }
                     const body = {
                         AvoidEnabled: $('md-avoid').checked,
                         AvoidStartHour: parseInt($('md-avoid-from').value, 10),
@@ -2288,12 +2447,31 @@
                     };
                     try {
                         await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JellyfinMedic/MedicSettings'), data: JSON.stringify(body), contentType: 'application/json', dataType: 'json' });
-                        $('md-settings-saved').textContent = 'Saved. Preview changes on the Schedule tab to see the effect.';
-                        cal = null;
+                        statusEl.textContent = okMessage;
+                        return true;
                     } catch (e) {
-                        $('md-settings-saved').textContent = 'Couldn\'t save. Check the Jellyfin log.';
+                        statusEl.textContent = 'Couldn\'t save. Check the Jellyfin log.';
+                        return false;
+                    }
+                }
+
+                $('md-save-settings').addEventListener('click', async function () {
+                    if (await saveMedicSettings($('md-settings-saved'), 'Saved. Preview changes on the Schedule tab to see the effect.')) {
+                        cal = null;
                     }
                 });
+
+                $('md-tracks-save').addEventListener('click', async function () {
+                    if (await saveMedicSettings($('md-tracks-saved'), 'Saved. Press Scan and preview to see what each file would keep.')) {
+                        // Earlier scan results were made with the old settings.
+                        tracksScan = null;
+                        $('md-tracks-summary').innerHTML = '';
+                        $('md-tracks-undet-panel').hidden = true;
+                        loadTracks();
+                    }
+                });
+
+                $('md-goto-tracks').addEventListener('click', function (e) { e.preventDefault(); selectTab('tracks'); window.scrollTo(0, 0); });
 
                 // ---------- Settings for support ----------
 
@@ -2463,7 +2641,11 @@
                         card.appendChild(el('p', null, pick(s, 'Reason')));
 
                         if (action !== 'Remove') {
-                            if (pick(s, 'Availability')) card.appendChild(el('p', 'so-muted so-small', pick(s, 'Availability')));
+                            if (pick(s, 'Availability')) {
+                                const where = el('p', 'so-muted so-small');
+                                where.appendChild(linkify(pick(s, 'Availability')));
+                                card.appendChild(where);
+                            }
                             if (!pick(s, 'InCatalogue')) {
                                 const find = el('button', 'so-btn so-btn-plain', 'Look it up in the directory');
                                 find.type = 'button';
@@ -2475,7 +2657,10 @@
                                 card.appendChild(find);
                             }
                         } else {
-                            card.appendChild(el('p', 'so-muted so-small', 'To remove it: Dashboard → Plugins → My Plugins, then restart Jellyfin.'));
+                            const how = el('p', 'so-muted so-small', 'To remove it: ');
+                            how.appendChild(linkify('Dashboard → Plugins → My Plugins'));
+                            how.appendChild(document.createTextNode(', then restart Jellyfin.'));
+                            card.appendChild(how);
                         }
                         box.appendChild(card);
                     });
@@ -2696,6 +2881,259 @@
                 $('md-tracks-go').addEventListener('click', function () { startTracks(false); });
                 $('md-tracks-stop').addEventListener('click', function () { postJson('/JellyfinMedic/Tracks/Stop').catch(function(){}); });
 
+                // ---------- Media report (read-only) ----------
+
+                let mediaStatus = null;
+                let mediaTimer = null;
+                const HW_LABEL = { nvenc: 'NVIDIA NVENC', qsv: 'Intel QSV', vaapi: 'VAAPI', amf: 'AMD AMF', videotoolbox: 'Apple VideoToolbox', rkmpp: 'Rockchip MPP', v4l2m2m: 'V4L2' };
+                const TX_REASON = {
+                    ContainerNotSupported: 'File type not supported by the app',
+                    VideoCodecNotSupported: 'Video format not supported',
+                    AudioCodecNotSupported: 'Audio format not supported',
+                    SubtitleCodecNotSupported: 'Subtitles burned into the picture',
+                    AudioIsExternal: 'Audio is in a separate file',
+                    SecondaryAudioNotSupported: 'Second audio track not supported',
+                    VideoProfileNotSupported: 'Video profile not supported',
+                    VideoLevelNotSupported: 'Video level not supported',
+                    VideoResolutionNotSupported: 'Resolution too high for the app',
+                    VideoBitDepthNotSupported: '10-bit video not supported',
+                    VideoFramerateNotSupported: 'Frame rate not supported',
+                    RefFramesNotSupported: 'Video encoding settings not supported',
+                    AnamorphicVideoNotSupported: 'Anamorphic video not supported',
+                    InterlacedVideoNotSupported: 'Interlaced video',
+                    AudioChannelsNotSupported: 'Too many audio channels',
+                    AudioProfileNotSupported: 'Audio profile not supported',
+                    AudioSampleRateNotSupported: 'Audio sample rate not supported',
+                    AudioBitDepthNotSupported: 'Audio bit depth not supported',
+                    AudioBitrateNotSupported: 'Audio bitrate above the limit',
+                    ContainerBitrateExceedsLimit: 'Bitrate above the app or remote limit',
+                    VideoBitrateNotSupported: 'Video bitrate above the limit',
+                    UnknownVideoStreamInfo: 'Video details unknown',
+                    UnknownAudioStreamInfo: 'Audio details unknown',
+                    DirectPlayError: 'Direct play failed',
+                    VideoRangeTypeNotSupported: 'HDR type not supported (tone mapping)',
+                    VideoCodecTagNotSupported: 'Video codec tag not supported',
+                    StreamCountExceedsLimit: 'Too many streams',
+                    Unknown: 'Reason not reported'
+                };
+
+                function txReason(key) {
+                    return TX_REASON[key] || String(key).replace(/([a-z])([A-Z])/g, '$1 $2');
+                }
+
+                function mediaTile(head, big, note) {
+                    const t = el('section', 'md-tile');
+                    t.appendChild(el('h3', 'md-tile-head', head));
+                    t.appendChild(el('p', 'md-big', big));
+                    if (note) t.appendChild(el('p', 'so-muted so-small', note));
+                    return t;
+                }
+
+                function mediaRows(tbody, rows, total, withBar) {
+                    tbody.innerHTML = '';
+                    (rows || []).forEach(function (r) {
+                        const tr = el('tr');
+                        const bytes = pick(r, 'Bytes') || 0;
+                        tr.appendChild(el('td', null, pick(r, 'Name')));
+                        tr.appendChild(el('td', null, (pick(r, 'Files') || 0).toLocaleString('en-GB')));
+                        tr.appendChild(el('td', null, tracksSize(bytes)));
+                        if (withBar) {
+                            const td = el('td');
+                            const bar = el('div', 'md-bar');
+                            const fill = el('i');
+                            fill.style.width = (total > 0 ? Math.max(1, Math.round(100 * bytes / total)) : 0) + '%';
+                            bar.appendChild(fill);
+                            td.appendChild(bar);
+                            tr.appendChild(td);
+                        }
+                        tbody.appendChild(tr);
+                    });
+                }
+
+                function renderMedia() {
+                    const st = mediaStatus || {};
+                    const running = !!pick(st, 'Running');
+                    const r = pick(st, 'Report');
+                    $('md-media-build').disabled = running;
+                    $('md-media-build').textContent = r ? 'Rebuild report' : 'Build report';
+
+                    if (running) {
+                        const total = pick(st, 'Total') || 0, done = pick(st, 'Done') || 0;
+                        $('md-media-status').textContent = total ? 'Reading ' + done.toLocaleString('en-GB') + ' of ' + total.toLocaleString('en-GB') + ' items…' : 'Gathering your library…';
+                    } else if (r) {
+                        const when = new Date(pick(r, 'GeneratedUtc'));
+                        $('md-media-status').textContent = 'Built ' + when.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · ' + (pick(r, 'Files') || 0).toLocaleString('en-GB') + ' video files · ' + tracksSize(pick(r, 'Bytes') || 0);
+                    } else {
+                        $('md-media-status').textContent = 'No report yet. Building one reads every video file Jellyfin knows about; on a large library it takes a minute or two.';
+                    }
+
+                    if (r) {
+                        $('md-media-body').hidden = false;
+                        const sv = pick(r, 'Savings') || {};
+                        const hw = String(pick(r, 'HardwareAcceleration') || 'none').toLowerCase();
+                        const tiles = $('md-media-tiles');
+                        tiles.innerHTML = '';
+                        tiles.appendChild(mediaTile('Video files', (pick(r, 'Files') || 0).toLocaleString('en-GB'), tracksSize(pick(r, 'Bytes') || 0) + ' in total'));
+                        tiles.appendChild(mediaTile('Could convert', (pick(sv, 'CandidateFiles') || 0).toLocaleString('en-GB') + ' files',
+                            tracksSize(pick(sv, 'CandidateBytes') || 0) + ' in H.264 or older formats that HEVC stores more efficiently'));
+                        tiles.appendChild(mediaTile('Could free with a GPU', 'About ' + tracksSize(pick(sv, 'GpuBytes') || 0),
+                            HW_LABEL[hw] ? 'Using your ' + HW_LABEL[hw] + ' encoder. Fast.' : 'No GPU encoder is set up in Jellyfin yet.'));
+                        tiles.appendChild(mediaTile('Could free with software', 'About ' + tracksSize(pick(sv, 'SoftwareBytes') || 0), 'Slow x265 encoding on the CPU. Smaller files, many times longer.'));
+
+                        const big = $('md-media-big');
+                        big.innerHTML = '';
+                        const list = pick(r, 'BiggestSavings') || [];
+                        if (list.length === 0) {
+                            const tr = el('tr');
+                            const td = el('td', 'so-muted', 'Nothing to convert: your video is already in efficient formats.');
+                            td.colSpan = 6;
+                            tr.appendChild(td);
+                            big.appendChild(tr);
+                        }
+                        list.forEach(function (f) {
+                            const tr = el('tr');
+                            const title = el('td');
+                            title.appendChild(el('div', null, pick(f, 'Title')));
+                            title.appendChild(el('div', 'so-muted so-small', pick(f, 'FileName')));
+                            tr.appendChild(title);
+                            tr.appendChild(el('td', null, pick(f, 'Codec')));
+                            tr.appendChild(el('td', null, pick(f, 'Resolution')));
+                            tr.appendChild(el('td', null, pick(f, 'Mbps') ? pick(f, 'Mbps') + ' Mbps' : '–'));
+                            tr.appendChild(el('td', null, tracksSize(pick(f, 'Bytes') || 0)));
+                            tr.appendChild(el('td', null, 'about ' + tracksSize(pick(f, 'GpuSavingBytes') || 0)));
+                            big.appendChild(tr);
+                        });
+
+                        const total = pick(r, 'Bytes') || 0;
+                        mediaRows($('md-media-codecs'), pick(r, 'Codecs'), total, true);
+                        mediaRows($('md-media-res'), pick(r, 'Resolutions'), total, false);
+                        mediaRows($('md-media-hdr'), pick(r, 'DynamicRange'), total, false);
+                        mediaRows($('md-media-ext'), pick(r, 'Containers'), total, false);
+
+                        const c = pick(r, 'Compatibility') || {};
+                        const compat = $('md-media-compat');
+                        compat.innerHTML = '';
+                        const items = [
+                            [pick(c, 'DtsOrTrueHdOnly'), 'have only DTS or TrueHD audio', 'Browsers and many TVs can\'t play these, so Jellyfin converts the audio as it plays. That\'s a light job, but adding a stereo AAC or AC-3 track avoids it.'],
+                            [pick(c, 'ImageSubtitles'), 'have picture-based subtitles (PGS or VobSub)', 'When someone turns these on, Jellyfin has to burn them into the picture, which means a full video transcode. Text subtitles such as SRT don\'t.'],
+                            [pick(c, 'OldContainers'), 'use older file types (AVI, WMV, MPEG and similar)', 'Modern apps often can\'t play these directly. Remuxing to MKV is quick and lossless, but it changes the file name.'],
+                            [pick(c, 'Hdr'), 'are HDR or Dolby Vision', 'Screens without HDR need tone mapping, which needs a GPU to be smooth.']
+                        ];
+                        let shown = 0;
+                        items.forEach(function (it) {
+                            if (!it[0]) return;
+                            shown++;
+                            const card = el('div', 'so-card sev-Tip');
+                            card.appendChild(el('h4', null, it[0].toLocaleString('en-GB') + ' files ' + it[1]));
+                            card.appendChild(el('p', 'so-why', it[2]));
+                            compat.appendChild(card);
+                        });
+                        if (shown === 0) compat.appendChild(el('p', 'so-muted', 'Nothing here is likely to force a transcode.'));
+                    } else {
+                        $('md-media-body').hidden = true;
+                    }
+
+                    // Transcode log from playback
+                    const tx = pick(st, 'Transcodes') || {};
+                    const since = pick(tx, 'SinceUtc');
+                    const top = pick(tx, 'Top') || [];
+                    const sinceText = since ? new Date(since).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+                    if (top.length === 0) {
+                        $('md-media-tx-note').textContent = sinceText
+                            ? 'Nothing has been caught transcoding since ' + sinceText + '. Medic checks playback every 5 minutes, so this fills in as people watch.'
+                            : 'Medic records this from its 5-minute playback check. It starts filling in once people watch something.';
+                        $('md-media-tx-wrap').hidden = true;
+                    } else {
+                        const totals = pick(tx, 'ReasonTotals') || {};
+                        const topReasons = Object.keys(totals).sort(function (a, b) { return totals[b] - totals[a]; }).slice(0, 3).map(txReason);
+                        $('md-media-tx-note').textContent = (pick(tx, 'Files') || top.length) + ' files caught transcoding since ' + sinceText + '. Most common reasons: ' + topReasons.join('; ') + '. Listed by how often they were caught; each catch is roughly 5 minutes of playback.';
+                        const body = $('md-media-tx');
+                        body.innerHTML = '';
+                        top.forEach(function (e) {
+                            const tr = el('tr');
+                            tr.appendChild(el('td', null, pick(e, 'Title')));
+                            const reasons = pick(e, 'Reasons') || {};
+                            tr.appendChild(el('td', null, Object.keys(reasons).sort(function (a, b) { return reasons[b] - reasons[a]; }).map(txReason).join('; ')));
+                            const n = pick(e, 'Samples') || 0;
+                            tr.appendChild(el('td', null, n === 1 ? 'once' : n + ' times'));
+                            tr.appendChild(el('td', 'so-muted', (pick(e, 'Clients') || []).join(', ')));
+                            body.appendChild(tr);
+                        });
+                        $('md-media-tx-wrap').hidden = false;
+                    }
+                }
+
+                async function loadMedia() {
+                    clearTimeout(mediaTimer);
+                    try {
+                        mediaStatus = await getJson('/JellyfinMedic/MediaReport');
+                        renderMedia();
+                        if (pick(mediaStatus, 'Running')) {
+                            mediaTimer = setTimeout(function () { if (activeTab === 'media') loadMedia(); }, 2000);
+                        }
+                    } catch (e) {
+                        $('md-media-status').textContent = 'Couldn\'t load the media report. Check the Jellyfin log for Jellyfin Medic errors.';
+                    }
+                }
+
+                $('md-media-build').addEventListener('click', async function () {
+                    $('md-media-build').disabled = true;
+                    try {
+                        mediaStatus = await postJson('/JellyfinMedic/MediaReport/Build');
+                        renderMedia();
+                    } catch (e) { /* the poll below shows the state */ }
+                    loadMedia();
+                });
+
+                // ---------- Track run progress and time left ----------
+
+                function tracksSize(bytes) {
+                    if (!bytes) return '0 MB';
+                    if (bytes >= 1099511627776) return (bytes / 1099511627776).toFixed(2) + ' TB';
+                    return bytes >= 1073741824 ? (bytes / 1073741824).toFixed(1) + ' GB' : Math.round(bytes / 1048576) + ' MB';
+                }
+
+                function tracksDuration(seconds) {
+                    if (seconds < 60) return 'under a minute';
+                    const h = Math.floor(seconds / 3600), m = Math.round((seconds % 3600) / 60);
+                    if (h === 0) return m + ' min';
+                    return h + ' h ' + (m < 10 ? '0' : '') + m + ' min';
+                }
+
+                function tracksFinishTime(seconds) {
+                    const at = new Date(Date.now() + seconds * 1000);
+                    const sameDay = at.toDateString() === new Date().toDateString();
+                    return at.toLocaleString('en-GB', sameDay ? { hour: '2-digit', minute: '2-digit' } : { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+                }
+
+                function tracksProgressText(p, running, total, done) {
+                    const dry = pick(p, 'DryRun');
+                    const parts = [];
+                    if (running && total === 0) {
+                        return 'Building the list of files to change…';
+                    }
+
+                    parts.push((dry ? 'Dry run: ' : running ? 'Working: ' : 'Finished: ') + done + ' of ' + total + ' files');
+
+                    const bytesTotal = pick(p, 'BytesTotal') || 0, bytesDone = pick(p, 'BytesDone') || 0;
+                    if (!dry && running && bytesTotal > 0) {
+                        parts.push(Math.floor(100 * bytesDone / bytesTotal) + '% of ' + tracksSize(bytesTotal));
+                        const left = pick(p, 'SecondsLeft');
+                        parts.push(left == null ? 'working out the time left…' : 'about ' + tracksDuration(left) + ' left, done around ' + tracksFinishTime(left));
+                    }
+
+                    if (!running && pick(p, 'StartedUtc') && pick(p, 'FinishedUtc')) {
+                        const took = (new Date(pick(p, 'FinishedUtc')) - new Date(pick(p, 'StartedUtc'))) / 1000;
+                        if (took > 0) parts.push('took ' + tracksDuration(took));
+                    }
+
+                    parts.push((pick(p, 'Changed') || 0) + ' changed');
+                    parts.push((pick(p, 'Failed') || 0) + ' failed');
+                    if (pick(p, 'BytesSaved')) parts.push('saved ' + tracksSize(pick(p, 'BytesSaved')));
+                    if (running && pick(p, 'Current')) parts.push('now: ' + pick(p, 'Current'));
+                    return parts.join(' · ');
+                }
+
                 async function pollTracks(force) {
                     try {
                         const p = await getJson('/JellyfinMedic/Tracks/Progress');
@@ -2705,7 +3143,7 @@
                         $('md-tracks-go').disabled = running;
                         const total = pick(p, 'Total') || 0, done = pick(p, 'Done') || 0;
                         if (total > 0 || running || force) {
-                            $('md-tracks-progress').textContent = (pick(p, 'DryRun') ? 'Dry run: ' : 'Working: ') + done + ' of ' + total + ' · ' + (pick(p, 'Changed') || 0) + ' changed · ' + (pick(p, 'Failed') || 0) + ' failed' + (pick(p, 'BytesSaved') ? ' · saved ' + Math.round(pick(p, 'BytesSaved') / 1048576) + ' MB' : '') + (pick(p, 'Current') ? ' · ' + pick(p, 'Current') : '');
+                            $('md-tracks-progress').textContent = tracksProgressText(p, running, total, done);
                             const log = pick(p, 'Recent') || [];
                             if (log.length) { $('md-tracks-log').style.display = 'block'; $('md-tracks-log').textContent = log.join('\n'); }
                             // Offer the "replace originals" step after a real (non-dry) run that changed files and finished.
@@ -2781,7 +3219,10 @@
                             if (!iptv) { iptv = await getJson('/JellyfinMedic/Iptv'); }
                             renderIptv();
                         } else if (name === 'tracks') {
+                            await loadMedicSettings();
                             loadTracks();
+                        } else if (name === 'media') {
+                            await loadMedia();
                         } else if (name === 'tests') {
                             await loadTests();
                         } else if (name === 'plugins') {

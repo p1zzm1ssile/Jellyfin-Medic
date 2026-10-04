@@ -62,6 +62,7 @@ public sealed class UsageSampler : IHostedService, IDisposable
                 string.Equals(SettingsReader.Text(s, "PlayState.PlayMethod"), "Transcode", StringComparison.OrdinalIgnoreCase));
 
             UsageStore.Record(_paths, DateTime.Now, streams, transcodes);
+            TranscodeLog.Record(_paths, playing);
             ServerNow.Record();
         }
         catch (Exception ex)

@@ -233,6 +233,12 @@ public static class PluginAuditor
 
             bool connectionSetting = lower.EndsWith("url", StringComparison.Ordinal) || lower.EndsWith("server", StringComparison.Ordinal) ||
                                      lower.EndsWith("host", StringComparison.Ordinal) || lower.EndsWith("apikey", StringComparison.Ordinal);
+            if (connectionSetting && OptionalKey(report.Name, lower))
+            {
+                // A key the plugin works fine without (it ships with its own), so blank is normal.
+                continue;
+            }
+
             if (connectionSetting)
             {
                 if (raw is "(empty)" or "(not set)")
@@ -278,6 +284,20 @@ public static class PluginAuditor
                 "Nothing to do if you don't use those features. Click Ignore if the plugin is working fine",
                 "These look like addresses or keys for optional features. The plugin has other connection settings filled in, so it's probably working.");
         }
+    }
+
+    // Metadata plugins that come with their own API key: a blank key setting just means "use the built-in one".
+    private static readonly string[] BuiltInKeyPlugins = { "tmdb", "omdb", "fanart", "tvdb", "audiodb", "musicbrainz" };
+
+    private static bool OptionalKey(string pluginName, string settingLower)
+    {
+        if (settingLower.Contains("personal", StringComparison.Ordinal) && settingLower.EndsWith("apikey", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        string name = (pluginName ?? string.Empty).ToLowerInvariant().Replace(" ", string.Empty, StringComparison.Ordinal);
+        return settingLower.EndsWith("apikey", StringComparison.Ordinal) && BuiltInKeyPlugins.Any(p => name.Contains(p, StringComparison.Ordinal));
     }
 
     private static string? FindConfigFile(object plugin, string configDir)
@@ -351,6 +371,10 @@ public static class PluginAuditor
             Current = current,
             Recommended = recommended,
             Why = why,
-            Where = Where
+            Where = WhereFor(report.Name)
         });
+
+    // "Dashboard → Plugins → TMDb → Settings" rather than a placeholder.
+    private static string WhereFor(string? pluginName) =>
+        string.IsNullOrWhiteSpace(pluginName) ? Where : $"Dashboard → Plugins → {pluginName} → Settings";
 }

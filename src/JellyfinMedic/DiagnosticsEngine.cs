@@ -52,7 +52,9 @@ public sealed class DiagnosticsEngine
     private const string AreaUsage = "Usage & peak times";
 
     private const string WhereTranscoding = "Dashboard → Playback → Transcoding";
-    private const string WhereDocker = "Unraid → Docker → Jellyfin → Edit";
+    // Where to change how Jellyfin is run (devices, storage, memory), worded for this platform.
+    private static string WhereDocker => HostPlatform.WhereRunSettings;
+
     private const string WhereGeneral = "Dashboard → General";
     private const string WhereLibraries = "Dashboard → Libraries → (library) → Manage library";
     private const string WhereTasks = "Medic → Schedule, or Dashboard → Scheduled Tasks";
@@ -183,7 +185,7 @@ public sealed class DiagnosticsEngine
                 var last = recent[0];
                 Add(AreaTasks, Sev.Improve, "Tasks have been overloading memory",
                     $"Medic stopped {recent.Count} heavy task run(s) in the last 7 days to keep the server up (last: {last.TaskName}, memory {last.MemoryUsedGb:0.#} GB)",
-                    "Space these tasks out, or give the container more memory",
+                    HostPlatform.IsContainer ? "Space these tasks out, or give the container more memory" : "Space these tasks out, or add memory",
                     "When several heavy scans run at once they can use all the memory and crash the server. Medic's load guard stopped the extras and restarted them later, but it's better to stop them colliding: Apply the recommended schedule so they don't overlap, and check whether another plugin or a manual scan is starting them at the same time.",
                     "Medic → Schedule");
             }
@@ -258,7 +260,7 @@ public sealed class DiagnosticsEngine
         string version = SettingsReader.Text(_host, "ApplicationVersionString")
                          ?? SettingsReader.Text(_host, "ApplicationVersion") ?? "unknown";
         Spec("Server", "Jellyfin version", version);
-        Spec("Server", "Running in Docker", hw.InDocker ? "Yes" : "No");
+        Spec("Server", "Running on", HostPlatform.Label);
         Spec("Server", "Server name", string.IsNullOrWhiteSpace(_config.Configuration.ServerName) ? "(not set)" : _config.Configuration.ServerName);
 
         Spec("Hardware", "CPU", hw.CpuModel ?? "unknown");
@@ -269,9 +271,16 @@ public sealed class DiagnosticsEngine
             Spec("Hardware", "Memory in the machine", SystemProbe.Gb(host));
         }
 
-        Spec("Hardware", "GPU", hw.GpuDescription);
-        Spec("Hardware", "GPU devices in the container",
-            hw.RenderNodes.Count == 0 && !hw.NvidiaDevice ? "None" : string.Join(", ", hw.RenderNodes.Concat(hw.NvidiaDevice ? new[] { "/dev/nvidia0" } : Array.Empty<string>())));
+        if (HostPlatform.IsLinux)
+        {
+            Spec("Hardware", "GPU", hw.GpuDescription);
+            Spec("Hardware", HostPlatform.IsContainer ? "GPU devices in the container" : "GPU devices",
+                hw.RenderNodes.Count == 0 && !hw.NvidiaDevice ? "None" : string.Join(", ", hw.RenderNodes.Concat(hw.NvidiaDevice ? new[] { "/dev/nvidia0" } : Array.Empty<string>())));
+        }
+        else
+        {
+            Spec("Hardware", "GPU", $"Not checked on {HostPlatform.Label} (see Hardware acceleration)");
+        }
         Spec("Hardware", "Hardware acceleration", Nice(SettingsReader.Text(encoding, "HardwareAccelerationType")) ?? "unknown");
 
         SpaceSpec("Storage", "Config & database drive", _paths.DataPath);
@@ -323,25 +332,37 @@ public sealed class DiagnosticsEngine
             _ => (string.Empty, string.Empty)
         };
 
-        if (!hwOn && suggested.Value.Length > 0)
+        if (!HostPlatform.IsLinux)
+        {
+            // Windows and macOS don't expose the GPU the way Linux does, so Medic can't see which one you
+            // have. Point at the setting instead of guessing.
+            if (!hwOn)
+            {
+                Add(AreaHardware, Sev.Tip, "Hardware acceleration is off", "None (everything on the CPU)",
+                    HostPlatform.GpuSetup,
+                    "If this computer has a graphics card or built-in graphics, Jellyfin can use it for transcodes, chapter images and trickplay instead of the CPU.",
+                    WhereTranscoding);
+            }
+        }
+        else if (!hwOn && suggested.Value.Length > 0)
         {
             Add(AreaHardware, Sev.Problem, "Your GPU isn't being used",
                 "None (everything on the CPU)",
                 suggested.Label,
-                $"{hw.GpuDescription} is available inside the container, but hardware acceleration is off. Every transcode, plus chapter and trickplay images, is being done by the CPU.",
+                $"{hw.GpuDescription} is available to Jellyfin, but hardware acceleration is off. Every transcode, plus chapter and trickplay images, is being done by the CPU.",
                 WhereTranscoding);
         }
         else if (!hwOn)
         {
             Add(AreaHardware, hw.CpuThreads <= 8 ? Sev.Improve : Sev.Tip, "No GPU available to Jellyfin",
                 $"CPU only, {hw.CpuThreads} threads",
-                "Pass your GPU into the container: Intel/AMD with --device=/dev/dri, NVIDIA with the NVIDIA runtime",
-                "Without a GPU, each 1080p transcode can take several CPU threads, and 4K or HDR transcodes may stutter. If the server has integrated graphics, passing it through costs nothing.",
+                HostPlatform.GpuSetup,
+                "Without a GPU, each 1080p transcode can take several CPU threads, and 4K or HDR transcodes may stutter. If the server has integrated graphics, using it costs nothing.",
                 WhereDocker);
         }
         else
         {
-            bool deviceThere = hwType switch
+            bool deviceThere = !HostPlatform.IsLinux || hwType switch
             {
                 "nvenc" => hw.NvidiaDevice,
                 "qsv" or "vaapi" => hw.RenderNodes.Count > 0,
@@ -350,12 +371,13 @@ public sealed class DiagnosticsEngine
 
             if (!deviceThere)
             {
-                Add(AreaHardware, Sev.Problem, "Hardware acceleration is on, but the GPU isn't in the container",
-                    Nice(hwType) ?? hwType, "Pass the GPU through, or set hardware acceleration to None",
+                Add(AreaHardware, Sev.Problem,
+                    HostPlatform.IsContainer ? "Hardware acceleration is on, but the GPU isn't in the container" : "Hardware acceleration is on, but Jellyfin can't see the GPU",
+                    Nice(hwType) ?? hwType, HostPlatform.GpuSetup + ", or set hardware acceleration to None",
                     "Jellyfin will try to use a device that isn't there, so transcodes fail or fall back to the CPU.",
                     WhereDocker);
             }
-            else if (suggested.Value.Length > 0 && hwType != suggested.Value && !(hw.GpuVendor == "intel" && hwType == "vaapi"))
+            else if (HostPlatform.IsLinux && suggested.Value.Length > 0 && hwType != suggested.Value && !(hw.GpuVendor == "intel" && hwType == "vaapi"))
             {
                 Add(AreaHardware, Sev.Tip, "Hardware acceleration type doesn't match your GPU",
                     Nice(hwType) ?? hwType, suggested.Label,
@@ -415,7 +437,7 @@ public sealed class DiagnosticsEngine
         {
             Add(AreaHardware, Sev.Improve, "Transcoding is set to use more threads than you have",
                 threads.Value.ToString(CultureInfo.InvariantCulture), "Auto (-1)",
-                $"Only {hw.CpuThreads} threads are available to the container, so the extra threads just compete with each other.",
+                $"Only {hw.CpuThreads} threads are available to Jellyfin, so the extra threads just compete with each other.",
                 WhereTranscoding);
         }
 
@@ -432,8 +454,10 @@ public sealed class DiagnosticsEngine
             {
                 Add(AreaHardware, Sev.Problem, "Your transcode folder is in RAM but very small",
                     $"{SystemProbe.Gb(ram.TotalGb)} available",
-                    "At least 4 GB, e.g. add --shm-size=4g to Extra Parameters, or use a tmpfs mount",
-                    "Docker gives /dev/shm only 64 MB by default. Transcodes fail part-way through when it fills up.",
+                    "At least 4 GB: " + HostPlatform.BiggerRamFolder,
+                    HostPlatform.IsDockerLike
+                        ? "Docker gives /dev/shm only 64 MB by default. Transcodes fail part-way through when it fills up."
+                        : "Transcodes fail part-way through when the RAM folder fills up.",
                     WhereDocker);
             }
         }
@@ -452,12 +476,12 @@ public sealed class DiagnosticsEngine
                     "A 4K transcode can use several GB of temporary space; when it runs out, playback stops.", WhereTranscoding);
             }
 
-            if (hw.MemoryGb >= 16)
+            if (hw.MemoryGb >= 16 && HostPlatform.RamTranscodeHow is { } how)
             {
-                Add(AreaHardware, Sev.Tip, "You could transcode to RAM", transcodePath,
-                    "Map a RAM folder (tmpfs, 4–8 GB) and point the transcode path at it, with segment deletion on",
-                    $"Jellyfin can use {SystemProbe.Gb(hw.MemoryGb)} of memory. Transcoding to RAM saves SSD wear and is slightly faster. Optional: an SSD cache pool is perfectly fine.",
-                    WhereDocker);
+                Add(AreaHardware, Sev.Tip, "You could transcode to RAM", transcodePath, how,
+                    $"Jellyfin can use {SystemProbe.Gb(hw.MemoryGb)} of memory. Transcoding to RAM saves SSD wear and is slightly faster. This is optional: "
+                        + (HostPlatform.Kind == HostKind.Unraid ? "an SSD cache pool is perfectly fine." : "an SSD is perfectly fine too."),
+                    WhereDocker + ", then Dashboard → Playback → Transcoding");
             }
         }
     }
@@ -471,7 +495,7 @@ public sealed class DiagnosticsEngine
             if (data.FreeGb < 5)
             {
                 Add(AreaStorage, Sev.Problem, "Almost no space left for the database", $"{SystemProbe.Gb(data.FreeGb)} free",
-                    "Free up space or move appdata", "If the database can't write, Jellyfin can corrupt it or stop working.", WhereDocker);
+                    "Free up space, or move " + HostPlatform.DataFolder + " to a bigger drive", "If the database can't write, Jellyfin can corrupt it or stop working.", WhereDocker);
             }
             else if (data.FreeGb < 15)
             {
@@ -646,7 +670,9 @@ public sealed class DiagnosticsEngine
                 if (!Directory.Exists(location))
                 {
                     Add(AreaLibraries, Sev.Problem, $"{lib.Name}: a library folder can't be found", location,
-                        "Check the folder is mapped into the container and the drive is mounted",
+                        HostPlatform.IsContainer
+                            ? "Check the folder is mapped into the container and the drive is mounted"
+                            : "Check the drive is connected and mounted, and that Jellyfin can read the folder",
                         "Jellyfin can't see anything in that folder, and a scan may mark its items as missing.", WhereDocker);
                 }
             }
@@ -689,10 +715,23 @@ public sealed class DiagnosticsEngine
             }
             else if (lib.ItemCount >= 5_000 && SettingsReader.Bool(opts, "EnableRealtimeMonitor") == true)
             {
-                Add(AreaLibraries, Sev.Tip, $"{lib.Name}: real-time monitoring on a large library", "On",
-                    "Off, with Sonarr/Radarr set to notify Jellyfin, and a daily scan",
-                    "Watching tens of thousands of files uses many system file watchers, and on Unraid user shares change events aren't always reliable. Sonarr/Radarr notifications update Jellyfin instantly and precisely.",
-                    WhereLibraries + "; Sonarr/Radarr → Settings → Connect → Emby / Jellyfin");
+                string type = (lib.CollectionType ?? string.Empty).ToLowerInvariant();
+                string arr = type == "tvshows" ? "Sonarr" : type == "movies" ? "Radarr" : string.Empty;
+                string unraidNote = HostPlatform.Kind == HostKind.Unraid ? ", and on Unraid user shares change events aren't always reliable" : string.Empty;
+                if (arr.Length > 0)
+                {
+                    Add(AreaLibraries, Sev.Tip, $"{lib.Name}: real-time monitoring on a large library", "On",
+                        $"Off, with {arr} set to notify Jellyfin, and a daily scan",
+                        $"Watching a large library takes a system file watcher for every folder{unraidNote}. {arr}'s notifications update Jellyfin instantly and precisely.",
+                        WhereLibraries + $"; {arr} → Settings → Connect → Emby / Jellyfin");
+                }
+                else
+                {
+                    Add(AreaLibraries, Sev.Tip, $"{lib.Name}: real-time monitoring on a large library", "On",
+                        "Off, with a daily library scan",
+                        $"Watching a large library takes a system file watcher for every folder{unraidNote}. A daily scan picks up new files reliably.",
+                        WhereLibraries);
+                }
             }
 
             if (SettingsReader.Bool(opts, "ExtractChapterImagesDuringLibraryScan") == true)

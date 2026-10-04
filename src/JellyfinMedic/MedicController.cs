@@ -127,6 +127,21 @@ public class MedicController : ControllerBase
     [HttpGet("LoadGuard")]
     public ActionResult<List<LoadGuardEvent>> GetLoadGuard() => Ok(LoadGuardLog.Load(_paths));
 
+    // ---------- Media report (read-only) ----------
+
+    /// <summary>The last media report, build progress, and the transcode log.</summary>
+    [HttpGet("MediaReport")]
+    public ActionResult<MediaReportStatus> GetMediaReport() => Ok(MediaReport.Status(_paths));
+
+    /// <summary>Starts building a fresh media report in the background.</summary>
+    [HttpPost("MediaReport/Build")]
+    public ActionResult<MediaReportStatus> BuildMediaReport()
+    {
+        string hw = SettingsReader.Text(_config.GetConfiguration("encoding"), "HardwareAccelerationType") ?? "none";
+        MediaReport.Start(_library, _engine.Libraries, _paths, hw);
+        return Ok(MediaReport.Status(_paths));
+    }
+
     // ---------- Track cleaner ----------
 
     /// <summary>Scans local files and previews which audio/subtitle tracks would be removed.</summary>
@@ -238,7 +253,7 @@ public class MedicController : ControllerBase
         {
             "Jellyfin version: " + version,
             "Operating system: " + System.Runtime.InteropServices.RuntimeInformation.OSDescription,
-            "In Docker: " + (hw.InDocker ? "yes" : "no"),
+            "Running on: " + HostPlatform.Label,
             "CPU: " + (hw.CpuModel ?? "unknown") + " (" + hw.CpuThreads + " threads)",
             "GPU: " + hw.GpuDescription,
             "Memory available to Jellyfin: " + SystemProbe.Gb(hw.MemoryGb),

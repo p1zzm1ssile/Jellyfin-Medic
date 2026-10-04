@@ -20,6 +20,14 @@ public sealed class PluginContext
 
     public long TotalItems => Libraries.Sum(l => l.ItemCount ?? 0);
 
+    // Films and TV only: the items TMDb supplies artwork for (music, books and photos come from elsewhere).
+    public long VideoItems => Libraries
+        .Where(l => l.CollectionType is null or "" || l.CollectionType.Equals("movies", StringComparison.OrdinalIgnoreCase)
+            || l.CollectionType.Equals("tvshows", StringComparison.OrdinalIgnoreCase) || l.CollectionType.Equals("mixed", StringComparison.OrdinalIgnoreCase)
+            || l.CollectionType.Equals("boxsets", StringComparison.OrdinalIgnoreCase))
+        .Where(l => !l.IsStreamed)
+        .Sum(l => l.ItemCount ?? 0);
+
     public bool LargeLibrary => TotalItems >= 20_000;
 
     public List<LibraryFacts> Streamed => Libraries.Where(l => l.IsStreamed).ToList();
@@ -468,7 +476,7 @@ public static class PluginRules
 
     private static void Tmdb(PluginReport r, XElement root, PluginContext ctx)
     {
-        if (!ctx.LargeLibrary)
+        if (ctx.VideoItems < 5_000)
         {
             return;
         }
@@ -481,7 +489,7 @@ public static class PluginRules
             Add(r, Sev.Tip, $"{r.Name} downloads full-size original images",
                 string.Join(", ", original) + ": original",
                 "w500 for posters, w1280 for backdrops",
-                $"Originals are often several megabytes each. Across {ctx.TotalItems:N0} items that's a lot of disk space, and slower metadata refreshes.");
+                $"Originals are often several megabytes each. Across {ctx.VideoItems:N0} films and TV items that's a lot of disk space, and slower metadata refreshes.");
         }
     }
 

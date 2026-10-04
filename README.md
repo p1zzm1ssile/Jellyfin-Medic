@@ -26,12 +26,12 @@ A week-at-a-glance timeline. Each task is a coloured block on its day, with shad
 
 ### Checks
 
-Every finding, most serious first, each with its current value, the suggested value, why it matters and where to change it. Checked something and happy with it? **Ignore** it and it drops out of the counts. Findings come back on their own if the situation changes.
+Every finding, most serious first, each with its current value, the suggested value, why it matters and a link that opens the right Jellyfin page in a new tab, with directions worded for your platform. Checked something and happy with it? **Ignore** it and it drops out of the counts. Findings come back on their own if the situation changes.
 
 Medic checks, among other things:
 
 - **Hardware and transcoding:** whether your GPU is being used, and set up to match; hardware encoding, decoding and HDR tone mapping; where transcodes are written.
-- **Storage:** free space, Unraid user-share paths that slow the database, log and database sizes, debug logging, and disk health from Unraid's own SMART data.
+- **Storage:** free space, log and database sizes, debug logging, and on Unraid, user-share paths that slow the database and disk health from Unraid's own SMART data.
 - **Server and libraries:** remote streaming limits, parallel-task limits above your CPU, IPTV libraries with image extraction turned on, metadata refresh frequency, and more.
 - **Scheduled tasks:** tasks running when people watch, scans that run too often, database optimisation that never runs, and failed tasks named with the plugin they came from.
 - **Users and security:** accounts with no password, inactive accounts, too many admins, bursts of failed sign-ins, accounts signing in from several places, and accounts that can see every library.
@@ -49,7 +49,11 @@ Counts your IPTV films and series by genre and country, shows how much of each a
 
 ### Tracks
 
-Removes unwanted audio and subtitle tracks from your local files by remuxing, so there's no re-encode and no quality loss. It keeps your languages and forced subtitles, never removes a file's last audio track, and keeps subtitles in films whose audio isn't in your languages. Tracks with no language tag are grouped for review, and you can clear untagged subtitles while keeping untagged audio, which is often a film's main soundtrack. **Scan and preview** shows what every file would keep before anything changes, and by default the original stays beside the stripped copy. IPTV is skipped.
+Removes unwanted audio and subtitle tracks from your local files by remuxing, so there's no re-encode and no quality loss. It keeps your languages and forced subtitles, never removes a file's last audio track, and keeps subtitles in films whose audio isn't in your languages. Tracks with no language tag are grouped for review, and you can clear untagged subtitles while keeping untagged audio, which is often a film's main soundtrack. Its settings sit at the top of the tab, next to the tool. **Scan and preview** shows what every file would keep before anything changes, and by default the original stays beside the stripped copy. While it runs, it shows how much is done and roughly when it will finish. IPTV is skipped.
+
+### Media report
+
+A read-only look at your files: what formats they're in, roughly how much space converting them to HEVC could save (with a GPU encoder and with software encoding), the files that would save the most, and what's likely to make Jellyfin transcode, such as DTS-only audio or picture-based subtitles. It also lists the files Medic has caught being transcoded during playback, and why. It reads what Jellyfin already knows about each file, so nothing is rescanned and nothing is changed.
 
 ### Plugin directory
 
@@ -65,7 +69,8 @@ Change Medic's own options, browse every Jellyfin setting, and build a masked co
 
 - **Jellyfin 12.1 or later** for Jellyfin Medic, **12.0 or later** for Medic Picks.
 - **Server language set to English** (tasks are recognised by their English names).
-- Developed and tested on **Unraid**, with both the **binhex-Jellyfin** and **linuxserver.io Jellyfin** containers. Any Linux install should work; the Unraid-specific checks (user shares, SMART) simply skip elsewhere. GPU checks cover NVIDIA, Intel and AMD.
+- Runs wherever Jellyfin does: **Unraid, TrueNAS SCALE, Proxmox, Docker, Linux, Windows and macOS**. Medic works out which one it's on and words its advice and directions to match. A few checks depend on the platform: GPU device checks need Linux (containers included), and disk health uses Unraid's own disk data.
+- Developed and tested on **Unraid**, with both the **binhex-Jellyfin** and **linuxserver.io Jellyfin** containers. Reports from other platforms are very welcome. GPU checks cover NVIDIA, Intel and AMD.
 
 ## Installation
 
@@ -97,7 +102,7 @@ Medic replaces both. On first start it copies their data across (schedule backup
 Personal picks for everyone on your server, built from what each person actually watches.
 
 - **A private "Picks for you" playlist** for every user, in every Jellyfin app, TV apps included. It holds titles already on your server, and series start at their first episode so people can press play straight away.
-- **A "My picks" page** at `http://your-server:8096/MedicPicks/Page`, showing why each title was picked, plus titles that aren't on your server yet. It works in any browser, Jellyfin Desktop and the Android and iOS apps. If you use Jellyseerr, each suggestion gets a **Request it** button that opens Jellyseerr, so requests follow your Jellyseerr permissions and limits.
+- **A "My picks" page**, linked from everyone's Jellyfin side menu automatically, showing why each title was picked, plus titles that aren't on your server yet. It works in any browser, Jellyfin Desktop and the Android and iOS apps, with no files to edit. If you use Jellyseerr, each suggestion gets a **Request it** button that opens Jellyseerr, so requests follow your Jellyseerr permissions and limits.
 
 Picks are rebuilt every night by the **Build personal picks** scheduled task. Picks from your library follow each user's library access and parental controls.
 
@@ -108,6 +113,7 @@ Picks are rebuilt every night by the **Build personal picks** scheduled task. Pi
 3. Optional: add your Jellyseerr address, using one your users can reach.
 4. Untick children's accounts under **Who gets Discover picks**.
 5. Press **Build picks now**, or wait for the nightly run.
+6. Optional: the **My picks** menu link is on by default. You can rename it or turn it off in the same settings.
 
 Each person needs a few watched titles before their picks appear.
 
@@ -123,6 +129,7 @@ Each person needs a few watched titles before their picks appear.
 
 - **Admin only.** Every part of Jellyfin Medic requires an administrator account.
 - **Your data stays on your server.** IP addresses and settings are read, shown to you, and never saved into Medic's own files.
+- **Playback records are anonymous.** To learn your quiet hours and spot transcodes, Medic notes how many people are watching and which titles were transcoded and why. It doesn't record who was watching.
 - **No passwords are ever read, stored or sent.** Medic deliberately does not test password strength, because that can't be done without handling real passwords.
 - **What reaches the internet, and when:** the speed test (Cloudflare) and the "is my server exposed" check, which sends only a port number, run only when you press the button. Opening the Plugin directory tab fetches the public awesome-jellyfin plugin list and checks your own plugin repositories, the same ones Jellyfin uses for updates. None of these send any of your data.
 - **The "help improve Medic" export** masks passwords, keys, tokens, usernames and credentials in links before you ever see the file, and asks you to read it before sending. Sending it is always your choice. If anything personal reaches the maintainer, it's deleted and not used.
@@ -138,7 +145,7 @@ dotnet publish src/JellyfinMedic/JellyfinMedic.csproj -c Release -o publish/Jell
 dotnet publish Jellyfin.Plugin.MedicPicks/Jellyfin.Plugin.MedicPicks.csproj -c Release -o publish/MedicPicks
 ```
 
-Releases are automatic: push a tag like `v1.0.5` for Jellyfin Medic, or `picks-v1.0.0` for Medic Picks, and GitHub Actions builds the plugin, creates the release, and adds it to `manifest.json`.
+Releases are automatic: push a tag like `v1.0.6` for Jellyfin Medic, or `picks-v1.0.1` for Medic Picks, and GitHub Actions builds the plugin, creates the release, and adds it to `manifest.json`.
 
 ---
 
