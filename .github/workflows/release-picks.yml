@@ -1,6 +1,7 @@
 # Builds and releases Medic Picks when you push a tag like picks-v1.0.0,
 # then adds it to manifest.json beside Jellyfin Medic.
 # Jellyfin Medic keeps its own release.yml and its v1.x.x tags; this file doesn't touch them.
+# Picks releases are never marked "Latest", so the repo page keeps showing Jellyfin Medic.
 
 name: Release Medic Picks
 
@@ -78,7 +79,7 @@ jobs:
           [ "${{ steps.meta.outputs.prerelease }}" = "true" ] && PRE="--prerelease"
           gh release create "$GITHUB_REF_NAME" "${{ steps.meta.outputs.zip }}" \
             --title "$NAME ${{ steps.meta.outputs.version }}" \
-            --notes-file notes.txt $PRE
+            --notes-file notes.txt --latest=false $PRE
 
       - name: Add the version to manifest.json on main
         shell: bash
