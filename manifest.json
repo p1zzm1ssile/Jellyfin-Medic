@@ -10,6 +10,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/src/JellyfinMedic/thumb.png",
     "versions": [
       {
+        "version": "1.0.6.0",
+        "changelog": "Medic 1.0.6 and Medic Picks 1.0.1",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/v1.0.6/JellyfinMedic-v1.0.6.zip",
+        "checksum": "fcf607eee1ed5617b34dae71b39ff99f",
+        "timestamp": "2026-10-04T18:22:28Z"
+      },
+      {
         "version": "1.0.5.0",
         "changelog": "Medic 1.0.5 and Medic Picks 1.0.0",
         "targetAbi": "12.1.0.0",
