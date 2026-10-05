@@ -38,6 +38,8 @@ def main():
         "checksum": os.environ["CHECKSUM"],
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     })
+    # Newest version first, by number, so re-running an older release can't put it above a newer one.
+    versions.sort(key=lambda v: tuple(int(x) for x in v["version"].split(".") if x.isdigit()), reverse=True)
     entry["versions"] = versions
 
     with open("manifest.json", "w", encoding="utf-8", newline="\n") as f:
