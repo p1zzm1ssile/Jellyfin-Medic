@@ -54,6 +54,12 @@ public static class SafeRestart
 
         progress.Report(100);
         logger.LogWarning("Jellyfin Medic: restarting Jellyfin ({Why}); nobody is watching and nothing else is running", why);
+        if (services.GetService(typeof(MediaBrowser.Common.Configuration.IApplicationPaths)) is MediaBrowser.Common.Configuration.IApplicationPaths paths)
+        {
+            WeeklyLedger.Init(paths.PluginConfigurationsPath);
+            WeeklyLedger.AddRestart();
+        }
+
         if (!RestartNow(host, services, logger))
         {
             logger.LogWarning("Jellyfin Medic: couldn't ask Jellyfin to restart on this version. Restart it from the Dashboard instead.");

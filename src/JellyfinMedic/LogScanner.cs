@@ -15,6 +15,9 @@ public class RepeatedError
     public string Message { get; set; } = string.Empty;
 
     public int Count { get; set; }
+
+    // When it last appeared, in the server's local time.
+    public DateTimeOffset? LastSeen { get; set; }
 }
 
 /// <summary>
@@ -28,14 +31,67 @@ public static class LogScanner
     private static readonly object Sync = new();
     private static (DateTime At, List<RepeatedError> Result)? _cache;
 
-    private static readonly Regex ErrorLine = new(@"^\[[^\]]+\]\s*\[ERR\]\s*\[[^\]]*\]\s*([A-Za-z0-9_.]+):\s*(.*)$", RegexOptions.Compiled);
+    private static readonly Regex ErrorLine = new(@"^\[([^\]]+)\]\s*\[ERR\]\s*\[[^\]]*\]\s*([A-Za-z0-9_.]+):\s*(.*)$", RegexOptions.Compiled);
+
+    // "Fixed it, count again from now": errors logged before this moment are left out.
+    private static DateTimeOffset? _countFrom;
+    private static bool _countFromLoaded;
+
+    private static string CountFromFile(string stateDir) => Path.Combine(stateDir, "JellyfinMedic", "log_count_from.txt");
+
+    /// <summary>Starts counting repeated errors afresh from now (after you've fixed the cause).</summary>
+    public static void ResetCount(string stateDir)
+    {
+        lock (Sync)
+        {
+            _countFrom = DateTimeOffset.Now;
+            _countFromLoaded = true;
+            _cache = null;
+            try
+            {
+                Directory.CreateDirectory(Path.Combine(stateDir, "JellyfinMedic"));
+                File.WriteAllText(CountFromFile(stateDir), _countFrom.Value.ToString("o", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            catch
+            {
+                // Kept in memory until the next restart.
+            }
+        }
+    }
+
+    /// <summary>The moment counting restarted today, if it did.</summary>
+    public static DateTimeOffset? CountingFrom(string stateDir)
+    {
+        lock (Sync)
+        {
+            if (!_countFromLoaded)
+            {
+                _countFromLoaded = true;
+                try
+                {
+                    string file = CountFromFile(stateDir);
+                    if (File.Exists(file) && DateTimeOffset.TryParse(File.ReadAllText(file).Trim(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var at))
+                    {
+                        _countFrom = at;
+                    }
+                }
+                catch
+                {
+                    // No saved point: count the whole day.
+                }
+            }
+
+            return _countFrom is { } from && from.LocalDateTime.Date == DateTime.Now.Date ? from : null;
+        }
+    }
     private static readonly Regex ExceptionLine = new(@"^\s*([A-Za-z0-9_.]+(?:Exception|Error))(?:\s*\([^)]*\))?:\s*(.*)$", RegexOptions.Compiled);
     private static readonly Regex Ids = new(@"[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}|[0-9a-fA-F]{24,}", RegexOptions.Compiled);
     private static readonly Regex Numbers = new(@"\d+", RegexOptions.Compiled);
     private static readonly Regex Query = new(@"\?[^\s""']*", RegexOptions.Compiled);
 
-    public static List<RepeatedError> Scan(string logDirectory)
+    public static List<RepeatedError> Scan(string logDirectory, string? stateDir = null)
     {
+        var from = stateDir is null ? null : CountingFrom(stateDir);
         lock (Sync)
         {
             if (_cache is { } hit && DateTime.UtcNow - hit.At < TimeSpan.FromMinutes(5))
@@ -55,7 +111,7 @@ public static class LogScanner
 
             foreach (var file in files)
             {
-                ScanFile(file.FullName, counts);
+                ScanFile(file.FullName, counts, from);
             }
         }
         catch
@@ -72,19 +128,21 @@ public static class LogScanner
         return result;
     }
 
-    public static List<Finding> Findings(List<RepeatedError> repeated) =>
+    public static List<Finding> Findings(List<RepeatedError> repeated, DateTimeOffset? countingFrom = null) =>
         repeated.Where(r => r.Count >= 100).Take(5).Select(r => new Finding
         {
             Area = "Logs",
             Severity = r.Count >= 1000 ? Sev.Problem : Sev.Improve,
-            Title = $"An error has repeated {r.Count:N0} times today",
-            Current = $"{r.Source}: {r.Message}",
+            Title = countingFrom is { } since
+                ? $"An error has repeated {r.Count:N0} times since {since.LocalDateTime:HH:mm}"
+                : $"An error has repeated {r.Count:N0} times today",
+            Current = $"{r.Source}: {r.Message}" + (r.LastSeen is { } last ? $" (last at {last.LocalDateTime:HH:mm})" : string.Empty),
             Recommended = "Find what keeps causing it and stop it",
             Why = "The same error over and over usually means an app, browser page or plugin is stuck retrying something that can never work. Each attempt costs CPU and fills the log.",
             Where = "Dashboard → Logs (search for the message)"
         }).ToList();
 
-    private static void ScanFile(string path, Dictionary<string, RepeatedError> counts)
+    private static void ScanFile(string path, Dictionary<string, RepeatedError> counts, DateTimeOffset? from)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         if (stream.Length > MaxBytesPerFile)
@@ -94,7 +152,7 @@ public static class LogScanner
 
         using var reader = new StreamReader(stream, Encoding.UTF8);
         string? pendingKey = null;
-        (string Source, string Message)? pending = null;
+        (string Source, string Message, DateTimeOffset? At)? pending = null;
         string? line;
         while ((line = reader.ReadLine()) is not null)
         {
@@ -102,7 +160,15 @@ public static class LogScanner
             if (err.Success)
             {
                 Commit(counts, pending);
-                pending = (err.Groups[1].Value, Normalise(err.Groups[2].Value));
+                DateTimeOffset? at = DateTimeOffset.TryParse(err.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var t) ? t : null;
+                if (from is { } start && at is { } stamp && stamp < start)
+                {
+                    pending = null; // before "count again from now"
+                    pendingKey = null;
+                    continue;
+                }
+
+                pending = (err.Groups[2].Value, Normalise(err.Groups[3].Value), at);
                 pendingKey = "open";
                 continue;
             }
@@ -113,7 +179,7 @@ public static class LogScanner
                 var ex = ExceptionLine.Match(line);
                 if (ex.Success)
                 {
-                    pending = (p.Source, p.Message + " → " + ex.Groups[1].Value + ": " + Normalise(ex.Groups[2].Value));
+                    pending = (p.Source, p.Message + " → " + ex.Groups[1].Value + ": " + Normalise(ex.Groups[2].Value), p.At);
                 }
 
                 pendingKey = null;
@@ -123,7 +189,7 @@ public static class LogScanner
         Commit(counts, pending);
     }
 
-    private static void Commit(Dictionary<string, RepeatedError> counts, (string Source, string Message)? entry)
+    private static void Commit(Dictionary<string, RepeatedError> counts, (string Source, string Message, DateTimeOffset? At)? entry)
     {
         if (entry is not { } e)
         {
@@ -138,6 +204,10 @@ public static class LogScanner
         }
 
         item.Count++;
+        if (e.At is { } at && (item.LastSeen is null || at > item.LastSeen))
+        {
+            item.LastSeen = at;
+        }
     }
 
     private static string Normalise(string message)

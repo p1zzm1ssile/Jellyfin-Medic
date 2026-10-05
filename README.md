@@ -18,7 +18,7 @@ Everything lives on one page in the dashboard sidebar, under **Plugins → Jelly
 
 ### Dashboard
 
-A single screen of tiles: how many things need fixing, tonight's tasks, what the server is doing right now (CPU, memory, who's watching), your top issues, the last 24 hours, users and access, updates waiting, and a maintenance panel to free up disk space, check whether your server is exposed to the internet, or stop running tasks.
+A single screen of tiles: how many things need fixing, what changed this week (issues fixed, space freed), tonight's tasks, what the server is doing right now (CPU, memory, who's watching), your top issues, the last 24 hours, users and access, updates waiting, and a maintenance panel to free up disk space (including old log files), check whether your server is exposed to the internet, or stop running tasks.
 
 ### Schedule
 
@@ -49,7 +49,7 @@ Counts your IPTV films and series by genre and country, shows how much of each a
 
 ### Tracks
 
-Removes unwanted audio and subtitle tracks from your local files by remuxing, so there's no re-encode and no quality loss. It keeps your languages and forced subtitles, never removes a file's last audio track, and keeps subtitles in films whose audio isn't in your languages. Tracks with no language tag are grouped for review, and you can clear untagged subtitles while keeping untagged audio, which is often a film's main soundtrack. Its settings sit at the top of the tab, next to the tool. **Scan and preview** shows what every file would keep before anything changes. The cleaned file keeps the original's name, so your library still has one file per title, and by default the original is kept in a hidden .medic-originals folder next to it until you delete it. While it runs, it shows how much is done and roughly when it will finish, and you can pause it, limit it to set hours, and have it hold off while anyone is watching. IPTV is skipped.
+Removes unwanted audio and subtitle tracks from your local files by remuxing, so there's no re-encode and no quality loss. It keeps your languages and forced subtitles, never removes a file's last audio track, and keeps subtitles in films whose audio isn't in your languages. Tracks with no language set are listed film by film, a page at a time: you can clear untagged subtitles while keeping untagged audio, which is often a film's main soundtrack, or set a track's language yourself, one track at a time or lots at once. Tracks inside a film are labelled on the next run, and separate subtitle files are renamed so Jellyfin recognises them. Its settings sit at the top of the tab, next to the tool. **Scan and preview** shows what every file would keep before anything changes. The cleaned file keeps the original's name, so your library still has one file per title, and by default the original is kept in a hidden .medic-originals folder next to it until you delete it. A **Remove duplicate files** button tidies up titles left with extra copies by older versions. While it runs, it shows how much is done and roughly when it will finish, and you can pause it, limit it to set hours, and have it hold off while anyone is watching. IPTV is skipped.
 
 ### Media report
 
@@ -61,7 +61,7 @@ Browse community plugins from the awesome-jellyfin list, with **suggestions for 
 
 ### Settings and support
 
-Change Medic's own options, browse every Jellyfin setting, and build a masked copy of your plugin settings to attach when asking for help.
+Change Medic's own options, browse every Jellyfin setting with a red, yellow or green marker and a link to its page (Dismiss turns a marker green), and build a masked copy of your plugin settings to attach when asking for help.
 
 ---
 

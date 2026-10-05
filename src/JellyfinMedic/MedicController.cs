@@ -64,6 +64,8 @@ public class MedicController : ControllerBase
         _installs = installs;
         _tasks = tasks;
         _host = host;
+        TrackLanguages.Init(paths.PluginConfigurationsPath);
+        WeeklyLedger.Init(paths.PluginConfigurationsPath);
         _config = config;
         _paths = paths;
         _library = library;
@@ -83,14 +85,14 @@ public class MedicController : ControllerBase
 
         var settings = Plugin.Instance?.Configuration ?? new PluginConfiguration();
         var (userSummary, userFindings) = UserAuditor.Audit(_users, settings.InactiveUserDays);
-        var repeated = LogScanner.Scan(_paths.LogDirectoryPath);
+        var repeated = LogScanner.Scan(_paths.LogDirectoryPath, _paths.PluginConfigurationsPath);
         var updates = await UpdateChecker.AvailableAsync(_installs, cancellationToken).ConfigureAwait(false);
         var userList = UserList.All(_users);
 
         var extra = new List<Finding>();
         extra.AddRange(userFindings);
         extra.AddRange(SecurityAuditor.Audit(_activity, _users, userList));
-        extra.AddRange(LogScanner.Findings(repeated));
+        extra.AddRange(LogScanner.Findings(repeated, LogScanner.CountingFrom(_paths.PluginConfigurationsPath)));
         extra.AddRange(IptvAnalyzer.Findings());
         if (updates.Count > 0)
         {
@@ -121,6 +123,8 @@ public class MedicController : ControllerBase
         }
 
         var report = _engine.Run(usage, plugins, links, linkResults, extra);
+        SettingLinks.Attach(report.Findings);
+        WeeklyLedger.Snapshot(report.Findings);
         report.Users = userSummary;
         report.Updates = updates;
         report.RepeatedErrors = repeated;
@@ -175,6 +179,50 @@ public class MedicController : ControllerBase
         return Ok(TrackCleaner.ScanStatus());
     }
 
+    /// <summary>Tracks with no language from the last scan, a page at a time. kind: all, audio or subtitle.</summary>
+    [HttpGet("Tracks/Scan/Untagged")]
+    public ActionResult<PagedList<UntaggedTrack>> TracksUntagged([FromQuery] int page = 1, [FromQuery] int size = 25, [FromQuery] string kind = "all", [FromQuery] string? search = null) =>
+        Ok(TrackCleaner.UntaggedPage(page, size, kind, search));
+
+    /// <summary>Files that would change, from the last scan, a page at a time.</summary>
+    [HttpGet("Tracks/Scan/Changes")]
+    public ActionResult<PagedList<FilePlan>> TracksChanges([FromQuery] int page = 1, [FromQuery] int size = 25, [FromQuery] string? search = null) =>
+        Ok(TrackCleaner.ChangesPage(page, size, search));
+
+    /// <summary>Sets the language of a track inside a film (written in on the next strip). An empty language clears it.</summary>
+    [HttpPost("Tracks/SetLanguage")]
+    public ActionResult<object> TracksSetLanguage([FromQuery] string path, [FromQuery] int index, [FromQuery] string? language)
+    {
+        var (ok, message) = TrackCleaner.SetLanguage(path ?? string.Empty, index, language ?? string.Empty);
+        return Ok(new { Ok = ok, Message = message });
+    }
+
+    /// <summary>
+    /// Sets the language of many tracks inside films at once: every match for the current filter, or just one page.
+    /// Separate subtitle files aren't included; rename those one by one.
+    /// </summary>
+    [HttpPost("Tracks/SetLanguageBulk")]
+    public ActionResult<object> TracksSetLanguageBulk(
+        [FromQuery] string? language,
+        [FromQuery] string kind = "all",
+        [FromQuery] string? search = null,
+        [FromQuery] bool onlyAudioTrack = true,
+        [FromQuery] bool skipAnime = true,
+        [FromQuery] int page = 0,
+        [FromQuery] int size = 25)
+    {
+        var (count, message) = TrackCleaner.SetLanguageBulk(language ?? string.Empty, kind, search, onlyAudioTrack, skipAnime, page, size);
+        return Ok(new { Count = count, Message = message });
+    }
+
+    /// <summary>Renames a separate subtitle file so Jellyfin knows its language.</summary>
+    [HttpPost("Tracks/RenameSubtitle")]
+    public ActionResult<object> TracksRenameSubtitle([FromQuery] string path, [FromQuery] string? language)
+    {
+        var (ok, message, newName) = TrackCleaner.RenameSubtitle(path ?? string.Empty, language ?? "eng");
+        return Ok(new { Ok = ok, Message = message, NewName = newName });
+    }
+
     /// <summary>The background scan's progress, and the last finished scan.</summary>
     [HttpGet("Tracks/Scan/Status")]
     public ActionResult<TrackScanStatus> TracksScanStatus() => Ok(TrackCleaner.ScanStatus());
@@ -193,11 +241,6 @@ public class MedicController : ControllerBase
         if (TrackCleaner.CurrentProgress().Running)
         {
             return StatusCode(StatusCodes.Status409Conflict, "A track run is already going.");
-        }
-
-        if (!dryRun)
-        {
-            TrackCleaner.ClearScan(); // files are about to change, so the last scan goes out of date
         }
 
         var sessions = _sessions;
@@ -241,6 +284,7 @@ public class MedicController : ControllerBase
         }
 
         var (titles, copies, freed) = TrackCleaner.TidyEarlierCopies(_library, _engine.Libraries, deleteOriginals);
+        WeeklyLedger.AddFreed("Duplicate files", freed);
         TrackCleaner.ClearScan();
         return Ok(new { Titles = titles, CopiesDeleted = copies, Freed = freed, FreedText = SystemProbe.Size(freed) });
     }
@@ -258,6 +302,7 @@ public class MedicController : ControllerBase
     public ActionResult<object> TracksDeleteOriginals()
     {
         var (deleted, freed) = TrackCleaner.DeleteOriginals(_library, _engine.Libraries);
+        WeeklyLedger.AddFreed("Kept originals", freed);
         return Ok(new { Deleted = deleted, Freed = freed, FreedText = SystemProbe.Size(freed) });
     }
 
@@ -616,6 +661,18 @@ public class MedicController : ControllerBase
     }
 
     /// <summary>Disk space that can usually be freed safely.</summary>
+    /// <summary>The Dashboard's "This week": issues that appeared or went away, space freed, restarts.</summary>
+    [HttpGet("Weekly")]
+    public ActionResult<WeeklySummary> GetWeekly() => Ok(WeeklyLedger.Summary());
+
+    /// <summary>"Fixed it": starts counting repeated log errors again from now.</summary>
+    [HttpPost("Logs/ResetCount")]
+    public ActionResult LogsResetCount()
+    {
+        LogScanner.ResetCount(_paths.PluginConfigurationsPath);
+        return NoContent();
+    }
+
     [HttpGet("Cleanup")]
     public ActionResult<CleanupReport> GetCleanup() => Ok(Housekeeping.Scan(_paths, TranscodePath()));
 
@@ -624,6 +681,11 @@ public class MedicController : ControllerBase
     public ActionResult<object> RunCleanup([FromQuery] string kind)
     {
         var (ok, message, freed) = Housekeeping.Clean(kind ?? string.Empty, _paths, TranscodePath());
+        if (ok)
+        {
+            WeeklyLedger.AddFreed("Clean-ups", freed);
+        }
+
         return Ok(new { Success = ok, Message = message, Freed = freed });
     }
 

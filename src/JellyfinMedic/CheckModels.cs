@@ -39,6 +39,9 @@ public class Finding
 
     public string Where { get; set; } = string.Empty;
 
+    // The Jellyfin setting this is about, as "Section|Name" matching the settings list (empty if none).
+    public string Setting { get; set; } = string.Empty;
+
     // Identifies the finding so the admin can choose to ignore it.
     public string Key { get; set; } = string.Empty;
 

@@ -37,6 +37,20 @@ public class TrackInfo
     public bool Keep { get; set; } = true;
 
     public string KeepReason { get; set; } = string.Empty;
+
+    // A separate subtitle file beside the film (never changed by a remux).
+    public bool External { get; set; }
+
+    public string? ExternalPath { get; set; }
+
+    // The language as stored in the file, before any language you've set by hand.
+    public string FileLanguage { get; set; } = "und";
+
+    // You've set this track's language by hand; it's written into the file on the next run.
+    public bool Overridden { get; set; }
+
+    // Bits per second, when Jellyfin knows it (used to estimate the track's size).
+    public long? BitRate { get; set; }
 }
 
 public class FilePlan
@@ -49,11 +63,22 @@ public class FilePlan
 
     public List<TrackInfo> Tracks { get; set; } = new();
 
+    // The film or episode's name, for lists.
+    public string Title { get; set; } = string.Empty;
+
+    public double DurationSeconds { get; set; }
+
     public int RemovingAudio { get; set; }
 
     public int RemovingSubtitles { get; set; }
 
-    public bool WouldChange => RemovingAudio + RemovingSubtitles > 0;
+    // Tracks whose language you've set by hand and that still need writing into the file.
+    public int TagsToWrite { get; set; }
+
+    // Rough space freed by the tracks being removed.
+    public long SavingBytes { get; set; }
+
+    public bool WouldChange => RemovingAudio + RemovingSubtitles + TagsToWrite > 0;
 
     public bool HasStrippedCopy { get; set; }
 
@@ -93,6 +118,57 @@ public class TrackScanStatus
     public string? Error { get; set; }
 }
 
+/// <summary>One track with no language, for the paged list.</summary>
+public class UntaggedTrack
+{
+    public string Title { get; set; } = string.Empty;
+
+    public string FileName { get; set; } = string.Empty;
+
+    public string Path { get; set; } = string.Empty;
+
+    public long FileBytes { get; set; }
+
+    public int Index { get; set; }
+
+    public string Kind { get; set; } = string.Empty;
+
+    public string Codec { get; set; } = string.Empty;
+
+    public string Channels { get; set; } = string.Empty;
+
+    public bool External { get; set; }
+
+    public string? ExternalPath { get; set; }
+
+    // The name Jellyfin will recognise for a separate subtitle file, e.g. "Film (2009).eng.srt".
+    public string? SuggestedName { get; set; }
+
+    public long? TrackBytes { get; set; }
+
+    // Language you've set by hand, if any.
+    public string? SetLanguage { get; set; }
+
+    public bool WillBeRemoved { get; set; }
+
+    // It's the film's only audio track (inside the file), so it's almost certainly the film's own language.
+    public bool OnlyAudioTrack { get; set; }
+
+    // The film looks like anime (genre or an "anime" folder), where untagged audio is often Japanese.
+    public bool Anime { get; set; }
+}
+
+public class PagedList<T>
+{
+    public int Total { get; set; }
+
+    public int Page { get; set; }
+
+    public int Pages { get; set; }
+
+    public List<T> Items { get; set; } = new();
+}
+
 public class TrackScanResult
 {
     public DateTime GeneratedUtc { get; set; } = DateTime.UtcNow;
@@ -108,6 +184,18 @@ public class TrackScanResult
     public List<UndeterminedGroup> Undetermined { get; set; } = new();
 
     public List<FilePlan> Sample { get; set; } = new(); // first N changing files, for preview
+
+    public int UntaggedCount { get; set; }
+
+    // Files have been changed since this scan, so it may be out of date.
+    public bool Stale { get; set; }
+
+    // Full lists, served a page at a time (left out of the summary to keep it small).
+    [System.Text.Json.Serialization.JsonIgnore]
+    public List<FilePlan> Changing { get; set; } = new();
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public List<UntaggedTrack> Untagged { get; set; } = new();
 
     public string? Error { get; set; }
 }
@@ -240,14 +328,43 @@ public static class TrackCleaner
                     result.FilesWouldChange++;
                     result.AudioToRemove += plan.RemovingAudio;
                     result.SubtitlesToRemove += plan.RemovingSubtitles;
+                    result.Changing.Add(plan);
                     if (result.Sample.Count < sampleSize)
                     {
                         result.Sample.Add(plan);
                     }
                 }
 
+                bool onlyAudio = plan.Tracks.Count(x => x.Kind == "audio" && !x.External) == 1;
+                bool anime = path.Contains("/anime/", StringComparison.OrdinalIgnoreCase)
+                    || (SettingsReader.Get(item, "Genres") is IEnumerable<string> genres && genres.Any(g => g.Equals("Anime", StringComparison.OrdinalIgnoreCase)));
+                foreach (var t in plan.Tracks.Where(x => x.FileLanguage is "und" or ""))
+                {
+                    result.Untagged.Add(new UntaggedTrack
+                    {
+                        OnlyAudioTrack = t.Kind == "audio" && onlyAudio,
+                        Anime = anime,
+                        Title = plan.Title,
+                        FileName = Path.GetFileName(path),
+                        Path = path,
+                        FileBytes = plan.SizeBytes,
+                        Index = t.Index,
+                        Kind = t.Kind,
+                        Codec = t.Codec,
+                        Channels = t.Channels,
+                        External = t.External,
+                        ExternalPath = t.ExternalPath,
+                        SuggestedName = t.External && t.ExternalPath is { } ext
+                            ? Path.GetFileNameWithoutExtension(path) + ".eng" + Path.GetExtension(ext)
+                            : null,
+                        TrackBytes = TrackBytes(t, plan.DurationSeconds),
+                        SetLanguage = t.Overridden ? t.Language : null,
+                        WillBeRemoved = !t.Keep
+                    });
+                }
+
                 var countedInThisFile = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var t in plan.Tracks.Where(IsUntagged))
+                foreach (var t in plan.Tracks.Where(x => x.FileLanguage is "und" or ""))
                 {
                     string key = t.Kind + "|" + t.Codec + "|" + t.Channels;
                     if (!undetermined.TryGetValue(key, out var g))
@@ -275,6 +392,9 @@ public static class TrackCleaner
 
         progress?.Invoke(work.Count, work.Count);
         result.Undetermined = undetermined.Values.OrderByDescending(g => g.Files).ToList();
+        result.UntaggedCount = result.Untagged.Count;
+        result.Changing = result.Changing.OrderBy(p => p.Title, StringComparer.OrdinalIgnoreCase).ToList();
+        result.Untagged = result.Untagged.OrderBy(u => u.Title, StringComparer.OrdinalIgnoreCase).ThenBy(u => u.Index).ToList();
         return result;
     }
 
@@ -355,7 +475,15 @@ public static class TrackCleaner
             return null;
         }
 
-        var plan = new FilePlan { ItemId = item.Id.ToString(), Path = item.Path ?? string.Empty, Library = libraryName };
+        var plan = new FilePlan
+        {
+            ItemId = item.Id.ToString(),
+            Path = item.Path ?? string.Empty,
+            Library = libraryName,
+            Title = DisplayTitle(item),
+            DurationSeconds = (SettingsReader.Number(item, "RunTimeTicks") ?? 0) / 10_000_000d,
+            SizeBytes = SettingsReader.Number(item, "Size") ?? 0
+        };
 
         foreach (var s in streams)
         {
@@ -365,22 +493,39 @@ public static class TrackCleaner
                 continue;
             }
 
-            plan.Tracks.Add(new TrackInfo
+            string language = (SettingsReader.Text(s, "Language") ?? "und").Trim().ToLowerInvariant();
+            bool external = SettingsReader.Bool(s, "IsExternal") ?? false;
+            var track = new TrackInfo
             {
                 Index = (int)(SettingsReader.Number(s, "Index") ?? -1),
                 Kind = type,
-                Language = (SettingsReader.Text(s, "Language") ?? "und").Trim().ToLowerInvariant(),
+                Language = language,
+                FileLanguage = language,
                 Codec = (SettingsReader.Text(s, "Codec") ?? string.Empty).ToLowerInvariant(),
                 Title = SettingsReader.Text(s, "Title") ?? string.Empty,
                 Channels = SettingsReader.Number(s, "Channels") is { } ch ? ch + "ch" : string.Empty,
                 Forced = SettingsReader.Bool(s, "IsForced") ?? false,
-                Default = SettingsReader.Bool(s, "IsDefault") ?? false
-            });
+                Default = SettingsReader.Bool(s, "IsDefault") ?? false,
+                External = external,
+                ExternalPath = external ? SettingsReader.Text(s, "Path") : null,
+                BitRate = SettingsReader.Number(s, "BitRate")
+            };
+
+            // A language you've set by hand counts as the track's language from now on.
+            if (!external && TrackLanguages.Get(plan.Path, track.Index) is { } chosen)
+            {
+                track.Language = chosen;
+                track.Overridden = true;
+            }
+
+            plan.Tracks.Add(track);
         }
 
         ApplyKeepRules(plan, keep, cfg);
         plan.RemovingAudio = plan.Tracks.Count(t => t.Kind == "audio" && !t.Keep);
         plan.RemovingSubtitles = plan.Tracks.Count(t => t.Kind == "subtitle" && !t.Keep);
+        plan.TagsToWrite = plan.Tracks.Count(t => t.Overridden && t.Keep && !string.Equals(t.FileLanguage, t.Language, StringComparison.OrdinalIgnoreCase));
+        plan.SavingBytes = plan.Tracks.Where(t => !t.Keep).Sum(t => TrackBytes(t, plan.DurationSeconds) ?? 0);
         plan.HasStrippedCopy = File.Exists(OriginalPath(plan.Path)); // already cleaned once; its original is kept
         return plan;
     }
@@ -403,7 +548,11 @@ public static class TrackCleaner
         foreach (var t in plan.Tracks)
         {
             bool untagged = IsUntagged(t);
-            if (InLanguage(t, keep))
+            if (t.External)
+            {
+                t.Keep = true; t.KeepReason = "separate subtitle file (never changed)";
+            }
+            else if (InLanguage(t, keep))
             {
                 t.Keep = true; t.KeepReason = "chosen language";
             }
@@ -466,6 +615,240 @@ public static class TrackCleaner
     }
 
     private static bool IsUntagged(TrackInfo t) => t.Language is "und" or "";
+
+    /// <summary>"removed 2 audio and 13 subtitle tracks, labelled 1 track", in plain words.</summary>
+    private static string Summary(FilePlan plan)
+    {
+        var parts = new List<string>();
+        if (plan.RemovingAudio > 0) parts.Add($"removed {plan.RemovingAudio} audio track{(plan.RemovingAudio == 1 ? string.Empty : "s")}");
+        if (plan.RemovingSubtitles > 0) parts.Add($"removed {plan.RemovingSubtitles} subtitle track{(plan.RemovingSubtitles == 1 ? string.Empty : "s")}");
+        if (plan.TagsToWrite > 0) parts.Add($"set the language on {plan.TagsToWrite} track{(plan.TagsToWrite == 1 ? string.Empty : "s")}");
+        return parts.Count == 0 ? "nothing to do" : string.Join(", ", parts);
+    }
+
+    /// <summary>Writes a language you've set by hand into the new file, plus a readable title if the track has none.</summary>
+    private static void AddLanguageTags(List<string> tags, TrackInfo t, string outStream)
+    {
+        if (!t.Overridden)
+        {
+            return;
+        }
+
+        tags.Add("-metadata:s:" + outStream);
+        tags.Add("language=" + t.Language);
+        if (string.IsNullOrWhiteSpace(t.Title))
+        {
+            tags.Add("-metadata:s:" + outStream);
+            tags.Add("title=" + SuggestedTitle(t));
+        }
+    }
+
+    /// <summary>A track title players show nicely, e.g. "English 5.1" or "English".</summary>
+    private static string SuggestedTitle(TrackInfo t)
+    {
+        string name = LanguageName(t.Language);
+        if (t.Kind != "audio")
+        {
+            return name;
+        }
+
+        return t.Channels switch
+        {
+            "8ch" => name + " 7.1",
+            "6ch" => name + " 5.1",
+            "2ch" => name + " Stereo",
+            "1ch" => name + " Mono",
+            _ => name
+        };
+    }
+
+    public static string LanguageName(string code) => code switch
+    {
+        "eng" or "en" => "English",
+        "jpn" or "ja" => "Japanese",
+        "fre" or "fra" or "fr" => "French",
+        "ger" or "deu" or "de" => "German",
+        "spa" or "es" => "Spanish",
+        "ita" or "it" => "Italian",
+        "kor" or "ko" => "Korean",
+        "chi" or "zho" or "zh" => "Chinese",
+        "por" or "pt" => "Portuguese",
+        "rus" or "ru" => "Russian",
+        "dut" or "nld" or "nl" => "Dutch",
+        "swe" or "sv" => "Swedish",
+        "nor" or "no" => "Norwegian",
+        "dan" or "da" => "Danish",
+        "fin" or "fi" => "Finnish",
+        "pol" or "pl" => "Polish",
+        "hin" or "hi" => "Hindi",
+        _ => code
+    };
+
+    private static long? TrackBytes(TrackInfo t, double seconds) =>
+        t.BitRate is { } bits && bits > 0 && seconds > 0 ? (long)(bits / 8d * seconds) : null;
+
+    private static string DisplayTitle(BaseItem item)
+    {
+        string? series = SettingsReader.Text(item, "SeriesName");
+        long? season = SettingsReader.Number(item, "ParentIndexNumber");
+        long? episode = SettingsReader.Number(item, "IndexNumber");
+        if (!string.IsNullOrWhiteSpace(series) && season is not null && episode is not null)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "{0} S{1:00}E{2:00}", series, season, episode);
+        }
+
+        long? year = SettingsReader.Number(item, "ProductionYear");
+        return year is { } y ? $"{item.Name} ({y})" : item.Name ?? System.IO.Path.GetFileNameWithoutExtension(item.Path ?? string.Empty);
+    }
+
+    // ---------- Paged lists from the last scan ----------
+
+    public static PagedList<UntaggedTrack> UntaggedPage(int page, int size, string kind, string? search)
+    {
+        lock (ScanSync)
+        {
+            var all = (_lastScan?.Untagged ?? new List<UntaggedTrack>())
+                .Where(u => kind is "audio" or "subtitle" ? u.Kind == kind : true)
+                .Where(u => string.IsNullOrWhiteSpace(search) || u.Title.Contains(search, StringComparison.OrdinalIgnoreCase) || u.FileName.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            return Page(all, page, size);
+        }
+    }
+
+    public static PagedList<FilePlan> ChangesPage(int page, int size, string? search)
+    {
+        lock (ScanSync)
+        {
+            var all = (_lastScan?.Changing ?? new List<FilePlan>())
+                .Where(p => string.IsNullOrWhiteSpace(search) || p.Title.Contains(search, StringComparison.OrdinalIgnoreCase) || p.Path.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            return Page(all, page, size);
+        }
+    }
+
+    private static PagedList<T> Page<T>(List<T> all, int page, int size)
+    {
+        size = Math.Clamp(size, 5, 100);
+        int pages = Math.Max(1, (int)Math.Ceiling(all.Count / (double)size));
+        page = Math.Clamp(page, 1, pages);
+        return new PagedList<T> { Total = all.Count, Page = page, Pages = pages, Items = all.Skip((page - 1) * size).Take(size).ToList() };
+    }
+
+    // ---------- Setting a language by hand ----------
+
+    /// <summary>
+    /// Sets (or clears, with an empty language) the language of a track inside a film. It's written into
+    /// the file the next time tracks are stripped. Only tracks from the last scan can be changed.
+    /// </summary>
+    public static (bool Ok, string Message) SetLanguage(string path, int index, string language)
+    {
+        lock (ScanSync)
+        {
+            var row = _lastScan?.Untagged.FirstOrDefault(u => u.Path == path && u.Index == index && !u.External);
+            if (row is null)
+            {
+                return (false, "That track isn't in the last scan. Scan again, then try.");
+            }
+
+            string code = (language ?? string.Empty).Trim().ToLowerInvariant();
+            TrackLanguages.Set(path, index, code.Length == 0 ? null : code);
+            row.SetLanguage = code.Length == 0 ? null : code;
+            return (true, code.Length == 0
+                ? "Cleared."
+                : $"Set to {LanguageName(code)}. It's written into the file the next time you press Strip tracks for real.");
+        }
+    }
+
+    /// <summary>
+    /// Sets the language of many tracks inside films at once, for everything matching the filter
+    /// (page 0) or one page. By default only audio that is the film's only audio track, and never anime.
+    /// </summary>
+    public static (int Count, string Message) SetLanguageBulk(string language, string kind, string? search, bool onlyAudioTrack, bool skipAnime, int page, int size)
+    {
+        string code = (language ?? string.Empty).Trim().ToLowerInvariant();
+        if (code.Length is < 2 or > 3 || !code.All(char.IsLetter))
+        {
+            return (0, "Choose a language first.");
+        }
+
+        List<UntaggedTrack> rows;
+        lock (ScanSync)
+        {
+            var all = (_lastScan?.Untagged ?? new List<UntaggedTrack>())
+                .Where(u => kind is "audio" or "subtitle" ? u.Kind == kind : true)
+                .Where(u => string.IsNullOrWhiteSpace(search) || u.Title.Contains(search, StringComparison.OrdinalIgnoreCase) || u.FileName.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            rows = page > 0 ? Page(all, page, size).Items : all;
+        }
+
+        var chosen = rows
+            .Where(u => !u.External)
+            .Where(u => !onlyAudioTrack || u.Kind != "audio" || u.OnlyAudioTrack)
+            .Where(u => !skipAnime || !u.Anime)
+            .ToList();
+
+        TrackLanguages.SetMany(chosen.Select(u => (u.Path, u.Index)), code);
+        lock (ScanSync)
+        {
+            foreach (var u in chosen)
+            {
+                u.SetLanguage = code;
+            }
+        }
+
+        int skipped = rows.Count - chosen.Count;
+        return (chosen.Count, $"Set {chosen.Count:N0} track{(chosen.Count == 1 ? string.Empty : "s")} to {LanguageName(code)}."
+            + (skipped > 0 ? $" Left {skipped:N0} alone (separate files, anime, or films with more than one audio track)." : string.Empty)
+            + " They're written into the files the next time you press Strip tracks for real.");
+    }
+
+    /// <summary>
+    /// Renames a separate subtitle file so Jellyfin knows its language, e.g. "Film (2009).srt" to
+    /// "Film (2009).eng.srt". Only files from the last scan, and only text subtitle formats.
+    /// </summary>
+    public static (bool Ok, string Message, string? NewName) RenameSubtitle(string path, string language)
+    {
+        lock (ScanSync)
+        {
+            var row = _lastScan?.Untagged.FirstOrDefault(u => u.External && u.ExternalPath == path);
+            if (row is null || string.IsNullOrEmpty(row.ExternalPath))
+            {
+                return (false, "That subtitle file isn't in the last scan. Scan again, then try.", null);
+            }
+
+            string ext = System.IO.Path.GetExtension(row.ExternalPath).ToLowerInvariant();
+            if (ext is not (".srt" or ".ass" or ".ssa" or ".vtt"))
+            {
+                return (false, "Only .srt, .ass, .ssa and .vtt files can be renamed here.", null);
+            }
+
+            string code = (language ?? "eng").Trim().ToLowerInvariant();
+            if (code.Length is < 2 or > 3 || !code.All(char.IsLetter))
+            {
+                return (false, "Choose a language first.", null);
+            }
+
+            string folder = System.IO.Path.GetDirectoryName(row.ExternalPath) ?? string.Empty;
+            string target = System.IO.Path.Combine(folder, System.IO.Path.GetFileNameWithoutExtension(row.Path) + "." + code + ext);
+            if (File.Exists(target))
+            {
+                return (false, $"There's already a file called {System.IO.Path.GetFileName(target)}.", null);
+            }
+
+            try
+            {
+                File.Move(row.ExternalPath, target);
+            }
+            catch (Exception ex)
+            {
+                return (false, "Couldn't rename it: " + ex.Message, null);
+            }
+
+            row.ExternalPath = target;
+            row.SetLanguage = code;
+            return (true, $"Renamed to {System.IO.Path.GetFileName(target)}. Jellyfin picks it up at the next library scan.", System.IO.Path.GetFileName(target));
+        }
+    }
 
     private static bool InLanguage(TrackInfo t, HashSet<string> keep) =>
         keep.Contains(t.Language) || keep.Contains(ThreeToTwo(t.Language));
@@ -585,6 +968,22 @@ public static class TrackCleaner
                 Progress.Current = null;
                 Progress.FinishedUtc = DateTime.UtcNow;
             }
+
+            // Files have changed, so the last scan may be out of date. It's kept so the lists stay visible.
+            if (!dryRun)
+            {
+                long saved;
+                lock (Sync) { saved = Progress.BytesSaved; }
+                WeeklyLedger.AddFreed("Track cleanup", saved);
+
+                lock (ScanSync)
+                {
+                    if (_lastScan is not null)
+                    {
+                        _lastScan.Stale = true;
+                    }
+                }
+            }
         }
     }
 
@@ -595,7 +994,7 @@ public static class TrackCleaner
         if (dryRun)
         {
             lock (Sync) { Progress.Done++; Progress.Changed++; }
-            Note($"Would strip {plan.RemovingAudio} audio / {plan.RemovingSubtitles} subtitle track(s) from {Path.GetFileName(plan.Path)}");
+            Note($"Would change {plan.Title}: {Summary(plan)}");
             return;
         }
 
@@ -605,20 +1004,36 @@ public static class TrackCleaner
             // Map only the kept streams: all video, plus the audio/subtitle tracks we keep, by type-relative index.
             var args = new List<string> { "-nostdin", "-y", "-loglevel", "error", "-i", plan.Path, "-map", "0:v?", "-map_metadata", "0", "-map_chapters", "0" };
 
-            int audioN = 0, subN = 0;
-            foreach (var t in plan.Tracks.OrderBy(t => t.Index))
+            // Separate subtitle files aren't in the container, so they're left out of the numbering.
+            int audioN = 0, subN = 0, outAudio = 0, outSub = 0;
+            var tags = new List<string>();
+            foreach (var t in plan.Tracks.Where(x => !x.External).OrderBy(x => x.Index))
             {
                 if (t.Kind == "audio")
                 {
-                    if (t.Keep) { args.Add("-map"); args.Add($"0:a:{audioN}?"); }
+                    if (t.Keep)
+                    {
+                        args.Add("-map"); args.Add($"0:a:{audioN}?");
+                        AddLanguageTags(tags, t, $"a:{outAudio}");
+                        outAudio++;
+                    }
+
                     audioN++;
                 }
                 else if (t.Kind == "subtitle")
                 {
-                    if (t.Keep) { args.Add("-map"); args.Add($"0:s:{subN}?"); }
+                    if (t.Keep)
+                    {
+                        args.Add("-map"); args.Add($"0:s:{subN}?");
+                        AddLanguageTags(tags, t, $"s:{outSub}");
+                        outSub++;
+                    }
+
                     subN++;
                 }
             }
+
+            args.AddRange(tags);
 
             args.Add("-c"); args.Add("copy");
             if (threads > 0) { args.Add("-threads"); args.Add(threads.ToString(CultureInfo.InvariantCulture)); }
@@ -632,7 +1047,7 @@ public static class TrackCleaner
             {
                 SafeDelete(temp);
                 lock (Sync) { Progress.Failed++; Progress.Done++; Progress.BytesDone += plan.SizeBytes; }
-                Note($"Skipped {Path.GetFileName(plan.Path)} (remux failed or output looked wrong)");
+                Note($"Skipped {plan.Title}: the new copy didn't come out right, so the original was left alone");
                 return;
             }
 
@@ -666,7 +1081,7 @@ public static class TrackCleaner
             }
 
             lock (Sync) { Progress.Changed++; Progress.Done++; Progress.BytesSaved += saved; Progress.BytesDone += plan.SizeBytes; }
-            Note($"Stripped {Path.GetFileName(plan.Path)} (removed {plan.RemovingAudio} audio / {plan.RemovingSubtitles} subs)");
+            Note($"Done {plan.Title}: {Summary(plan)}");
         }
         catch (OperationCanceledException)
         {
@@ -677,7 +1092,7 @@ public static class TrackCleaner
         {
             SafeDelete(temp);
             lock (Sync) { Progress.Failed++; Progress.Done++; Progress.BytesDone += plan.SizeBytes; }
-            Note($"Error on {Path.GetFileName(plan.Path)}: {ex.Message}");
+            Note($"Problem with {plan.Title}: {ex.Message}");
         }
     }
 

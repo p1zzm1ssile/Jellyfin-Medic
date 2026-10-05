@@ -90,7 +90,44 @@ public static class Housekeeping
             }
         }
 
+        // 3. Old log files: Jellyfin's daily logs and FFmpeg's per-playback logs, older than a day.
+        //    Today's log is never touched.
+        var oldLogs = OldLogs(paths);
+        if (oldLogs.Count > 0)
+        {
+            report.Items.Add(new CleanupItem
+            {
+                Kind = "logs",
+                Label = "Old log files (older than a day)",
+                Path = paths.LogDirectoryPath,
+                Count = oldLogs.Count,
+                Bytes = oldLogs.Sum(FileLength)
+            });
+        }
+
         return report;
+    }
+
+    private static List<string> OldLogs(IApplicationPaths paths)
+    {
+        try
+        {
+            if (!Directory.Exists(paths.LogDirectoryPath))
+            {
+                return new List<string>();
+            }
+
+            var files = SafeFiles(paths.LogDirectoryPath)
+                .Where(f => f.EndsWith(".log", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            string? newest = files.Where(f => System.IO.Path.GetFileName(f).StartsWith("log_", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(f => File.GetLastWriteTimeUtc(f)).FirstOrDefault();
+            return files.Where(f => f != newest && Age(f) > TimeSpan.FromHours(24)).ToList();
+        }
+        catch
+        {
+            return new List<string>();
+        }
     }
 
     /// <summary>Folders Xtream Library writes its .strm files into, read from its settings.</summary>
@@ -141,6 +178,28 @@ public static class Housekeeping
                 }
 
                 return (true, $"Removed {removed} leftover transcode file(s), freeing {SystemProbe.Size(freed)}.", freed);
+            }
+
+            if (kind == "logs")
+            {
+                long freed = 0;
+                int removed = 0;
+                foreach (var file in OldLogs(paths))
+                {
+                    try
+                    {
+                        long size = FileLength(file);
+                        File.Delete(file);
+                        freed += size;
+                        removed++;
+                    }
+                    catch
+                    {
+                        // A log still being written is skipped.
+                    }
+                }
+
+                return (true, $"Removed {removed} old log file(s), freeing {SystemProbe.Size(freed)}.", freed);
             }
 
             if (kind.StartsWith("orphan-strm:", StringComparison.Ordinal))
