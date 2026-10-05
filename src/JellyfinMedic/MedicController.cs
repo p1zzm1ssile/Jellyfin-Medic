@@ -660,7 +660,6 @@ public class MedicController : ControllerBase
         }
     }
 
-    /// <summary>Disk space that can usually be freed safely.</summary>
     /// <summary>The Dashboard's "This week": issues that appeared or went away, space freed, restarts.</summary>
     [HttpGet("Weekly")]
     public ActionResult<WeeklySummary> GetWeekly() => Ok(WeeklyLedger.Summary());
@@ -673,6 +672,7 @@ public class MedicController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>Disk space that can usually be freed safely.</summary>
     [HttpGet("Cleanup")]
     public ActionResult<CleanupReport> GetCleanup() => Ok(Housekeeping.Scan(_paths, TranscodePath()));
 
