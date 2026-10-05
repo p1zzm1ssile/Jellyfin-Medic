@@ -10,6 +10,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/src/JellyfinMedic/thumb.png",
     "versions": [
       {
+        "version": "1.0.11.0",
+        "changelog": "Merge pull request #1 from p1zzm1ssile/claude/elegant-bohr-jildlj",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/v1.0.11/JellyfinMedic-v1.0.11.zip",
+        "checksum": "a659ebc9f5f081d43d5c0770c6e2118a",
+        "timestamp": "2026-10-05T21:34:21Z"
+      },
+      {
         "version": "1.0.9.0",
         "changelog": "Medic 1.0.9 and Medic Picks 1.0.2",
         "targetAbi": "12.1.0.0",
