@@ -70,6 +70,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPicks/thumb.png",
     "versions": [
       {
+        "version": "1.0.3.0",
+        "changelog": "Merge pull request #1 from p1zzm1ssile/claude/elegant-bohr-jildlj\n\nImprove file safety and language code handling",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/picks-v1.0.3/MedicPicks-v1.0.3.zip",
+        "checksum": "0c89c7b20997f51c61533a8c82fcda57",
+        "timestamp": "2026-10-05T21:33:59Z"
+      },
+      {
         "version": "1.0.2.0",
         "changelog": "chore: add 1.0.9.0 to manifest",
         "targetAbi": "12.0.0.0",
