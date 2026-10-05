@@ -61,10 +61,16 @@ public class PicksStore
     {
         Directory.CreateDirectory(UsersDir);
         var path = Path.Combine(UsersDir, userId.ToString("N") + ".json");
+        WriteAtomic(path, JsonSerializer.Serialize(picks, JsonOptions));
+    }
+
+    // Writes to a temporary file first, so a crash mid-write can't leave a half-written file behind.
+    private void WriteAtomic(string path, string json)
+    {
         var tmp = path + ".tmp";
         lock (_lock)
         {
-            File.WriteAllText(tmp, JsonSerializer.Serialize(picks, JsonOptions));
+            File.WriteAllText(tmp, json);
             File.Move(tmp, path, true);
         }
     }
@@ -115,10 +121,7 @@ public class PicksStore
     private void WriteSecrets(Secrets secrets)
     {
         Directory.CreateDirectory(_root);
-        lock (_lock)
-        {
-            File.WriteAllText(SecretsPath, JsonSerializer.Serialize(secrets, JsonOptions));
-        }
+        WriteAtomic(SecretsPath, JsonSerializer.Serialize(secrets, JsonOptions));
     }
 
     // ---------- Each person's own choices on the My picks page ----------
@@ -146,10 +149,7 @@ public class PicksStore
     public void SavePreferences(Guid userId, UserPreferences prefs)
     {
         Directory.CreateDirectory(PrefsDir);
-        lock (_lock)
-        {
-            File.WriteAllText(Path.Combine(PrefsDir, userId.ToString("N") + ".json"), JsonSerializer.Serialize(prefs, JsonOptions));
-        }
+        WriteAtomic(Path.Combine(PrefsDir, userId.ToString("N") + ".json"), JsonSerializer.Serialize(prefs, JsonOptions));
     }
 
     private sealed class Secrets
