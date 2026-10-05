@@ -91,7 +91,9 @@ public static class LogScanner
 
     public static List<RepeatedError> Scan(string logDirectory, string? stateDir = null)
     {
-        var from = stateDir is null ? null : CountingFrom(stateDir);
+        // A log file written today can start yesterday, so entries before midnight are left out too.
+        DateTimeOffset midnight = new DateTimeOffset(DateTime.Now.Date);
+        DateTimeOffset from = (stateDir is null ? null : CountingFrom(stateDir)) ?? midnight;
         lock (Sync)
         {
             if (_cache is { } hit && DateTime.UtcNow - hit.At < TimeSpan.FromMinutes(5))
