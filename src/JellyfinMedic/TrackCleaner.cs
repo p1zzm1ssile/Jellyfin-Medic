@@ -145,6 +145,17 @@ public class TrackRunProgress
     // Estimated seconds left, from the rate data has been processed so far. Null until there's enough to go on.
     public int? SecondsLeft { get; set; }
 
+    // Paused by the user (files already started still finish).
+    public bool Paused { get; set; }
+
+    // Why the run is holding off right now, e.g. "Paused" or "Waiting for 01:00–07:00". Null while working.
+    public string? Waiting { get; set; }
+
+    // Time spent paused or waiting, left out of the time-left estimate.
+    public double WaitedSeconds { get; set; }
+
+    public DateTime? WaitingSinceUtc { get; set; }
+
     public List<string> Recent { get; set; } = new();
 }
 
@@ -483,6 +494,11 @@ public static class TrackCleaner
             Progress.BytesTotal = 0;
             Progress.BytesDone = 0;
             Progress.WorkStartedUtc = null;
+            Progress.Paused = false;
+            Progress.Waiting = null;
+            Progress.WaitedSeconds = 0;
+            Progress.WaitingSinceUtc = null;
+            _paused = false;
             Progress.Recent.Clear();
             _cancel = new CancellationTokenSource();
         }
@@ -538,6 +554,11 @@ public static class TrackCleaner
                 await limiter.WaitAsync(ct).ConfigureAwait(false);
                 try
                 {
+                    if (!dryRun)
+                    {
+                        await WaitUntilAllowedAsync(cfg, ct).ConfigureAwait(false);
+                    }
+
                     await ProcessOne(plan, ffmpeg, threads, dryRun, cfg.TracksReplaceInPlace, ct).ConfigureAwait(false);
                 }
                 finally
@@ -891,6 +912,102 @@ public static class TrackCleaner
         try { _cancel?.Cancel(); } catch { /* already done */ }
     }
 
+    // ---------- Pause, time window, and holding off while people watch ----------
+
+    private static volatile bool _paused;
+
+    /// <summary>How many people are playing something right now. Set by the controller when a run starts.</summary>
+    public static Func<int>? WatchingCount { get; set; }
+
+    /// <summary>Pauses after the files already in progress finish. Resume carries on where it left off.</summary>
+    public static void Pause()
+    {
+        _paused = true;
+        lock (Sync) { Progress.Paused = Progress.Running; }
+    }
+
+    public static void Resume()
+    {
+        _paused = false;
+        lock (Sync) { Progress.Paused = false; }
+    }
+
+    private static async Task WaitUntilAllowedAsync(PluginConfiguration startCfg, CancellationToken ct)
+    {
+        bool waited = false;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            // Read settings live, so changing the window or the watching option applies mid-run.
+            var cfg = Plugin.Instance?.Configuration ?? startCfg;
+            string? reason = WaitReason(cfg);
+            if (reason is null)
+            {
+                break;
+            }
+
+            lock (Sync)
+            {
+                Progress.Waiting = reason;
+                Progress.WaitingSinceUtc ??= DateTime.UtcNow;
+            }
+
+            waited = true;
+            await Task.Delay(TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
+        }
+
+        if (waited)
+        {
+            lock (Sync)
+            {
+                if (Progress.WaitingSinceUtc is { } since)
+                {
+                    Progress.WaitedSeconds += (DateTime.UtcNow - since).TotalSeconds;
+                }
+
+                Progress.WaitingSinceUtc = null;
+                Progress.Waiting = null;
+            }
+        }
+    }
+
+    private static string? WaitReason(PluginConfiguration cfg)
+    {
+        if (_paused)
+        {
+            return "Paused";
+        }
+
+        if (cfg.TracksWindowEnabled && !InWindow(DateTime.Now.Hour, cfg.TracksWindowStartHour, cfg.TracksWindowEndHour))
+        {
+            return string.Format(CultureInfo.InvariantCulture, "Waiting for {0:00}:00–{1:00}:00", cfg.TracksWindowStartHour, cfg.TracksWindowEndHour);
+        }
+
+        if (cfg.TracksPauseWhileWatching)
+        {
+            int watching = 0;
+            try { watching = WatchingCount?.Invoke() ?? 0; } catch { /* treat as nobody */ }
+            if (watching > 0)
+            {
+                return watching == 1 ? "Waiting: someone is watching" : $"Waiting: {watching} people are watching";
+            }
+        }
+
+        return null;
+    }
+
+    private static bool InWindow(int hour, int start, int end)
+    {
+        start = Math.Clamp(start, 0, 23);
+        end = Math.Clamp(end, 0, 23);
+        if (start == end)
+        {
+            return true;
+        }
+
+        return start < end ? hour >= start && hour < end : hour >= start || hour < end;
+    }
+
     // ---------- Helpers ----------
 
     private static HashSet<string> KeepLanguages(PluginConfiguration cfg)
@@ -1005,12 +1122,13 @@ public static class TrackCleaner
     // first estimate isn't wild; dry runs are near-instant, so they get none.
     private static int? EstimateSecondsLeft(TrackRunProgress p)
     {
-        if (!p.Running || p.DryRun || p.WorkStartedUtc is not { } start || p.BytesDone <= 0 || p.BytesTotal <= p.BytesDone)
+        if (!p.Running || p.DryRun || p.Waiting is not null || p.WorkStartedUtc is not { } start || p.BytesDone <= 0 || p.BytesTotal <= p.BytesDone)
         {
             return null;
         }
 
-        double elapsed = (DateTime.UtcNow - start).TotalSeconds;
+        // Only count time spent working, not time paused or waiting.
+        double elapsed = (DateTime.UtcNow - start).TotalSeconds - p.WaitedSeconds;
         if (elapsed < 20)
         {
             return null;
@@ -1025,6 +1143,7 @@ public static class TrackCleaner
         Running = p.Running, DryRun = p.DryRun, Total = p.Total, Done = p.Done, Changed = p.Changed,
         Failed = p.Failed, BytesSaved = p.BytesSaved, Current = p.Current, StartedUtc = p.StartedUtc,
         BytesTotal = p.BytesTotal, BytesDone = p.BytesDone, WorkStartedUtc = p.WorkStartedUtc, SecondsLeft = EstimateSecondsLeft(p),
+        Paused = p.Paused, Waiting = p.Waiting, WaitedSeconds = p.WaitedSeconds, WaitingSinceUtc = p.WaitingSinceUtc,
         FinishedUtc = p.FinishedUtc, Recent = p.Recent.ToList()
     };
 

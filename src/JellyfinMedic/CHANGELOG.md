@@ -5,6 +5,17 @@ All notable changes to Jellyfin Medic are recorded here. The newest version is a
 This project uses [semantic versioning](https://semver.org): given a version X.Y.Z,
 Z changes for fixes, Y for new features, X for changes that break compatibility.
 
+## [1.0.9] – 2026-10-04
+
+### Added
+- **Restarts for updates, handled for you.** A new scheduled task, "Restart Jellyfin for waiting updates", restarts Jellyfin when plugin updates are waiting, but only when nobody's watching, no track cleanup is running and no other scheduled task is busy. If it isn't safe, it checks again every 5 minutes for up to an hour, then waits for its next run. It runs at 04:00 by default; change the time under Scheduled Tasks. Checks also tells you when a restart is waiting.
+- **Scheduled restart.** A second task, "Scheduled restart", restarts Jellyfin at whatever times you give it, for example once a week to clear memory, with the same safety checks. It has no time set to begin with, so it never restarts your server until you add one.
+- **Pause, resume and a time window for track cleanup.** Pause finishes the file it's on, then waits until you press Resume. You can also limit track cleanup to set hours, such as 01:00 to 07:00: start a run at any time and it waits for the window, works through it, and carries on in the next one. By default it also holds off while anyone is watching. Time spent waiting is left out of the time-left estimate.
+- **The issue, on the page where you fix it.** When you follow a "Where" link, the Jellyfin page it opens shows the issue in a small box: what's set now, what Medic suggests, and why. You can drag it anywhere, minimise it or close it. It's kept in your browser only, and disappears when you close it or after 30 minutes.
+
+### Fixed
+- Links for plugin issues now open that plugin's own settings page, instead of the list of all plugins.
+
 ## [1.0.8] – 2026-10-04
 
 ### Changed
@@ -133,6 +144,7 @@ plugins into one, and adds a new dashboard, a timeline schedule and several new 
   system summary.
 - On first start, migrates data from Task Advisor and Setup Optimiser.
 
+[1.0.9]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.9
 [1.0.8]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.8
 [1.0.7]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.7
 [1.0.6]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.6

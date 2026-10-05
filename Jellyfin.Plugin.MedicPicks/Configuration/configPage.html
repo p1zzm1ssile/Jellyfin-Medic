@@ -67,10 +67,30 @@
                     <input is="emby-input" type="text" id="TmdbLanguage" label="Language for titles and summaries" />
                     <div class="fieldDescription">For example en-GB or en-US.</div>
                 </div>
+                <h3>Seerr requests (optional)</h3>
                 <div class="inputContainer">
-                    <input is="emby-input" type="url" id="JellyseerrUrl" label="Jellyseerr address (optional)" />
-                    <div class="fieldDescription">When set, each suggestion gets a <em>Request it</em> button that opens
-                        Jellyseerr, so requests follow your Jellyseerr permissions.</div>
+                    <input is="emby-input" type="url" id="JellyseerrUrl" label="Seerr address" />
+                    <div class="fieldDescription">Seerr is the merged Overseerr and Jellyseerr. Use an address people can reach
+                        from their own devices.</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="password" id="SeerrKey" autocomplete="off" label="Seerr API key (Seerr → Settings → General)" />
+                    <div class="fieldDescription" id="SeerrKeyStatus">Checking…</div>
+                </div>
+                <button is="emby-button" type="button" id="SaveSeerrKey" class="raised button-alt block"><span>Save key</span></button>
+                <button is="emby-button" type="button" id="ClearSeerrKey" class="raised button-alt block"><span>Remove key</span></button>
+                <button is="emby-button" type="button" id="TestSeerr" class="raised button-alt block"><span>Test Seerr</span></button>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="SeerrDirectRequests" />
+                        <span>Request straight from the My picks page</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        With a key saved, the Request button sends the request to Seerr as the person who pressed it, using
+                        their own Seerr account, so their permissions, request limits and auto-approval all apply.
+                        Each person needs to have signed in to Seerr once with their Jellyfin login. Without a key,
+                        the button opens the title in Seerr instead.
+                    </div>
                 </div>
 
                 <h3>Who gets Discover picks</h3>
@@ -132,6 +152,9 @@
                             ? 'A key is saved. It is stored separately from these settings and is never shown again.'
                             : 'No key saved. Discover picks are off until you add one.';
                         $('RunStatus').textContent = s.usersWithPicks + ' user(s) have picks.';
+                        $('SeerrKeyStatus').textContent = s.seerrKeySet
+                            ? 'A Seerr key is saved. It is stored separately from these settings and is never shown again.'
+                            : 'No Seerr key saved. The Request button will open Seerr instead.';
                     })
                     .catch(function () { $('TmdbKeyStatus').textContent = 'Could not check the key.'; });
             }
@@ -177,6 +200,7 @@
                         $('DiscoverPickCount').value = config.DiscoverPickCount;
                         $('TmdbLanguage').value = config.TmdbLanguage || 'en-GB';
                         $('JellyseerrUrl').value = config.JellyseerrUrl || '';
+                        $('SeerrDirectRequests').checked = config.SeerrDirectRequests !== false;
                         $('MinimumWatchedTitles').value = config.MinimumWatchedTitles;
                         $('AddMenuLink').checked = config.AddMenuLink !== false;
                         $('MenuLinkName').value = config.MenuLinkName || 'My picks';
@@ -199,6 +223,7 @@
                     config.DiscoverPickCount = parseInt($('DiscoverPickCount').value, 10) || 20;
                     config.TmdbLanguage = $('TmdbLanguage').value.trim() || 'en-GB';
                     config.JellyseerrUrl = $('JellyseerrUrl').value.trim();
+                    config.SeerrDirectRequests = $('SeerrDirectRequests').checked;
                     config.MinimumWatchedTitles = parseInt($('MinimumWatchedTitles').value, 10) || 3;
                     config.AddMenuLink = $('AddMenuLink').checked;
                     config.MenuLinkName = $('MenuLinkName').value.trim() || 'My picks';
@@ -211,6 +236,41 @@
                     });
                 });
                 return false;
+            });
+
+            function postSeerrKey(key) {
+                return ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('MedicPicks/Admin/SeerrKey'),
+                    data: JSON.stringify({ key: key }),
+                    contentType: 'application/json'
+                });
+            }
+
+            $('SaveSeerrKey').addEventListener('click', function () {
+                var key = $('SeerrKey').value.trim();
+                if (!key) {
+                    Dashboard.alert('Paste your Seerr API key first.');
+                    return;
+                }
+                postSeerrKey(key).then(function () {
+                    $('SeerrKey').value = '';
+                    refreshStatus();
+                    Dashboard.alert('Seerr key saved.');
+                });
+            });
+
+            $('ClearSeerrKey').addEventListener('click', function () {
+                postSeerrKey(null).then(function () {
+                    refreshStatus();
+                    Dashboard.alert('Seerr key removed.');
+                });
+            });
+
+            $('TestSeerr').addEventListener('click', function () {
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('MedicPicks/Admin/TestSeerr'), dataType: 'json' })
+                    .then(function (r) { Dashboard.alert(r.message); })
+                    .catch(function () { Dashboard.alert('The test didn\'t finish. Save the Seerr address first, then try again.'); });
             });
 
             function postKey(key) {

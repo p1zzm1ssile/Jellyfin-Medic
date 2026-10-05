@@ -121,6 +121,14 @@ public class MedicSettingsDto
 
     public bool TracksAllowRemovingOnlySubtitle { get; set; }
 
+    public bool TracksWindowEnabled { get; set; }
+
+    public int TracksWindowStartHour { get; set; } = 1;
+
+    public int TracksWindowEndHour { get; set; } = 7;
+
+    public bool TracksPauseWhileWatching { get; set; } = true;
+
     public bool TracksReplaceInPlace { get; set; }
 
     public int TracksConcurrentFiles { get; set; } = 1;

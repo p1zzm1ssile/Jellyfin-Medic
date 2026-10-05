@@ -142,6 +142,15 @@
   }
   .action:hover { background: var(--accent); color: var(--bg); }
 
+  .prefs { margin: 18px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .toggle { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; cursor: pointer; }
+  .toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .prefs-note { color: var(--muted); font-size: 0.875rem; }
+  .chip { align-self: flex-start; margin-top: 8px; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  button.action { background: transparent; font: inherit; font-weight: 600; font-size: 0.875rem; cursor: pointer; }
+  button.action:disabled { cursor: default; opacity: 0.75; }
+  .request-msg { font-size: 0.8125rem; color: var(--muted); margin: 6px 0 0; }
+
   .message {
     margin-top: 40px;
     padding: 20px;
@@ -163,6 +172,10 @@
 
   <h1 id="heading">Your picks</h1>
   <p class="lede" id="lede">Chosen from what you've been watching. They're rebuilt every night.</p>
+  <div class="prefs" id="prefs" hidden>
+    <label class="toggle"><input type="checkbox" id="dub-only"> <span>Anime: English dubs only</span></label>
+    <span class="prefs-note" id="prefs-note">Leaves out anime on this server that has no English audio.</span>
+  </div>
 
   <div class="message" id="message" hidden></div>
 
@@ -271,14 +284,61 @@
     });
   }
 
-  function renderDiscover(items, seerr) {
+  function postJson(url, body, session) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': authHeader(session), 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (r.status === 401 || r.status === 403) throw new Error('auth');
+      if (!r.ok) throw new Error('http ' + r.status);
+      return r.status === 204 ? null : r.json();
+    });
+  }
+
+  function requestButton(pick, type, session) {
+    var wrap = document.createDocumentFragment();
+    var btn = el('button', 'action', 'Request');
+    btn.type = 'button';
+    var note = el('p', 'request-msg');
+    note.setAttribute('aria-live', 'polite');
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      btn.textContent = 'Requesting\u2026';
+      note.textContent = '';
+      postJson('Request', { tmdbId: pick.tmdbId, mediaType: type }, session)
+        .then(function (r) {
+          var st = r && r.status;
+          if (st === 'approved' || st === 'requested' || st === 'exists') {
+            btn.textContent = st === 'exists' ? 'Already requested' : 'Requested \u2713';
+            note.textContent = st === 'exists' ? '' : r.message;
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Request';
+            note.textContent = (r && r.message) || 'Couldn\u2019t request it just now.';
+          }
+        })
+        .catch(function () {
+          btn.disabled = false;
+          btn.textContent = 'Request';
+          note.textContent = 'Couldn\u2019t request it just now.';
+        });
+    });
+    wrap.appendChild(btn);
+    wrap.appendChild(note);
+    return wrap;
+  }
+
+  function renderDiscover(items, data, session) {
     var list = document.getElementById('discover');
+    var prefs = data.preferences || {};
     items.forEach(function (pick) {
       var li = el('li', 'pick');
       var src = pick.posterPath ? 'https://image.tmdb.org/t/p/w342' + pick.posterPath : null;
       li.appendChild(poster(src, 'Poster for ' + pick.title, pick.title));
       li.appendChild(titleLine(pick.title, pick.year));
       if (pick.becauseOf) li.appendChild(el('div', 'talker', 'Because you watched ' + pick.becauseOf));
+      if (pick.isAnime && prefs.englishDubAnime) li.appendChild(el('span', 'chip', 'English dub not confirmed'));
 
       if (pick.overview) {
         var details = el('details', 'overview');
@@ -288,17 +348,21 @@
       }
 
       var type = pick.mediaType === 'tv' ? 'tv' : 'movie';
-      var action = el('a', 'action');
-      action.rel = 'noopener';
-      action.target = '_blank';
-      if (seerr) {
-        action.href = seerr + '/' + type + '/' + encodeURIComponent(pick.tmdbId);
-        action.textContent = 'Request it';
+      if (data.requestMode === 'direct') {
+        li.appendChild(requestButton(pick, type, session));
       } else {
-        action.href = 'https://www.themoviedb.org/' + type + '/' + encodeURIComponent(pick.tmdbId);
-        action.textContent = 'Read more on TMDb';
+        var action = el('a', 'action');
+        action.rel = 'noopener';
+        action.target = '_blank';
+        if (data.requestMode === 'link' && data.seerrUrl) {
+          action.href = data.seerrUrl + '/' + type + '/' + encodeURIComponent(pick.tmdbId);
+          action.textContent = 'Request in Seerr';
+        } else {
+          action.href = 'https://www.themoviedb.org/' + type + '/' + encodeURIComponent(pick.tmdbId);
+          action.textContent = 'Read more on TMDb';
+        }
+        li.appendChild(action);
       }
-      li.appendChild(action);
       list.appendChild(li);
     });
   }
@@ -321,49 +385,98 @@
     })
     .catch(function () { /* the heading falls back to "Your picks" */ });
 
-  getJson('Me', session)
-    .then(function (data) {
-      if (data.generatedUtc) {
-        var when = new Date(data.generatedUtc);
-        document.getElementById('updated').textContent =
-          'Updated ' + when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  var lastGenerated = null;
+
+  function render(data) {
+    lastGenerated = data.generatedUtc || null;
+    document.getElementById('message').hidden = true;
+    document.getElementById('library').textContent = '';
+    document.getElementById('discover').textContent = '';
+    document.getElementById('library-section').hidden = true;
+    document.getElementById('discover-section').hidden = true;
+
+    if (data.generatedUtc) {
+      var when = new Date(data.generatedUtc);
+      document.getElementById('updated').textContent =
+        'Updated ' + when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+
+    var prefs = data.preferences || {};
+    document.getElementById('dub-only').checked = !!prefs.englishDubAnime;
+    show('prefs');
+
+    var lib = data.inLibrary || [];
+    var disc = data.discover || [];
+
+    if (lib.length) {
+      if (data.playlistName) {
+        document.getElementById('library-note').textContent =
+          'Ready to watch now. They\u2019re also in your playlist \u201c' + data.playlistName +
+          '\u201d, which you\u2019ll find in every Jellyfin app.';
       }
+      renderLibrary(lib, session);
+      show('library-section');
+    }
 
-      var lib = data.inLibrary || [];
-      var disc = data.discover || [];
-
-      if (lib.length) {
-        if (data.playlistName) {
-          document.getElementById('library-note').textContent =
-            'Ready to watch now. They\u2019re also in your playlist \u201c' + data.playlistName +
-            '\u201d, which you\u2019ll find in every Jellyfin app.';
-        }
-        renderLibrary(lib, session);
-        show('library-section');
-      }
-
-      if (disc.length) {
-        document.getElementById('discover-note').textContent = data.jellyseerrUrl
-          ? 'Ask for any of these and they\u2019ll be added once they\u2019re approved.'
+    if (disc.length) {
+      document.getElementById('discover-note').textContent = data.requestMode === 'direct'
+        ? 'Press Request and it goes straight to Seerr under your own account, so your usual request limits apply.'
+        : data.requestMode === 'link'
+          ? 'Ask for any of these in Seerr, and they\u2019ll be added once they\u2019re approved.'
           : 'Titles you might like that aren\u2019t here. Mention any you\u2019d want to whoever runs this server.';
-        renderDiscover(disc, data.jellyseerrUrl);
-        show('discover-section');
-      }
+      renderDiscover(disc, data, session);
+      show('discover-section');
+    }
 
-      if (!lib.length && !disc.length) {
-        message([data.note || 'Nothing to suggest yet. Picks are built overnight from what you watch.']);
-      }
-    })
-    .catch(function (err) {
-      if (err && err.message === 'auth') {
-        message(['Your Jellyfin sign-in has expired. Sign in again, then reopen this page.']);
-      } else {
-        message([
-          'Picks couldn\u2019t be loaded from the server.',
-          'Check that the Medic Picks plugin is installed and enabled, then reload this page.'
-        ]);
-      }
-    });
+    if (!lib.length && !disc.length) {
+      message([data.note || 'Nothing to suggest yet. Picks are built overnight from what you watch.']);
+    }
+  }
+
+  function load() {
+    return getJson('Me', session).then(render);
+  }
+
+  // Changing the dub choice rebuilds this person's picks straight away.
+  document.getElementById('dub-only').addEventListener('change', function () {
+    var box = this;
+    var note = document.getElementById('prefs-note');
+    box.disabled = true;
+    note.textContent = 'Updating your picks\u2026';
+    var before = lastGenerated;
+    postJson('Me/Preferences', { englishDubAnime: box.checked }, session)
+      .then(function () {
+        var tries = 0;
+        (function poll() {
+          tries++;
+          getJson('Me', session).then(function (data) {
+            if (data.generatedUtc !== before || tries >= 15) {
+              render(data);
+              box.disabled = false;
+              note.textContent = 'Leaves out anime on this server that has no English audio.';
+            } else {
+              setTimeout(poll, 2000);
+            }
+          }).catch(function () { box.disabled = false; });
+        })();
+      })
+      .catch(function () {
+        box.checked = !box.checked;
+        box.disabled = false;
+        note.textContent = 'Couldn\u2019t save that just now. Try again.';
+      });
+  });
+
+  load().catch(function (err) {
+    if (err && err.message === 'auth') {
+      message(['Your Jellyfin sign-in has expired. Sign in again, then reopen this page.']);
+    } else {
+      message([
+        'Picks couldn\u2019t be loaded from the server.',
+        'Check that the Medic Picks plugin is installed and enabled, then reload this page.'
+      ]);
+    }
+  });
 })();
 </script>
 </body>
