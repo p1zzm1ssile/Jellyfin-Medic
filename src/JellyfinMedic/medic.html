@@ -29,6 +29,10 @@
             </div>
 
             <div id="so-status" class="so-status" role="status" hidden></div>
+            <div id="md-activity" class="md-activity" role="status" hidden>
+                <span id="md-activity-text"></span>
+                <button type="button" id="md-activity-go" class="so-btn so-btn-plain">Open the Tracks tab</button>
+            </div>
 
             <!-- Dashboard -->
             <section class="so-tabpanel" data-panel="dashboard" role="tabpanel">
@@ -39,6 +43,11 @@
                         <p id="md-health-big" class="md-big">Checking…</p>
                         <div id="so-counts" class="md-counts"></div>
                         <button type="button" class="so-btn so-btn-plain md-goto" data-goto="recs">See all checks</button>
+                    </section>
+                    <section class="md-tile" aria-labelledby="md-t-week">
+                        <h3 id="md-t-week" class="md-tile-head">This week</h3>
+                        <p id="md-week-big" class="md-big">Loading…</p>
+                        <div id="md-week" class="so-small md-week"></div>
                     </section>
                     <section class="md-tile" aria-labelledby="md-t-today">
                         <h3 id="md-t-today" class="md-tile-head">Today's tasks</h3>
@@ -86,7 +95,7 @@
                                 <strong>Free up disk space</strong>
                                 <p id="md-cleanup-text" class="so-muted so-small">Checking…</p>
                                 <div id="md-cleanup-actions" class="md-row md-wrap"></div>
-                                <p class="so-muted so-small">Only removes files on disk (leftover transcodes and deselected IPTV stream files). It never edits Jellyfin's database. After clearing stream files, run a library scan.</p>
+                                <p class="so-muted so-small">Only removes files on disk (leftover transcodes, old log files and deselected IPTV stream files). It never edits Jellyfin's database. After clearing stream files, run a library scan.</p>
                             </div>
                             <div class="md-maint-col">
                                 <strong>Is your server open to the internet?</strong>
@@ -300,13 +309,46 @@
                 </div>
 
                 <div class="so-panel" id="md-tracks-undet-panel" hidden>
-                    <h3>Undetermined tracks</h3>
-                    <p class="so-muted so-small">Tracks with no language tag. Kept by default, because an untagged track is often the one you want. To clear untagged subtitles while keeping untagged audio, tick "Remove untagged subtitles" in Track settings at the top of this tab. The safety rules still apply, and Scan and preview shows exactly what each file keeps.</p>
-                    <div class="so-scroll"><table class="so-table"><thead><tr><th>Type</th><th>Codec</th><th>Channels</th><th>Files</th><th>Tracks</th><th>Examples</th></tr></thead><tbody id="md-tracks-undet"></tbody></table></div>
+                    <h3>Tracks with no language set</h3>
+                    <p class="so-muted so-small">These tracks don't say what language they are, so Medic keeps them unless you choose otherwise. If you know the language, set it here. Tracks inside a film are labelled the next time you press Strip tracks for real. Separate subtitle files are renamed straight away, in the form Jellyfin recognises, such as "Film (2009).eng.srt".</p>
+                    <div class="md-row md-wrap" style="gap:8px;margin-bottom:8px">
+                        <select id="md-untag-kind" class="so-input" aria-label="Show">
+                            <option value="all">Audio and subtitles</option>
+                            <option value="audio">Audio only</option>
+                            <option value="subtitle">Subtitles only</option>
+                        </select>
+                        <input id="md-untag-search" class="so-input" type="search" placeholder="Search films" aria-label="Search films">
+                        <span id="md-untag-count" class="so-muted so-small"></span>
+                    </div>
+                    <details class="md-bulk" style="margin:0 0 10px">
+                        <summary>Set the language for lots of tracks at once</summary>
+                        <div class="md-row md-wrap" style="gap:8px;margin-top:8px">
+                            <span>Set</span>
+                            <select id="md-bulk-scope" class="so-input" aria-label="Which tracks">
+                                <option value="all">everything matching the filter above</option>
+                                <option value="page">just this page</option>
+                            </select>
+                            <span>to</span>
+                            <select id="md-bulk-lang" class="so-input" aria-label="Language"></select>
+                            <button type="button" id="md-bulk-go" class="so-btn so-btn-accent">Set language</button>
+                        </div>
+                        <label class="md-check"><input type="checkbox" id="md-bulk-only" checked> Audio: only where it's the film's only audio track</label>
+                        <label class="md-check"><input type="checkbox" id="md-bulk-anime" checked> Skip anime (its untagged audio is often Japanese)</label>
+                        <p class="so-muted so-small" style="margin:6px 0 0">Separate subtitle files aren't included: rename those one at a time. Nothing changes in your files until you press Strip tracks for real.</p>
+                        <p id="md-bulk-result" class="so-small" aria-live="polite"></p>
+                    </details>
+                    <div class="so-scroll"><table class="so-table"><thead><tr><th>Film</th><th>Type</th><th>Format</th><th>File size</th><th>Track size</th><th>Language</th></tr></thead><tbody id="md-untag-body"></tbody></table></div>
+                    <div class="md-pager" id="md-untag-pager"></div>
                 </div>
                 <div class="so-panel" id="md-tracks-preview-panel" hidden>
-                    <h3>Preview (first files that would change)</h3>
+                    <h3>What would change</h3>
+                    <p class="so-muted so-small">Every film the next run would change. Open one to see each track, and why it's kept or removed.</p>
+                    <div class="md-row md-wrap" style="gap:8px;margin-bottom:8px">
+                        <input id="md-changes-search" class="so-input" type="search" placeholder="Search films" aria-label="Search films">
+                        <span id="md-changes-count" class="so-muted so-small"></span>
+                    </div>
                     <div id="md-tracks-preview"></div>
+                    <div class="md-pager" id="md-changes-pager"></div>
                 </div>
                 <div class="so-panel" id="md-tracks-run-panel" hidden>
                     <h3>Run</h3>
@@ -525,11 +567,12 @@
                     <div class="so-settings-tools">
                         <input id="so-settings-search" class="so-input" type="search" placeholder="Search settings" aria-label="Search settings">
                         <select id="so-settings-section" class="so-input" aria-label="Section"></select>
+                        <label class="md-check"><input type="checkbox" id="so-settings-advice"> Only settings with advice</label>
                     </div>
                     <p id="so-settings-count" class="so-muted so-small"></p>
                     <div class="so-scroll">
                         <table class="so-table">
-                            <thead><tr><th>Section</th><th>Setting</th><th>Value</th></tr></thead>
+                            <thead><tr><th>Status</th><th>Section</th><th>Setting</th><th>Value</th><th></th></tr></thead>
                             <tbody id="so-settings-body"></tbody>
                         </table>
                     </div>
@@ -611,6 +654,20 @@
         #JellyfinMedicPage .so-suggest { color: #52b788; }
         #JellyfinMedicPage .so-why { margin: 0 0 6px; color: #ddd; font-size: 0.92em; }
         #JellyfinMedicPage .so-where { margin: 0; color: #aaa; font-size: 0.85em; }
+        #JellyfinMedicPage .md-activity { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #00a4dc; background: rgba(0, 164, 220, 0.12); }
+        #JellyfinMedicPage .md-activity[hidden] { display: none; }
+        #JellyfinMedicPage .md-week p { margin: 2px 0; }
+        #JellyfinMedicPage .md-week details { margin-top: 6px; }
+        #JellyfinMedicPage .md-pager { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+        #JellyfinMedicPage .md-chip { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 0.78em; border: 1px solid currentColor; }
+        #JellyfinMedicPage .md-chip-bad { color: #ff8a80; }
+        #JellyfinMedicPage .md-chip-set { color: #7fe0a4; }
+        #JellyfinMedicPage .md-dot { display: inline-flex; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: #fff; flex: none; }
+        #JellyfinMedicPage .md-dot.red { background: #d9534f; }
+        #JellyfinMedicPage .md-dot.yellow { background: #e0a800; color: #1a1a1a; }
+        #JellyfinMedicPage .md-dot.green { background: #2e9d5b; }
+        #JellyfinMedicPage .md-setting-advice { margin: 4px 0 0; font-size: 0.85em; color: #c8ccd4; }
+        #JellyfinMedicPage .md-setting-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
         #JellyfinMedicPage .md-where-link { color: #00a4dc; text-decoration: underline; text-underline-offset: 2px; }
         #JellyfinMedicPage .md-where-link:hover { color: #4fc3f7; }
         #JellyfinMedicPage .md-where-link:focus-visible { outline: 2px solid #00a4dc; outline-offset: 2px; border-radius: 2px; }
@@ -925,6 +982,19 @@
                     }
 
                     if (pick(f, 'Why')) card.appendChild(el('p', 'so-why', fmtTimes(pick(f, 'Why'))));
+                    if (pick(f, 'Area') === 'Logs' && !ignored) {
+                        const reset = el('button', 'so-btn so-btn-plain', 'Fixed it: count again from now');
+                        reset.type = 'button';
+                        reset.title = 'Once you have fixed the cause, Medic starts counting this error again from zero';
+                        reset.addEventListener('click', async function () {
+                            reset.disabled = true;
+                            try {
+                                await postJson('/JellyfinMedic/Logs/ResetCount');
+                                await loadReport();
+                            } catch (e) { reset.disabled = false; }
+                        });
+                        card.appendChild(reset);
+                    }
                     if (pick(f, 'Where')) card.appendChild(whereLine(pick(f, 'Where'), {
                         title: pick(f, 'Title'), current: pick(f, 'Current'), suggested: pick(f, 'Recommended'),
                         why: pick(f, 'Why'), where: pick(f, 'Where')
@@ -1085,6 +1155,7 @@
                         });
                         if (report) { renderDashboard(); renderRecs(); }
                         if (plugins) renderPlugins();
+                        if (settings) renderSettings();
                     } catch (err) {
                         console.error('Jellyfin Medic: could not update ignored finding', err);
                         showStatus('Couldn\'t save that change. Check the Jellyfin log for Jellyfin Medic errors.', 'error');
@@ -1223,27 +1294,127 @@
 
                 // ---------- All settings ----------
 
+                // Which Jellyfin page each setting lives on.
+                function settingPage(section, name) {
+                    if (/^Library: /.test(section)) return '#/dashboard/libraries';
+                    if (section === 'Transcoding') return '#/dashboard/playback/transcoding';
+                    if (section === 'Networking') return '#/dashboard/networking';
+                    if (section === 'Live TV') return '#/dashboard/livetv';
+                    if (section === 'Metadata') return '#/dashboard/libraries/metadata';
+                    if (name === 'RemoteClientBitrateLimit') return '#/dashboard/playback/streaming';
+                    if (/^Trickplay/i.test(name)) return '#/dashboard/playback/trickplay';
+                    if (/Resume/i.test(name)) return '#/dashboard/playback/resume';
+                    if (/^(EnableFolderView|DisplaySpecialsWithinSeasons|EnableGroupingIntoCollections|DisplayCollectionsView|EnableExternalContentInSuggestions|DateAddedBehavior|SaveMetadataHidden|LibraryMonitorDelay|LibraryUpdateDuration)$/.test(name)) return '#/dashboard/libraries/display';
+                    return '#/dashboard/settings';
+                }
+
+                // Findings that are about a particular setting, keyed "Section|Name".
+                function settingAdvice() {
+                    const map = {};
+                    allFindings().forEach(function (f) {
+                        const key = pick(f, 'Setting');
+                        if (!key) return;
+                        (map[key] = map[key] || []).push(f);
+                    });
+                    return map;
+                }
+
+                // "TrickplayOptions.EnableHwAcceleration" → "Trickplay options › Enable HW acceleration"
+                function friendlyName(name) {
+                    const caps = { Hw: 'HW', Http: 'HTTP', Https: 'HTTPS', Ui: 'UI', Url: 'URL', Urls: 'URLs', Id: 'ID', Ids: 'IDs', Lufs: 'LUFS', Tv: 'TV', Ip: 'IP', Dlna: 'DLNA', Upnp: 'UPnP', Ssl: 'SSL', Api: 'API', Vpp: 'VPP', Qsv: 'QSV', Nvenc: 'NVENC', Hevc: 'HEVC', Av1: 'AV1', Vaapi: 'VAAPI', Dts: 'DTS', Pgs: 'PGS', Srt: 'SRT', Cpu: 'CPU', Gpu: 'GPU' };
+                    return String(name || '').split('.').map(function (part) {
+                        const words = part.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').split(' ');
+                        return words.map(function (w, i) {
+                            const fixed = caps[w];
+                            if (fixed) return fixed;
+                            if (/^[A-Z0-9]{2,}$/.test(w)) return w; // already an abbreviation, e.g. LUFS
+                            return i === 0 ? w : w.toLowerCase();
+                        }).join(' ');
+                    }).join(' › ');
+                }
+
+                function settingStatus(list) {
+                    const live = (list || []).filter(function (f) { return !isIgnored(f); });
+                    if (live.some(function (f) { return pick(f, 'Severity') === 'Problem'; })) return 'red';
+                    if (live.length) return 'yellow';
+                    return 'green';
+                }
+
                 function renderSettings() {
                     if (!settings) return;
                     const query = $('so-settings-search').value.trim().toLowerCase();
                     const section = $('so-settings-section').value;
+                    const adviceOnly = $('so-settings-advice').checked;
+                    const advice = settingAdvice();
                     const body = $('so-settings-body');
                     body.innerHTML = '';
+                    let reds = 0, yellows = 0;
                     const matches = settings.filter(function (s) {
+                        const key = pick(s, 'Section') + '|' + pick(s, 'Name');
+                        const status = settingStatus(advice[key]);
+                        if (status === 'red') reds++;
+                        if (status === 'yellow') yellows++;
+                        if (adviceOnly && !advice[key]) return false;
                         if (section && pick(s, 'Section') !== section) return false;
                         if (!query) return true;
                         return (pick(s, 'Name') + ' ' + pick(s, 'Value')).toLowerCase().indexOf(query) >= 0;
                     });
+                    const order = { red: 0, yellow: 1, green: 2 };
+                    matches.sort(function (a, b) {
+                        return order[settingStatus(advice[pick(a, 'Section') + '|' + pick(a, 'Name')])] - order[settingStatus(advice[pick(b, 'Section') + '|' + pick(b, 'Name')])];
+                    });
                     matches.slice(0, 500).forEach(function (s) {
+                        const key = pick(s, 'Section') + '|' + pick(s, 'Name');
+                        const list = advice[key] || [];
+                        const status = settingStatus(list);
                         const row = el('tr');
+
+                        const dotCell = el('td');
+                        const dot = el('span', 'md-dot ' + status, status === 'green' ? '✓' : 'i');
+                        dot.title = status === 'red' ? 'Needs changing' : status === 'yellow' ? 'Could be better' : 'All good';
+                        dot.setAttribute('aria-label', dot.title);
+                        dotCell.appendChild(dot);
+                        row.appendChild(dotCell);
+
                         row.appendChild(el('td', 'so-muted', pick(s, 'Section')));
-                        row.appendChild(el('td', null, pick(s, 'Name')));
+                        const nameCell = el('td');
+                        nameCell.appendChild(el('div', null, friendlyName(pick(s, 'Name'))));
+                        nameCell.appendChild(el('div', 'so-muted so-small', pick(s, 'Name')));
+                        list.forEach(function (f) {
+                            const ignored = isIgnored(f);
+                            const advice = el('div', 'md-setting-advice', (ignored ? 'Dismissed: ' : '') + fmtTimes(pick(f, 'Title')) + (pick(f, 'Recommended') && !ignored ? '. Suggested: ' + pick(f, 'Recommended') : ''));
+                            nameCell.appendChild(advice);
+                            const actions = el('div', 'md-setting-actions');
+                            const dismiss = el('button', 'so-btn so-btn-plain', ignored ? 'Show again' : 'Dismiss');
+                            dismiss.type = 'button';
+                            dismiss.title = ignored ? 'Bring this advice back' : 'You are happy with this setting: mark it as all good';
+                            dismiss.addEventListener('click', function () { toggleIgnore(f, dismiss); });
+                            actions.appendChild(dismiss);
+                            nameCell.appendChild(actions);
+                        });
+                        row.appendChild(nameCell);
                         row.appendChild(el('td', null, pick(s, 'Value')));
+
+                        const openCell = el('td');
+                        const open = el('a', 'md-where-link', 'Open ↗');
+                        open.href = webRoot() + settingPage(pick(s, 'Section'), pick(s, 'Name'));
+                        open.target = '_blank';
+                        open.rel = 'noopener';
+                        open.title = 'Opens this setting\'s page in Jellyfin, in a new tab';
+                        const first = list.find(function (f) { return !isIgnored(f); });
+                        open.addEventListener('click', function () {
+                            if (first) {
+                                rememberIssue({ title: pick(first, 'Title'), current: pick(first, 'Current'), suggested: pick(first, 'Recommended'), why: pick(first, 'Why'), where: pick(first, 'Where') });
+                            } else {
+                                rememberIssue({ title: 'Setting: ' + pick(s, 'Name'), current: pick(s, 'Value'), why: 'Medic has no advice for this setting. It\'s shown here so you can find it.' });
+                            }
+                        });
+                        openCell.appendChild(open);
+                        row.appendChild(openCell);
                         body.appendChild(row);
                     });
-                    $('so-settings-count').textContent = matches.length > 500
-                        ? 'Showing 500 of ' + matches.length + ' settings. Search to narrow it down.'
-                        : matches.length + ' settings';
+                    const shown = matches.length > 500 ? 'Showing 500 of ' + matches.length + ' settings. Search to narrow it down.' : matches.length + ' settings';
+                    $('so-settings-count').textContent = shown + ' · ' + reds + ' need changing · ' + yellows + ' could be better';
                 }
 
                 function fillSections() {
@@ -1268,6 +1439,7 @@
 
                 $('so-settings-search').addEventListener('input', renderSettings);
                 $('so-settings-section').addEventListener('change', renderSettings);
+                $('so-settings-advice').addEventListener('change', renderSettings);
 
                 // ---------- Dashboard ----------
 
@@ -2602,6 +2774,66 @@
                 const stopBtn2 = $('md-stop2');
                 if (stopBtn2) stopBtn2.addEventListener('click', stopAllTasks);
 
+                // ---------- Activity banner and "This week" ----------
+
+                let activityTimer = null;
+
+                async function updateActivity() {
+                    clearTimeout(activityTimer);
+                    const box = $('md-activity');
+                    try {
+                        const results = await Promise.all([
+                            getJson('/JellyfinMedic/Tracks/Scan/Status'),
+                            getJson('/JellyfinMedic/Tracks/Progress')
+                        ]);
+                        const scan = results[0] || {}, run = results[1] || {};
+                        let text = null;
+                        if (pick(run, 'Running')) {
+                            text = (pick(run, 'DryRun') ? 'Dry run going: ' : 'Track cleanup running: ') + tracksProgressText(run, true, pick(run, 'Total') || 0, pick(run, 'Done') || 0);
+                        } else if (pick(scan, 'Running')) {
+                            const total = pick(scan, 'Total') || 0, done = pick(scan, 'Done') || 0;
+                            text = total ? 'Track scan running: ' + done.toLocaleString('en-GB') + ' of ' + total.toLocaleString('en-GB') + ' files checked.' : 'Track scan starting…';
+                        }
+                        box.hidden = !text || activeTab === 'tracks';
+                        if (text) {
+                            $('md-activity-text').textContent = text;
+                            activityTimer = setTimeout(updateActivity, 4000);
+                        }
+                    } catch (e) {
+                        box.hidden = true;
+                    }
+                }
+                $('md-activity-go').addEventListener('click', function () { selectTab('tracks'); window.scrollTo(0, 0); });
+
+                async function loadWeekly() {
+                    try {
+                        const w = await getJson('/JellyfinMedic/Weekly');
+                        const big = $('md-week-big');
+                        const box = $('md-week');
+                        box.innerHTML = '';
+                        const fixedList = pick(w, 'FixedIssues') || [], newList = pick(w, 'NewIssues') || [];
+                        const freed = pick(w, 'FreedTotal') || 0;
+                        big.textContent = freed > 0 ? tracksSize(freed) + ' freed' : (fixedList.length ? fixedList.length + ' fixed' : 'Quiet week');
+                        const since = pick(w, 'Since') ? new Date(pick(w, 'Since')).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null;
+                        const line = function (t) { box.appendChild(el('p', null, t)); };
+                        if (since) line('Since ' + since + ':');
+                        line(fixedList.length + ' issue' + (fixedList.length === 1 ? '' : 's') + ' fixed, ' + newList.length + ' new.');
+                        const by = pick(w, 'FreedBy') || {};
+                        Object.keys(by).forEach(function (k) { line(k + ': ' + tracksSize(by[k]) + ' freed.'); });
+                        if (pick(w, 'Restarts')) line('Medic restarted Jellyfin ' + pick(w, 'Restarts') + ' time' + (pick(w, 'Restarts') === 1 ? '' : 's') + '.');
+                        line('Now: ' + (pick(w, 'NeedChanging') || 0) + ' need changing, ' + (pick(w, 'CouldBeBetter') || 0) + ' could be better.');
+                        if (newList.length || fixedList.length) {
+                            const d = el('details');
+                            d.appendChild(el('summary', null, 'What changed'));
+                            newList.forEach(function (t) { d.appendChild(el('p', 'so-small', 'New: ' + fmtTimes(t))); });
+                            fixedList.forEach(function (t) { d.appendChild(el('p', 'so-small', 'Fixed: ' + fmtTimes(t))); });
+                            box.appendChild(d);
+                        }
+                    } catch (e) {
+                        $('md-week-big').textContent = '–';
+                    }
+                }
+
                 async function loadCleanup() {
                     try {
                         const data = await getJson('/JellyfinMedic/Cleanup');
@@ -2941,53 +3173,242 @@
                     row('Subtitle tracks to remove', (pick(tracksScan, 'SubtitlesToRemove') || 0).toLocaleString('en-GB'));
                     $('md-tracks-summary').appendChild(dl);
 
-                    // Undetermined groups
-                    const undet = pick(tracksScan, 'Undetermined') || [];
-                    $('md-tracks-undet-panel').hidden = undet.length === 0;
-                    const ubody = $('md-tracks-undet');
-                    if (ubody) {
-                        ubody.innerHTML = '';
-                        undet.forEach(function (g) {
-                            const tr = el('tr');
-                            tr.appendChild(el('td', null, pick(g, 'Kind')));
-                            tr.appendChild(el('td', null, pick(g, 'Codec') || '–'));
-                            tr.appendChild(el('td', null, pick(g, 'Channels') || '–'));
-                            tr.appendChild(el('td', null, (pick(g, 'Files') || 0).toLocaleString('en-GB')));
-                            tr.appendChild(el('td', null, (pick(g, 'Tracks') || pick(g, 'Files') || 0).toLocaleString('en-GB')));
-                            tr.appendChild(el('td', 'so-muted', (pick(g, 'Examples') || []).slice(0, 3).join(', ')));
-                            ubody.appendChild(tr);
-                        });
+                    if (pick(tracksScan, 'Stale')) {
+                        $('md-tracks-summary').appendChild(el('p', 'so-muted so-small', 'Files have changed since this scan. Scan again to see where things stand now.'));
                     }
 
-                    // Preview
-                    const sample = pick(tracksScan, 'Sample') || [];
-                    $('md-tracks-preview-panel').hidden = sample.length === 0;
-                    const pv = $('md-tracks-preview');
-                    if (pv) {
-                        pv.innerHTML = '';
-                        sample.forEach(function (f) {
-                            const d = el('details');
-                            d.appendChild(el('summary', null, (pick(f, 'Path') || '').split(/[\\/]/).pop() + ' — removing ' + pick(f, 'RemovingAudio') + ' audio / ' + pick(f, 'RemovingSubtitles') + ' subs'));
-                            const tbl = el('table', 'so-table');
-                            const body = el('tbody');
-                            (pick(f, 'Tracks') || []).forEach(function (t) {
-                                const tr = el('tr');
-                                tr.appendChild(el('td', null, pick(t, 'Kind')));
-                                tr.appendChild(el('td', null, (pick(t, 'Language') || 'und')));
-                                tr.appendChild(el('td', null, pick(t, 'Codec') + (pick(t, 'Channels') ? ' ' + pick(t, 'Channels') : '')));
-                                tr.appendChild(el('td', pick(t, 'Keep') ? 'md-ok-text' : 'md-bad-text', pick(t, 'Keep') ? 'keep' : 'remove'));
-                                tr.appendChild(el('td', 'so-muted so-small', pick(t, 'KeepReason')));
-                                body.appendChild(tr);
-                            });
-                            tbl.appendChild(body);
-                            d.appendChild(tbl);
-                            pv.appendChild(d);
-                        });
-                        if (changing > sample.length) pv.appendChild(el('p', 'so-muted so-small', 'Showing ' + sample.length + ' of ' + changing.toLocaleString('en-GB') + ' changing files.'));
-                    }
+                    untagPage = 1;
+                    changesPage = 1;
+                    $('md-tracks-undet-panel').hidden = (pick(tracksScan, 'UntaggedCount') || 0) === 0;
+                    $('md-tracks-preview-panel').hidden = changing === 0;
+                    if (!$('md-tracks-undet-panel').hidden) loadUntagged();
+                    if (!$('md-tracks-preview-panel').hidden) loadChanges();
 
-                    $('md-tracks-run-panel').hidden = changing === 0;
+                    $('md-tracks-run-panel').hidden = changing === 0 && !tracksRunActive;
                 }
+
+                // ---------- Tracks: plain names, paged lists, setting languages ----------
+
+                const LANGS = [['', 'Not set'],['eng', 'English'],['jpn', 'Japanese'],['fre', 'French'],['ger', 'German'],['spa', 'Spanish'],['ita', 'Italian'],['kor', 'Korean'],['chi', 'Chinese'],['por', 'Portuguese'],['rus', 'Russian'],['dut', 'Dutch'],['swe', 'Swedish'],['nor', 'Norwegian'],['dan', 'Danish'],['fin', 'Finnish'],['pol', 'Polish'],['hin', 'Hindi']];
+                const LANG_NAME = {};
+                LANGS.forEach(function (l) { if (l[0]) LANG_NAME[l[0]] = l[1]; });
+                LANG_NAME.en = 'English';
+
+                function langName(code) {
+                    if (!code || code === 'und') return 'Not set';
+                    return LANG_NAME[code] || code;
+                }
+
+                function formatName(codec, channels) {
+                    const c = String(codec || '').toLowerCase();
+                    const names = {
+                        aac: 'AAC', ac3: 'Dolby Digital', eac3: 'Dolby Digital Plus', dts: 'DTS', truehd: 'Dolby TrueHD',
+                        flac: 'FLAC', mp3: 'MP3', opus: 'Opus', vorbis: 'Vorbis', pcm_s16le: 'PCM', pcm_s24le: 'PCM',
+                        pgssub: 'PGS (picture)', hdmv_pgs_subtitle: 'PGS (picture)', dvdsub: 'VobSub (picture)', dvd_subtitle: 'VobSub (picture)',
+                        subrip: 'SRT (text)', srt: 'SRT (text)', ass: 'ASS (text)', ssa: 'SSA (text)', webvtt: 'WebVTT (text)', mov_text: 'MP4 text'
+                    };
+                    const ch = { '1ch': 'mono', '2ch': 'stereo', '6ch': '5.1', '8ch': '7.1' }[channels] || '';
+                    return (names[c] || c.toUpperCase() || '–') + (ch ? ' ' + ch : '');
+                }
+
+                function langSelect(selected) {
+                    const sel = el('select', 'so-input');
+                    sel.setAttribute('aria-label', 'Language');
+                    LANGS.forEach(function (l) {
+                        const o = el('option', null, l[1]);
+                        o.value = l[0];
+                        if (l[0] === (selected || '')) o.selected = true;
+                        sel.appendChild(o);
+                    });
+                    return sel;
+                }
+
+                function pager(box, page, pages, total, onGo) {
+                    box.innerHTML = '';
+                    if (pages <= 1) return;
+                    const prev = el('button', 'so-btn so-btn-plain', '‹ Previous');
+                    prev.type = 'button';
+                    prev.disabled = page <= 1;
+                    prev.addEventListener('click', function () { onGo(page - 1); });
+                    const next = el('button', 'so-btn so-btn-plain', 'Next ›');
+                    next.type = 'button';
+                    next.disabled = page >= pages;
+                    next.addEventListener('click', function () { onGo(page + 1); });
+                    box.appendChild(prev);
+                    box.appendChild(el('span', 'so-muted so-small', 'Page ' + page + ' of ' + pages));
+                    box.appendChild(next);
+                }
+
+                function debounce(fn, ms) {
+                    let t = null;
+                    return function () { clearTimeout(t); t = setTimeout(fn, ms); };
+                }
+
+                let untagPage = 1;
+                let changesPage = 1;
+                let tracksRunActive = false;
+
+                async function loadUntagged() {
+                    const body = $('md-untag-body');
+                    try {
+                        const r = await getJson('/JellyfinMedic/Tracks/Scan/Untagged?page=' + untagPage + '&size=25&kind=' + encodeURIComponent($('md-untag-kind').value) + '&search=' + encodeURIComponent($('md-untag-search').value.trim()));
+                        const total = pick(r, 'Total') || 0;
+                        untagPage = pick(r, 'Page') || 1;
+                        $('md-untag-count').textContent = total.toLocaleString('en-GB') + ' track' + (total === 1 ? '' : 's');
+                        body.innerHTML = '';
+                        (pick(r, 'Items') || []).forEach(function (u) { body.appendChild(untaggedRow(u)); });
+                        if (total === 0) {
+                            const tr = el('tr');
+                            const td = el('td', 'so-muted', 'Nothing matches.');
+                            td.colSpan = 6;
+                            tr.appendChild(td);
+                            body.appendChild(tr);
+                        }
+                        pager($('md-untag-pager'), untagPage, pick(r, 'Pages') || 1, total, function (p) { untagPage = p; loadUntagged(); });
+                    } catch (e) {
+                        body.innerHTML = '';
+                        $('md-untag-count').textContent = 'Couldn\'t load the list. Scan again.';
+                    }
+                }
+
+                function untaggedRow(u) {
+                    const tr = el('tr');
+                    const film = el('td');
+                    film.appendChild(el('div', null, pick(u, 'Title') || pick(u, 'FileName')));
+                    film.appendChild(el('div', 'so-muted so-small', pick(u, 'External') ? (pick(u, 'ExternalPath') || '').split(/[\\/]/).pop() : pick(u, 'FileName')));
+                    tr.appendChild(film);
+
+                    const type = el('td', null, pick(u, 'Kind') === 'audio' ? 'Audio' : (pick(u, 'External') ? 'Subtitles (separate file)' : 'Subtitles'));
+                    if (pick(u, 'WillBeRemoved')) type.appendChild(el('span', 'md-chip md-chip-bad', 'will be removed'));
+                    tr.appendChild(type);
+                    tr.appendChild(el('td', null, formatName(pick(u, 'Codec'), pick(u, 'Channels'))));
+                    tr.appendChild(el('td', null, tracksSize(pick(u, 'FileBytes') || 0)));
+                    const tb = pick(u, 'TrackBytes');
+                    tr.appendChild(el('td', null, tb ? 'about ' + tracksSize(tb) : (pick(u, 'Kind') === 'subtitle' ? 'small' : '–')));
+
+                    const cell = el('td');
+                    const sel = langSelect(pick(u, 'SetLanguage') || (pick(u, 'External') ? 'eng' : ''));
+                    const note = el('div', 'so-muted so-small');
+                    const btn = el('button', 'so-btn so-btn-plain');
+                    btn.type = 'button';
+
+                    if (pick(u, 'External')) {
+                        const ext = '.' + String(pick(u, 'ExternalPath') || '.srt').split('.').pop();
+                        const base = String(pick(u, 'FileName') || '').replace(/\.[^.]+$/, '');
+                        const label = function () { return 'Rename to ' + base + '.' + (sel.value || 'eng') + ext; };
+                        btn.textContent = label();
+                        sel.addEventListener('change', function () { btn.textContent = label(); });
+                        if (pick(u, 'SetLanguage')) { btn.disabled = true; btn.textContent = 'Renamed'; sel.disabled = true; }
+                        btn.addEventListener('click', async function () {
+                            if (!sel.value) { note.textContent = 'Choose a language first.'; return; }
+                            btn.disabled = true;
+                            try {
+                                const r = await postJson('/JellyfinMedic/Tracks/RenameSubtitle', { path: pick(u, 'ExternalPath'), language: sel.value });
+                                note.textContent = pick(r, 'Message');
+                                if (pick(r, 'Ok')) { btn.textContent = 'Renamed'; sel.disabled = true; } else { btn.disabled = false; }
+                            } catch (e) { btn.disabled = false; note.textContent = 'Couldn\'t rename it.'; }
+                        });
+                    } else {
+                        btn.textContent = 'Save';
+                        if (pick(u, 'SetLanguage')) note.appendChild(el('span', 'md-chip md-chip-set', 'set to ' + langName(pick(u, 'SetLanguage'))));
+                        btn.addEventListener('click', async function () {
+                            btn.disabled = true;
+                            try {
+                                const r = await postJson('/JellyfinMedic/Tracks/SetLanguage', { path: pick(u, 'Path'), index: pick(u, 'Index'), language: sel.value });
+                                note.textContent = pick(r, 'Message');
+                            } catch (e) { note.textContent = 'Couldn\'t save that.'; }
+                            btn.disabled = false;
+                        });
+                    }
+
+                    const wrap = el('div', 'md-row md-wrap');
+                    wrap.style.gap = '6px';
+                    wrap.appendChild(sel);
+                    wrap.appendChild(btn);
+                    cell.appendChild(wrap);
+                    cell.appendChild(note);
+                    tr.appendChild(cell);
+                    return tr;
+                }
+
+                async function loadChanges() {
+                    const pv = $('md-tracks-preview');
+                    try {
+                        const r = await getJson('/JellyfinMedic/Tracks/Scan/Changes?page=' + changesPage + '&size=25&search=' + encodeURIComponent($('md-changes-search').value.trim()));
+                        const total = pick(r, 'Total') || 0;
+                        changesPage = pick(r, 'Page') || 1;
+                        $('md-changes-count').textContent = total.toLocaleString('en-GB') + ' film' + (total === 1 ? '' : 's');
+                        pv.innerHTML = '';
+                        (pick(r, 'Items') || []).forEach(function (f) { pv.appendChild(changeRow(f)); });
+                        if (total === 0) pv.appendChild(el('p', 'so-muted', 'Nothing matches.'));
+                        pager($('md-changes-pager'), changesPage, pick(r, 'Pages') || 1, total, function (p) { changesPage = p; loadChanges(); });
+                    } catch (e) {
+                        pv.innerHTML = '';
+                        $('md-changes-count').textContent = 'Couldn\'t load the list. Scan again.';
+                    }
+                }
+
+                function changeRow(f) {
+                    const d = el('details');
+                    const bits = [];
+                    if (pick(f, 'RemovingAudio')) bits.push('remove ' + pick(f, 'RemovingAudio') + ' audio');
+                    if (pick(f, 'RemovingSubtitles')) bits.push('remove ' + pick(f, 'RemovingSubtitles') + ' subtitle' + (pick(f, 'RemovingSubtitles') === 1 ? '' : 's'));
+                    if (pick(f, 'TagsToWrite')) bits.push('set ' + pick(f, 'TagsToWrite') + ' language' + (pick(f, 'TagsToWrite') === 1 ? '' : 's'));
+                    if (pick(f, 'SavingBytes')) bits.push('frees about ' + tracksSize(pick(f, 'SavingBytes')));
+                    if (pick(f, 'SizeBytes')) bits.push('file ' + tracksSize(pick(f, 'SizeBytes')));
+                    d.appendChild(el('summary', null, (pick(f, 'Title') || (pick(f, 'Path') || '').split(/[\\/]/).pop()) + ' — ' + bits.join(' · ')));
+                    const tbl = el('table', 'so-table');
+                    const head = el('thead');
+                    const hr = el('tr');
+                    ['Type', 'Language', 'Format', '', 'Why'].forEach(function (h) { hr.appendChild(el('th', null, h)); });
+                    head.appendChild(hr);
+                    tbl.appendChild(head);
+                    const body = el('tbody');
+                    (pick(f, 'Tracks') || []).forEach(function (t) {
+                        const tr = el('tr');
+                        tr.appendChild(el('td', null, pick(t, 'Kind') === 'audio' ? 'Audio' : (pick(t, 'External') ? 'Subtitles (separate file)' : 'Subtitles')));
+                        tr.appendChild(el('td', null, langName(pick(t, 'Language')) + (pick(t, 'Overridden') ? ' (set by you)' : '')));
+                        tr.appendChild(el('td', null, formatName(pick(t, 'Codec'), pick(t, 'Channels'))));
+                        tr.appendChild(el('td', pick(t, 'Keep') ? 'md-ok-text' : 'md-bad-text', pick(t, 'Keep') ? 'keep' : 'remove'));
+                        tr.appendChild(el('td', 'so-muted so-small', pick(t, 'KeepReason')));
+                        body.appendChild(tr);
+                    });
+                    tbl.appendChild(body);
+                    d.appendChild(tbl);
+                    return d;
+                }
+
+                (function () {
+                    const sel = $('md-bulk-lang');
+                    LANGS.forEach(function (l) { if (!l[0]) return; const o = el('option', null, l[1]); o.value = l[0]; sel.appendChild(o); });
+                    sel.value = 'eng';
+                })();
+                $('md-bulk-go').addEventListener('click', async function () {
+                    const scope = $('md-bulk-scope').value;
+                    const count = scope === 'page' ? $('md-untag-body').querySelectorAll('tr').length : ($('md-untag-count').textContent || '').replace(/[^0-9]/g, '');
+                    const lang = $('md-bulk-lang').options[$('md-bulk-lang').selectedIndex].text;
+                    if (!window.confirm('Set up to ' + count + ' tracks to ' + lang + '? Medic skips the ones the ticked options leave out. Nothing changes in your files until you strip tracks.')) return;
+                    $('md-bulk-go').disabled = true;
+                    try {
+                        const r = await postJson('/JellyfinMedic/Tracks/SetLanguageBulk', {
+                            language: $('md-bulk-lang').value,
+                            kind: $('md-untag-kind').value,
+                            search: $('md-untag-search').value.trim(),
+                            onlyAudioTrack: $('md-bulk-only').checked,
+                            skipAnime: $('md-bulk-anime').checked,
+                            page: scope === 'page' ? untagPage : 0,
+                            size: 25
+                        });
+                        $('md-bulk-result').textContent = pick(r, 'Message');
+                        loadUntagged();
+                    } catch (e) {
+                        $('md-bulk-result').textContent = 'Couldn\'t set them. Scan again, then try.';
+                    }
+                    $('md-bulk-go').disabled = false;
+                });
+                $('md-untag-kind').addEventListener('change', function () { untagPage = 1; loadUntagged(); });
+                $('md-untag-search').addEventListener('input', debounce(function () { untagPage = 1; loadUntagged(); }, 300));
+                $('md-changes-search').addEventListener('input', debounce(function () { changesPage = 1; loadChanges(); }, 300));
 
                 async function startTracks(dryRun) {
                     if (!dryRun && !window.confirm('Strip tracks for real? This rewrites your media files. You have backed up and tested on a few files first, right?')) return;
@@ -3277,12 +3698,15 @@
                         const p = await getJson('/JellyfinMedic/Tracks/Progress');
                         const running = pick(p, 'Running');
                         $('md-tracks-stop').hidden = !running;
+                        tracksRunActive = !!running;
                         const realRun = running && !pick(p, 'DryRun');
                         $('md-tracks-pause').hidden = !realRun;
                         $('md-tracks-pause').textContent = pick(p, 'Paused') ? 'Resume' : 'Pause';
                         $('md-tracks-dry').disabled = running;
                         $('md-tracks-go').disabled = running;
                         const total = pick(p, 'Total') || 0, done = pick(p, 'Done') || 0;
+                        // Keep the Run panel on screen while a run is going or has results, even without a fresh scan.
+                        if (running || total > 0) $('md-tracks-run-panel').hidden = false;
                         if (total > 0 || running || force) {
                             $('md-tracks-progress').textContent = tracksProgressText(p, running, total, done);
                             const log = pick(p, 'Recent') || [];
@@ -3372,6 +3796,7 @@
                         hideStatus();
                         renderDashboard();
                         renderRecs();
+                        if (settings) renderSettings();
                     } catch (err) {
                         console.error('Jellyfin Medic: report failed', err);
                         showStatus('The checks couldn\'t run. Check the Jellyfin log for Jellyfin Medic errors.', 'error');
@@ -3398,6 +3823,7 @@
                         if (name === 'dashboard') {
                             startNowTimer();
                             loadCleanup();
+                            loadWeekly();
                             loadExposureDefaults();
                             if (!cal || calWeek !== 0) { calWeek = 0; await loadCalendar(); } else { renderToday(); }
                             if (!history) await loadHistory();
@@ -3443,6 +3869,7 @@
 
                 function selectTab(name) {
                     activeTab = name;
+                    updateActivity();
                     if (name !== 'dashboard') stopNowTimer();
                     page.querySelectorAll('.so-tab').forEach(function (tab) {
                         const selected = tab.getAttribute('data-tab') === name;
@@ -3529,6 +3956,7 @@
                 return function refresh() {
                     loadReport();
                     loadTab(activeTab);
+                    updateActivity();
                 };
             }
 

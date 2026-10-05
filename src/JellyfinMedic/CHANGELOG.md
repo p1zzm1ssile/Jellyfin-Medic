@@ -5,6 +5,26 @@ All notable changes to Jellyfin Medic are recorded here. The newest version is a
 This project uses [semantic versioning](https://semver.org): given a version X.Y.Z,
 Z changes for fixes, Y for new features, X for changes that break compatibility.
 
+## [1.0.10] – 2026-10-05
+
+### Added
+- **See a running scan or track run straight away.** If a track scan or a track cleanup run is going when you open Medic, a bar at the top of every tab shows how far it's got, with a button to the Tracks tab. No need to scan again.
+- **Set the language for lots of tracks at once.** Set everything matching the list's filter, or just the page you're on. By default audio is only labelled where it's the film's only audio track, and anime is skipped, because its untagged audio is often Japanese.
+- **This week.** A new Dashboard tile shows how many issues were fixed or appeared in the last week, how much space Medic freed (track cleanup, clean-ups, duplicates), and how often it restarted Jellyfin.
+- **Set a track's language yourself.** The Tracks tab lists every track with no language, film by film. Pick the language and Medic does the rest: tracks inside a film are labelled, with a readable title such as "English 5.1", the next time you strip tracks, and separate subtitle files are renamed straight away to the form Jellyfin recognises, such as "Film (2009).eng.srt".
+- **Pages and search** for "Tracks with no language set" and "What would change", so you can go through every film, not just the first 50.
+- **Red, yellow and green markers on Jellyfin's settings.** On the Settings tab, each Jellyfin setting is marked: red needs changing, yellow could be better, green is fine. Each has an Open link to its page in Jellyfin, which shows the issue box, and Dismiss turns it green. Tick "Only settings with advice" to see just those. Settings also have plain names now.
+- **Clear old logs.** The Dashboard's clean-up panel can remove Jellyfin log files older than a day.
+- **"Fixed it: count again from now"** on repeated-error findings, so the count starts again from zero once you've fixed the cause. These findings also say when the error last happened.
+
+### Changed
+- The no-language list shows one track per row with the film, type, format, file size and track size, instead of library-wide totals that were easy to misread.
+- Plainer wording on the Tracks tab and in the run log.
+
+### Fixed
+- Coming back to Medic during a track run no longer hides its progress until you scan again. The progress shows straight away, and the last scan's lists stay visible, marked as out of date.
+- Separate subtitle files, such as a .srt beside the film, were treated as tracks inside the film. Medic could keep "removing" a track that wasn't there, and rewrite the same film on every run. Separate files are now left alone, and listed so you can rename them.
+
 ## [1.0.9] – 2026-10-04
 
 ### Added
@@ -144,6 +164,7 @@ plugins into one, and adds a new dashboard, a timeline schedule and several new 
   system summary.
 - On first start, migrates data from Task Advisor and Setup Optimiser.
 
+[1.0.10]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.10
 [1.0.9]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.9
 [1.0.8]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.8
 [1.0.7]: https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/tag/v1.0.7
