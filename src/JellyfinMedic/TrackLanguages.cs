@@ -69,6 +69,22 @@ public static class TrackLanguages
         }
     }
 
+    /// <summary>
+    /// Forgets every language set by hand for a file, once they've been written into it. Track numbers
+    /// change when tracks are stripped, so an old entry would otherwise land on a different track.
+    /// </summary>
+    public static void ClearFile(string path)
+    {
+        lock (Sync)
+        {
+            if (_map is not null && _map.Remove(path))
+            {
+                Write();
+            }
+        }
+    }
+
+    // Written to a temporary file first, so a crash mid-write can't wipe the whole list.
     private static void Write()
     {
         if (_file is null)
@@ -79,7 +95,9 @@ public static class TrackLanguages
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
-            File.WriteAllText(_file, JsonSerializer.Serialize(_map));
+            string tmp = _file + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(_map));
+            File.Move(tmp, _file, overwrite: true);
         }
         catch
         {
@@ -111,20 +129,7 @@ public static class TrackLanguages
                 tracks[index] = code;
             }
 
-            if (_file is null)
-            {
-                return;
-            }
-
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
-                File.WriteAllText(_file, JsonSerializer.Serialize(_map));
-            }
-            catch
-            {
-                // Kept in memory until the next restart.
-            }
+            Write();
         }
     }
 }

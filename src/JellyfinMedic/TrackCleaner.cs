@@ -262,6 +262,7 @@ public static class TrackCleaner
     private static readonly object Sync = new();
     private static readonly TrackRunProgress Progress = new();
     private static CancellationTokenSource? _cancel;
+    private static long _bytesFreed; // space freed by this run right away (not held in kept originals)
     private const string StrippedSuffix = ".medic-stripped";   // used by Medic 1.0.4–1.0.7; tidied up by TidyEarlierCopies
     private const string OriginalsFolder = ".medic-originals"; // hidden, and ignored by Jellyfin, Sonarr and Radarr
 
@@ -750,7 +751,22 @@ public static class TrackCleaner
                 return (false, "That track isn't in the last scan. Scan again, then try.");
             }
 
-            string code = (language ?? string.Empty).Trim().ToLowerInvariant();
+            if (_lastScan!.Stale)
+            {
+                return (false, StaleMessage);
+            }
+
+            string code = string.Empty;
+            if (!string.IsNullOrWhiteSpace(language))
+            {
+                if (LanguageCode(language) is not { } valid)
+                {
+                    return (false, "Choose a language first.");
+                }
+
+                code = valid;
+            }
+
             TrackLanguages.Set(path, index, code.Length == 0 ? null : code);
             row.SetLanguage = code.Length == 0 ? null : code;
             return (true, code.Length == 0
@@ -765,8 +781,7 @@ public static class TrackCleaner
     /// </summary>
     public static (int Count, string Message) SetLanguageBulk(string language, string kind, string? search, bool onlyAudioTrack, bool skipAnime, int page, int size)
     {
-        string code = (language ?? string.Empty).Trim().ToLowerInvariant();
-        if (code.Length is < 2 or > 3 || !code.All(char.IsLetter))
+        if (LanguageCode(language) is not { } code)
         {
             return (0, "Choose a language first.");
         }
@@ -774,6 +789,11 @@ public static class TrackCleaner
         List<UntaggedTrack> rows;
         lock (ScanSync)
         {
+            if (_lastScan?.Stale == true)
+            {
+                return (0, StaleMessage);
+            }
+
             var all = (_lastScan?.Untagged ?? new List<UntaggedTrack>())
                 .Where(u => kind is "audio" or "subtitle" ? u.Kind == kind : true)
                 .Where(u => string.IsNullOrWhiteSpace(search) || u.Title.Contains(search, StringComparison.OrdinalIgnoreCase) || u.FileName.Contains(search, StringComparison.OrdinalIgnoreCase))
@@ -822,14 +842,19 @@ public static class TrackCleaner
                 return (false, "Only .srt, .ass, .ssa and .vtt files can be renamed here.", null);
             }
 
-            string code = (language ?? "eng").Trim().ToLowerInvariant();
-            if (code.Length is < 2 or > 3 || !code.All(char.IsLetter))
+            if (LanguageCode(language) is not { } code)
             {
                 return (false, "Choose a language first.", null);
             }
 
+            // Keep any flags Jellyfin reads from the name, so "Film.forced.srt" becomes "Film.eng.forced.srt".
+            string flags = string.Concat(System.IO.Path.GetFileNameWithoutExtension(row.ExternalPath)
+                .Split('.')
+                .Skip(1)
+                .Where(part => SubtitleFlags.Contains(part))
+                .Select(part => "." + part.ToLowerInvariant()));
             string folder = System.IO.Path.GetDirectoryName(row.ExternalPath) ?? string.Empty;
-            string target = System.IO.Path.Combine(folder, System.IO.Path.GetFileNameWithoutExtension(row.Path) + "." + code + ext);
+            string target = System.IO.Path.Combine(folder, System.IO.Path.GetFileNameWithoutExtension(row.Path) + "." + code + flags + ext);
             if (File.Exists(target))
             {
                 return (false, $"There's already a file called {System.IO.Path.GetFileName(target)}.", null);
@@ -848,6 +873,19 @@ public static class TrackCleaner
             row.SetLanguage = code;
             return (true, $"Renamed to {System.IO.Path.GetFileName(target)}. Jellyfin picks it up at the next library scan.", System.IO.Path.GetFileName(target));
         }
+    }
+
+    // Tracks were stripped since the scan, so its track numbers may no longer match the files.
+    private const string StaleMessage = "Tracks have been stripped since the last scan, so its track numbers may be out of date. Scan again, then set the language.";
+
+    // Words in a subtitle file's name that Jellyfin reads as flags rather than a language.
+    private static readonly HashSet<string> SubtitleFlags = new(StringComparer.OrdinalIgnoreCase) { "forced", "foreign", "default", "sdh", "cc", "hi" };
+
+    /// <summary>A 2 or 3 letter language code, as the 3 letter form files use (e.g. "en" → "eng"), or null if it isn't one.</summary>
+    private static string? LanguageCode(string? language)
+    {
+        string code = (language ?? string.Empty).Trim().ToLowerInvariant();
+        return code.Length is 2 or 3 && code.All(c => c is >= 'a' and <= 'z') ? TwoToThree(code) : null;
     }
 
     private static bool InLanguage(TrackInfo t, HashSet<string> keep) =>
@@ -871,6 +909,7 @@ public static class TrackCleaner
             Progress.Changed = 0;
             Progress.Failed = 0;
             Progress.BytesSaved = 0;
+            _bytesFreed = 0;
             Progress.Current = null;
             Progress.StartedUtc = DateTime.UtcNow;
             Progress.FinishedUtc = null;
@@ -972,9 +1011,10 @@ public static class TrackCleaner
             // Files have changed, so the last scan may be out of date. It's kept so the lists stay visible.
             if (!dryRun)
             {
-                long saved;
-                lock (Sync) { saved = Progress.BytesSaved; }
-                WeeklyLedger.AddFreed("Track cleanup", saved);
+                // Only space actually freed now: when originals are kept, it's counted when they're deleted.
+                long freed;
+                lock (Sync) { freed = _bytesFreed; }
+                WeeklyLedger.AddFreed("Track cleanup", freed);
 
                 lock (ScanSync)
                 {
@@ -1052,6 +1092,7 @@ public static class TrackCleaner
             }
 
             long saved = Math.Max(0, before - Size(temp));
+            long freedNow = 0;
 
             if (replaceInPlace)
             {
@@ -1060,6 +1101,7 @@ public static class TrackCleaner
                 File.Move(plan.Path, backup, overwrite: true);
                 File.Move(temp, plan.Path, overwrite: true);
                 SafeDelete(backup);
+                freedNow = saved;
             }
             else
             {
@@ -1071,6 +1113,7 @@ public static class TrackCleaner
                 if (File.Exists(kept))
                 {
                     File.Move(temp, plan.Path, overwrite: true);
+                    freedNow = saved; // the earlier cleaned copy is replaced, not kept
                 }
                 else
                 {
@@ -1080,7 +1123,10 @@ public static class TrackCleaner
                 }
             }
 
-            lock (Sync) { Progress.Changed++; Progress.Done++; Progress.BytesSaved += saved; Progress.BytesDone += plan.SizeBytes; }
+            // Languages set by hand are in the file now, and its track numbers have changed.
+            TrackLanguages.ClearFile(plan.Path);
+
+            lock (Sync) { Progress.Changed++; Progress.Done++; Progress.BytesSaved += saved; _bytesFreed += freedNow; Progress.BytesDone += plan.SizeBytes; }
             Note($"Done {plan.Title}: {Summary(plan)}");
         }
         catch (OperationCanceledException)

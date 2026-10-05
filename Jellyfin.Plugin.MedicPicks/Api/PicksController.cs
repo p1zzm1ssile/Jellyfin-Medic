@@ -26,6 +26,10 @@ public class PicksController : ControllerBase
     private const string AdminPolicy = "RequiresElevation";
     private const string UserIdClaim = "Jellyfin-UserId";
 
+    // People whose picks are being rebuilt after saving preferences. Saving again meanwhile doesn't start
+    // a second rebuild, so repeated clicks can't pile up library scans and TMDb calls.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> Rebuilding = new();
+
     private readonly PicksStore _store;
     private readonly ITaskManager _taskManager;
     private readonly IAuthorizationContext _authContext;
@@ -79,12 +83,22 @@ public class PicksController : ControllerBase
     public async Task<ActionResult> SavePreferences([FromBody] UserPreferences prefs)
     {
         var userId = await GetUserIdAsync().ConfigureAwait(false);
-        if (userId == Guid.Empty || prefs is null)
+        if (userId == Guid.Empty)
         {
             return Unauthorized();
         }
 
+        if (prefs is null)
+        {
+            return BadRequest();
+        }
+
         _store.SavePreferences(userId, prefs);
+        if (!Rebuilding.TryAdd(userId, 0))
+        {
+            return NoContent(); // a rebuild is already going; the nightly run picks up anything it misses
+        }
+
         _ = Task.Run(async () =>
         {
             try
@@ -94,6 +108,10 @@ public class PicksController : ControllerBase
             catch
             {
                 // The nightly run will catch up.
+            }
+            finally
+            {
+                Rebuilding.TryRemove(userId, out _);
             }
         });
         return NoContent();
