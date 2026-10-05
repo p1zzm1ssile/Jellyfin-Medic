@@ -63,12 +63,20 @@
     "guid": "b34ec5d1-b70f-435f-b77d-9b76979b03c7",
     "name": "Medic Picks",
     "description": "Personal picks for every user, from what they watch.",
-    "overview": "A private playlist of picks in every Jellyfin app, plus a My picks page with titles that aren't on the server yet and optional Jellyseerr requests.",
+    "overview": "A private playlist of picks in every Jellyfin app, plus a My picks page with titles that aren't on the server yet and one-tap Seerr requests.",
     "owner": "P1zzm1ssile",
     "category": "General",
     "imageUrl": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPicks/thumb.png",
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPicks/thumb.png",
     "versions": [
+      {
+        "version": "1.0.2.0",
+        "changelog": "chore: add 1.0.9.0 to manifest",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/picks-v1.0.2/MedicPicks-v1.0.2.zip",
+        "checksum": "764cebe53a61b62b0355b22e18caccfc",
+        "timestamp": "2026-10-05T15:29:59Z"
+      },
       {
         "version": "1.0.1.0",
         "changelog": "chore: add 1.0.6.0 to manifest",
