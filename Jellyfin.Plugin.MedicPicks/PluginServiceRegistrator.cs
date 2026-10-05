@@ -17,6 +17,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     {
         serviceCollection.AddSingleton<PicksStore>();
         serviceCollection.AddSingleton<TmdbClient>();
+        serviceCollection.AddSingleton<SeerrClient>();
         serviceCollection.AddSingleton<PicksEngine>();
 
         // Adds the "My picks" link to everyone's web menu (see Web/MenuLink.cs).

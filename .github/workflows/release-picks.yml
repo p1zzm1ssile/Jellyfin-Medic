@@ -25,7 +25,7 @@ env:
   OWNER: 'P1zzm1ssile'
   TARGET_ABI: '12.0.0.0'   # built against Jellyfin 12.0, so it loads on 12.0 and 12.1
   DESCRIPTION: "Personal picks for every user, from what they watch."
-  OVERVIEW: "A private playlist of picks in every Jellyfin app, plus a My picks page with titles that aren't on the server yet and optional Jellyseerr requests."
+  OVERVIEW: "A private playlist of picks in every Jellyfin app, plus a My picks page with titles that aren't on the server yet and one-tap Seerr requests."
   IMAGE: 'https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPicks/thumb.png'
 
 jobs:

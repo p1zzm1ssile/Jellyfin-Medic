@@ -106,6 +106,20 @@ public class MedicController : ControllerBase
             });
         }
 
+        if (RestartForUpdatesTask.RestartPending(_host))
+        {
+            extra.Add(new Finding
+            {
+                Area = "Plugins",
+                Severity = Sev.Tip,
+                Title = "Jellyfin is waiting for a restart to finish installing updates",
+                Current = "Restart pending",
+                Recommended = "Let Medic restart it at a quiet time, or restart now",
+                Why = "Updated plugins don't take effect until Jellyfin restarts. Medic's \"Restart Jellyfin for waiting updates\" task does it when nobody's watching and nothing else is running. Set its time under Scheduled Tasks, or restart straight away from the Dashboard.",
+                Where = "Dashboard → Scheduled Tasks"
+            });
+        }
+
         var report = _engine.Run(usage, plugins, links, linkResults, extra);
         report.Users = userSummary;
         report.Updates = updates;
@@ -186,8 +200,25 @@ public class MedicController : ControllerBase
             TrackCleaner.ClearScan(); // files are about to change, so the last scan goes out of date
         }
 
+        var sessions = _sessions;
+        TrackCleaner.WatchingCount = () => sessions.Sessions.Count(x => SettingsReader.Get(x, "NowPlayingItem") is not null);
         _ = TrackCleaner.RunAsync(_library, _engine.Libraries, ffmpeg ?? string.Empty, cfg, dryRun);
         return Ok(new { Started = true, DryRun = dryRun });
+    }
+
+    /// <summary>Pauses the run once the files already in progress finish.</summary>
+    [HttpPost("Tracks/Pause")]
+    public ActionResult TracksPause()
+    {
+        TrackCleaner.Pause();
+        return NoContent();
+    }
+
+    [HttpPost("Tracks/Resume")]
+    public ActionResult TracksResume()
+    {
+        TrackCleaner.Resume();
+        return NoContent();
     }
 
     [HttpGet("Tracks/Progress")]
@@ -352,6 +383,10 @@ public class MedicController : ControllerBase
             TracksRemoveUntaggedSubtitles = c.TracksRemoveUntaggedSubtitles,
             TracksKeepFirstUntaggedSubtitle = c.TracksKeepFirstUntaggedSubtitle,
             TracksAllowRemovingOnlySubtitle = c.TracksAllowRemovingOnlySubtitle,
+            TracksWindowEnabled = c.TracksWindowEnabled,
+            TracksWindowStartHour = c.TracksWindowStartHour,
+            TracksWindowEndHour = c.TracksWindowEndHour,
+            TracksPauseWhileWatching = c.TracksPauseWhileWatching,
             TracksReplaceInPlace = c.TracksReplaceInPlace, TracksConcurrentFiles = c.TracksConcurrentFiles,
             TracksFfmpegThreads = c.TracksFfmpegThreads
         });
@@ -378,6 +413,10 @@ public class MedicController : ControllerBase
         c.TracksRemoveUntaggedSubtitles = settings.TracksRemoveUntaggedSubtitles;
         c.TracksKeepFirstUntaggedSubtitle = settings.TracksKeepFirstUntaggedSubtitle;
         c.TracksAllowRemovingOnlySubtitle = settings.TracksAllowRemovingOnlySubtitle;
+        c.TracksWindowEnabled = settings.TracksWindowEnabled;
+        c.TracksWindowStartHour = Math.Clamp(settings.TracksWindowStartHour, 0, 23);
+        c.TracksWindowEndHour = Math.Clamp(settings.TracksWindowEndHour, 0, 23);
+        c.TracksPauseWhileWatching = settings.TracksPauseWhileWatching;
         c.TracksReplaceInPlace = settings.TracksReplaceInPlace;
         c.TracksConcurrentFiles = Math.Clamp(settings.TracksConcurrentFiles, 1, 4);
         c.TracksFfmpegThreads = Math.Clamp(settings.TracksFfmpegThreads, 0, 16);

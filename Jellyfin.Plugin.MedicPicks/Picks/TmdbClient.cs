@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -113,6 +114,10 @@ public class TmdbClient
                     Year = year,
                     Overview = GetString(item, "overview"),
                     PosterPath = GetString(item, "poster_path"),
+                    OriginalLanguage = GetString(item, "original_language"),
+                    GenreIds = item.TryGetProperty("genre_ids", out var genres) && genres.ValueKind == JsonValueKind.Array
+                        ? genres.EnumerateArray().Where(g => g.ValueKind == JsonValueKind.Number).Select(g => g.GetInt32()).ToList()
+                        : new List<int>(),
                     VoteAverage = vote
                 });
             }

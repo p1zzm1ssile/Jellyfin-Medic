@@ -74,36 +74,88 @@ public class PicksStore
         return Directory.Exists(UsersDir) ? Directory.GetFiles(UsersDir, "*.json").Length : 0;
     }
 
-    public string? GetTmdbKey()
+    public string? GetTmdbKey() => ReadSecrets().TmdbKey;
+
+    public void SetTmdbKey(string? key)
+    {
+        var secrets = ReadSecrets();
+        secrets.TmdbKey = string.IsNullOrWhiteSpace(key) ? null : key.Trim();
+        WriteSecrets(secrets);
+    }
+
+    public string? GetSeerrKey() => ReadSecrets().SeerrKey;
+
+    public void SetSeerrKey(string? key)
+    {
+        var secrets = ReadSecrets();
+        secrets.SeerrKey = string.IsNullOrWhiteSpace(key) ? null : key.Trim();
+        WriteSecrets(secrets);
+    }
+
+    private Secrets ReadSecrets()
     {
         try
         {
-            if (!File.Exists(SecretsPath))
+            if (File.Exists(SecretsPath))
             {
-                return null;
+                var secrets = JsonSerializer.Deserialize<Secrets>(File.ReadAllText(SecretsPath), JsonOptions) ?? new Secrets();
+                secrets.TmdbKey = string.IsNullOrWhiteSpace(secrets.TmdbKey) ? null : secrets.TmdbKey.Trim();
+                secrets.SeerrKey = string.IsNullOrWhiteSpace(secrets.SeerrKey) ? null : secrets.SeerrKey.Trim();
+                return secrets;
             }
-
-            var secrets = JsonSerializer.Deserialize<Secrets>(File.ReadAllText(SecretsPath), JsonOptions);
-            return string.IsNullOrWhiteSpace(secrets?.TmdbKey) ? null : secrets!.TmdbKey!.Trim();
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Medic Picks: could not read the TMDb key file");
-            return null;
+            _logger.LogWarning(ex, "Medic Picks: could not read the keys file");
         }
+
+        return new Secrets();
     }
 
-    public void SetTmdbKey(string? key)
+    private void WriteSecrets(Secrets secrets)
     {
         Directory.CreateDirectory(_root);
         lock (_lock)
         {
-            File.WriteAllText(SecretsPath, JsonSerializer.Serialize(new Secrets { TmdbKey = key?.Trim() }, JsonOptions));
+            File.WriteAllText(SecretsPath, JsonSerializer.Serialize(secrets, JsonOptions));
+        }
+    }
+
+    // ---------- Each person's own choices on the My picks page ----------
+
+    private string PrefsDir => Path.Combine(_root, "preferences");
+
+    public UserPreferences LoadPreferences(Guid userId)
+    {
+        try
+        {
+            var path = Path.Combine(PrefsDir, userId.ToString("N") + ".json");
+            if (File.Exists(path))
+            {
+                return JsonSerializer.Deserialize<UserPreferences>(File.ReadAllText(path), JsonOptions) ?? new UserPreferences();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Medic Picks: could not read preferences for user {UserId}", userId);
+        }
+
+        return new UserPreferences();
+    }
+
+    public void SavePreferences(Guid userId, UserPreferences prefs)
+    {
+        Directory.CreateDirectory(PrefsDir);
+        lock (_lock)
+        {
+            File.WriteAllText(Path.Combine(PrefsDir, userId.ToString("N") + ".json"), JsonSerializer.Serialize(prefs, JsonOptions));
         }
     }
 
     private sealed class Secrets
     {
         public string? TmdbKey { get; set; }
+
+        public string? SeerrKey { get; set; }
     }
 }

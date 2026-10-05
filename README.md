@@ -22,11 +22,11 @@ A single screen of tiles: how many things need fixing, tonight's tasks, what the
 
 ### Schedule
 
-A week-at-a-glance timeline. Each task is a coloured block on its day, with shading behind it showing how busy that hour usually is and a red line marking "now". Click any task for its details. Medic works out the quietest times from your own viewing pattern and can run a task at different times on different days; **Preview** shows the plan before you **Apply** it, and every change is backed up so it can be undone. Jellyfin has no monthly trigger, so Medic runs monthly tasks itself.
+A week-at-a-glance timeline. Each task is a coloured block on its day, with shading behind it showing how busy that hour usually is and a red line marking "now". Click any task for its details. Medic works out the quietest times from your own viewing pattern and can run a task at different times on different days; **Preview** shows the plan before you **Apply** it, and every change is backed up so it can be undone. Jellyfin has no monthly trigger, so Medic runs monthly tasks itself. A **Restart Jellyfin for waiting updates** task (04:00 by default) finishes installing plugin updates for you, and an optional **Scheduled restart** task restarts Jellyfin at times you choose. Both only restart when nobody's watching and nothing else is running.
 
 ### Checks
 
-Every finding, most serious first, each with its current value, the suggested value, why it matters and a link that opens the right Jellyfin page in a new tab, with directions worded for your platform. Checked something and happy with it? **Ignore** it and it drops out of the counts. Findings come back on their own if the situation changes.
+Every finding, most serious first, each with its current value, the suggested value, why it matters and a link that opens the right Jellyfin page in a new tab (for plugin issues, that plugin's own settings), with directions worded for your platform. The page you land on shows the issue in a small box you can move, so it's in front of you while you fix it. Checked something and happy with it? **Ignore** it and it drops out of the counts. Findings come back on their own if the situation changes.
 
 Medic checks, among other things:
 
@@ -49,7 +49,7 @@ Counts your IPTV films and series by genre and country, shows how much of each a
 
 ### Tracks
 
-Removes unwanted audio and subtitle tracks from your local files by remuxing, so there's no re-encode and no quality loss. It keeps your languages and forced subtitles, never removes a file's last audio track, and keeps subtitles in films whose audio isn't in your languages. Tracks with no language tag are grouped for review, and you can clear untagged subtitles while keeping untagged audio, which is often a film's main soundtrack. Its settings sit at the top of the tab, next to the tool. **Scan and preview** shows what every file would keep before anything changes. The cleaned file keeps the original's name, so your library still has one file per title, and by default the original is kept in a hidden .medic-originals folder next to it until you delete it. While it runs, it shows how much is done and roughly when it will finish. IPTV is skipped.
+Removes unwanted audio and subtitle tracks from your local files by remuxing, so there's no re-encode and no quality loss. It keeps your languages and forced subtitles, never removes a file's last audio track, and keeps subtitles in films whose audio isn't in your languages. Tracks with no language tag are grouped for review, and you can clear untagged subtitles while keeping untagged audio, which is often a film's main soundtrack. Its settings sit at the top of the tab, next to the tool. **Scan and preview** shows what every file would keep before anything changes. The cleaned file keeps the original's name, so your library still has one file per title, and by default the original is kept in a hidden .medic-originals folder next to it until you delete it. While it runs, it shows how much is done and roughly when it will finish, and you can pause it, limit it to set hours, and have it hold off while anyone is watching. IPTV is skipped.
 
 ### Media report
 
@@ -102,7 +102,8 @@ Medic replaces both. On first start it copies their data across (schedule backup
 Personal picks for everyone on your server, built from what each person actually watches.
 
 - **A private "Picks for you" playlist** for every user, in every Jellyfin app, TV apps included. It holds titles already on your server, and series start at their first episode so people can press play straight away.
-- **A "My picks" page**, linked from everyone's Jellyfin side menu automatically, showing why each title was picked, plus titles that aren't on your server yet. It works in any browser, Jellyfin Desktop and the Android and iOS apps, with no files to edit. If you use Jellyseerr, each suggestion gets a **Request it** button that opens Jellyseerr, so requests follow your Jellyseerr permissions and limits.
+- **A "My picks" page**, linked from everyone's Jellyfin side menu automatically, showing why each title was picked, plus titles that aren't on your server yet. It works in any browser, Jellyfin Desktop and the Android and iOS apps, with no files to edit. If you use Seerr (formerly Overseerr and Jellyseerr), each suggestion gets a **Request** button that sends the request straight to Seerr under that person's own Seerr account, so their permissions, request limits and auto-approval all apply.
+- **English dubs for anime.** Anyone can tick "Anime: English dubs only" on their My picks page. Their picks then leave out anime on your server that has no English audio, and anime suggestions from outside your library are marked "English dub not confirmed", because TMDb can't say whether a dub exists.
 
 Picks are rebuilt every night by the **Build personal picks** scheduled task. Picks from your library follow each user's library access and parental controls.
 
@@ -110,7 +111,7 @@ Picks are rebuilt every night by the **Build personal picks** scheduled task. Pi
 
 1. Install **Medic Picks** from the catalogue and restart Jellyfin.
 2. Optional: for titles that aren't on your server yet, add a free TMDb API key in Medic Picks' settings, press **Save key**, and tick **Suggest titles that aren't on the server**.
-3. Optional: add your Jellyseerr address, using one your users can reach.
+3. Optional: add your Seerr address (one your users can reach) and your Seerr API key, then press **Test Seerr**. Each person needs to have signed in to Seerr once with their Jellyfin login before their requests can go through.
 4. Untick children's accounts under **Who gets Discover picks**.
 5. Press **Build picks now**, or wait for the nightly run.
 6. Optional: the **My picks** menu link is on by default. You can rename it or turn it off in the same settings.
@@ -121,7 +122,7 @@ Each person needs a few watched titles before their picks appear.
 
 - Picks are built and stored on your server. Each user only sees their own.
 - Suggestions from outside your library are off by default. When an admin turns them on, the server sends TMDb the TMDb IDs of titles people have watched. No names or account details are sent.
-- The TMDb key is stored separately from the plugin's other settings and only admins can read it.
+- The TMDb and Seerr keys are stored separately from the plugin's other settings, only admins can read them, and they never reach anyone's browser. Requests are made on the server, as the person who pressed Request.
 
 ---
 

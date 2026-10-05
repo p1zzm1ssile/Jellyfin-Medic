@@ -30,8 +30,11 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>TMDb language for titles and overviews, e.g. en-GB.</summary>
     public string TmdbLanguage { get; set; } = "en-GB";
 
-    /// <summary>Optional Jellyseerr address. When set, Discover picks link to a request page there.</summary>
+    /// <summary>Optional Seerr address (formerly Jellyseerr/Overseerr). The name is kept so existing settings carry over.</summary>
     public string JellyseerrUrl { get; set; } = string.Empty;
+
+    /// <summary>With a Seerr API key saved, the Request button makes the request directly, as the person who pressed it.</summary>
+    public bool SeerrDirectRequests { get; set; } = true;
 
     /// <summary>Users who should not get Discover picks (e.g. children's accounts). Library picks still respect parental controls.</summary>
     public string[] DiscoverDisabledUserIds { get; set; } = Array.Empty<string>();

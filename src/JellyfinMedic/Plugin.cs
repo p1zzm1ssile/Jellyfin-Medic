@@ -50,6 +50,16 @@ public class PluginConfiguration : BasePluginConfiguration
     // Let a file's only subtitle go when it's untagged (never for films whose audio is tagged as a language you don't keep).
     public bool TracksAllowRemovingOnlySubtitle { get; set; }
 
+    // Only remove tracks within a daily time window (local time). Start and end are hours, 0–23; overnight windows work.
+    public bool TracksWindowEnabled { get; set; }
+
+    public int TracksWindowStartHour { get; set; } = 1;
+
+    public int TracksWindowEndHour { get; set; } = 7;
+
+    // Hold off starting the next file while anyone is watching.
+    public bool TracksPauseWhileWatching { get; set; } = true;
+
     public bool TracksReplaceInPlace { get; set; }              // off = write a copy beside the original
 
     public int TracksConcurrentFiles { get; set; } = 1;
@@ -101,6 +111,9 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService<ManagedScheduleRunner>();
         serviceCollection.AddHostedService<UsageSampler>();
         serviceCollection.AddHostedService<LoadGuard>();
+
+        // Shows the issue you're fixing on the Jellyfin page a Medic link sends you to (see PageHelper.cs).
+        serviceCollection.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, PageHelperStartupFilter>();
     }
 }
 

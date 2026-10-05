@@ -155,7 +155,8 @@ public class PicksEngine
         // 2. Library picks.
         if (config.EnableLibraryPicks)
         {
-            picks.InLibrary = BuildLibraryPicks(userQuery, ranked, titles, Math.Clamp(config.LibraryPickCount, 1, 100));
+            var prefs = _store.LoadPreferences(userId);
+            picks.InLibrary = BuildLibraryPicks(userQuery, ranked, titles, Math.Clamp(config.LibraryPickCount, 1, 100), prefs.EnglishDubAnime);
         }
 
         // 3. Private playlist, visible in every Jellyfin app.
@@ -189,7 +190,7 @@ public class PicksEngine
         _store.Save(userId, picks);
     }
 
-    private List<LibraryPick> BuildLibraryPicks(Func<InternalItemsQuery> userQuery, List<WatchedTitle> ranked, Dictionary<Guid, WatchedTitle> titles, int count)
+    private List<LibraryPick> BuildLibraryPicks(Func<InternalItemsQuery> userQuery, List<WatchedTitle> ranked, Dictionary<Guid, WatchedTitle> titles, int count, bool englishDubAnime)
     {
         // Taste profile: genres from everything watched, people from the most-weighted titles.
         var genres = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
@@ -292,6 +293,7 @@ public class PicksEngine
 
         return scored
             .OrderByDescending(s => s.Score)
+            .Where(s => !englishDubAnime || !IsAnime(s.Item) || HasEnglishAudio(userQuery, s.Item))
             .Take(count)
             .Select(s => new LibraryPick
             {
@@ -325,6 +327,69 @@ public class PicksEngine
             1 => $"You watch a lot of {top[0]}",
             _ => "Well rated, and close to your taste"
         };
+    }
+
+    // ---------- English dubs for anime ----------
+
+    private static readonly string[] AnimeProviders = { "AniList", "AniDB", "Kitsu", "AniSearch", "MyAnimeList" };
+
+    /// <summary>Anime, judged by genre, an anime metadata provider, or an "anime" folder in its path.</summary>
+    private static bool IsAnime(BaseItem item)
+    {
+        if ((item.Genres ?? Array.Empty<string>()).Any(g => g.Equals("Anime", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (item.ProviderIds is { } ids && ids.Keys.Any(k => AnimeProviders.Any(p => k.Equals(p, StringComparison.OrdinalIgnoreCase))))
+        {
+            return true;
+        }
+
+        string path = (item.Path ?? string.Empty).Replace('\\', '/');
+        return path.Contains("/anime/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Has an English audio track. A series is judged by its first episode.</summary>
+    private bool HasEnglishAudio(Func<InternalItemsQuery> userQuery, BaseItem item)
+    {
+        BaseItem? target = item;
+        if (item is Series)
+        {
+            var first = GetPlayableId(userQuery, new LibraryPick { ItemId = item.Id, Kind = "Series" });
+            target = first.HasValue ? _libraryManager.GetItemById(first.Value) : null;
+        }
+
+        if (target is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var method = target.GetType().GetMethod("GetMediaStreams", Type.EmptyTypes);
+            if (method?.Invoke(target, null) is not System.Collections.IEnumerable streams)
+            {
+                return false;
+            }
+
+            foreach (var stream in streams)
+            {
+                var type = stream.GetType();
+                string kind = type.GetProperty("Type")?.GetValue(stream)?.ToString() ?? string.Empty;
+                string language = (type.GetProperty("Language")?.GetValue(stream) as string ?? string.Empty).Trim().ToLowerInvariant();
+                if (kind == "Audio" && (language is "eng" or "en" or "english"))
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            // Unknown counts as no English audio.
+        }
+
+        return false;
     }
 
     /// <summary>Movies play as themselves; a series is represented by its first regular episode.</summary>
@@ -458,7 +523,8 @@ public class PicksEngine
                 Overview = Truncate(t.Title.Overview, 280),
                 PosterPath = t.Title.PosterPath,
                 Rating = Math.Round(t.Title.VoteAverage, 1),
-                BecauseOf = t.BecauseOf
+                BecauseOf = t.BecauseOf,
+                IsAnime = string.Equals(t.Title.OriginalLanguage, "ja", StringComparison.OrdinalIgnoreCase) && t.Title.GenreIds.Contains(16)
             })
             .ToList();
     }

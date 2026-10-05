@@ -254,6 +254,13 @@
                                 <label class="md-check"><input type="checkbox" id="md-tracks-onlysub-in"> Also remove a film's only subtitle when it's untagged</label>
                             </div>
                             <label class="md-check"><input type="checkbox" id="md-tracks-undet-in"> Remove all untagged tracks, audio included (not recommended)</label>
+                            <div class="md-row md-wrap" style="gap:8px">
+                                <label class="md-check"><input type="checkbox" id="md-tracks-window-in"> Only remove tracks between</label>
+                                <select id="md-tracks-window-from" aria-label="Window starts"><option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option><option value="3">03:00</option><option value="4">04:00</option><option value="5">05:00</option><option value="6">06:00</option><option value="7">07:00</option><option value="8">08:00</option><option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option><option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option><option value="15">15:00</option><option value="16">16:00</option><option value="17">17:00</option><option value="18">18:00</option><option value="19">19:00</option><option value="20">20:00</option><option value="21">21:00</option><option value="22">22:00</option><option value="23">23:00</option></select>
+                                <span>and</span>
+                                <select id="md-tracks-window-to" aria-label="Window ends"><option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option><option value="3">03:00</option><option value="4">04:00</option><option value="5">05:00</option><option value="6">06:00</option><option value="7">07:00</option><option value="8">08:00</option><option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option><option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option><option value="15">15:00</option><option value="16">16:00</option><option value="17">17:00</option><option value="18">18:00</option><option value="19">19:00</option><option value="20">20:00</option><option value="21">21:00</option><option value="22">22:00</option><option value="23">23:00</option></select>
+                            </div>
+                            <label class="md-check"><input type="checkbox" id="md-tracks-watching-in"> Pause while someone is watching</label>
                             <label class="md-check"><input type="checkbox" id="md-tracks-inplace-in"> Don't keep the originals (by default each one is kept in a hidden .medic-originals folder next to it)</label>
                             <div class="md-row md-wrap">
                                 <label for="md-tracks-conc">Files at once</label>
@@ -306,8 +313,10 @@
                     <div class="md-row md-wrap">
                         <button type="button" id="md-tracks-dry" class="so-btn so-btn-plain">Dry run (report only)</button>
                         <button type="button" id="md-tracks-go" class="so-btn so-btn-accent">Strip tracks for real</button>
+                        <button type="button" id="md-tracks-pause" class="so-btn so-btn-plain" hidden>Pause</button>
                         <button type="button" id="md-tracks-stop" class="so-btn so-btn-plain" hidden>Stop</button>
                     </div>
+                    <p class="so-muted so-small" style="margin:8px 0 0">With a time window set in Track settings, you can press Strip tracks for real at any time: it waits until the window opens, works through it, and carries on in the next one. Pause finishes the file it's on, then waits until you press Resume.</p>
                     <div id="md-tracks-progress" class="so-muted so-small" style="margin-top:10px"></div>
                     <div id="md-tracks-log" class="md-fulltext" style="margin-top:8px;display:none"></div>
                     <div class="md-row md-wrap" id="md-tracks-delete-row" style="margin-top:12px" hidden>
@@ -916,7 +925,10 @@
                     }
 
                     if (pick(f, 'Why')) card.appendChild(el('p', 'so-why', fmtTimes(pick(f, 'Why'))));
-                    if (pick(f, 'Where')) card.appendChild(whereLine(pick(f, 'Where')));
+                    if (pick(f, 'Where')) card.appendChild(whereLine(pick(f, 'Where'), {
+                        title: pick(f, 'Title'), current: pick(f, 'Current'), suggested: pick(f, 'Recommended'),
+                        why: pick(f, 'Why'), where: pick(f, 'Where')
+                    }));
                     return card;
                 }
 
@@ -959,7 +971,44 @@
                     return window.location.pathname.replace(/[^/]*$/, '');
                 }
 
-                function linkify(text) {
+                // Plugin name (lower case) → the name of its settings page, so links go straight to that plugin.
+                let pluginPages = null;
+                async function ensurePluginPages() {
+                    if (pluginPages) return;
+                    pluginPages = {};
+                    try {
+                        const norm = function (id) { return String(id || '').replace(/-/g, '').toLowerCase(); };
+                        const results = await Promise.all([
+                            ApiClient.getJSON(ApiClient.getUrl('Plugins')),
+                            ApiClient.getJSON(ApiClient.getUrl('web/ConfigurationPages'))
+                        ]);
+                        const plugins = results[0] || [], pages = results[1] || [];
+                        plugins.forEach(function (p) {
+                            const page = pages.find(function (c) { return norm(c.PluginId) === norm(p.Id); });
+                            if (page && p.Name) pluginPages[String(p.Name).toLowerCase()] = page.Name;
+                        });
+                    } catch (e) { /* links fall back to the plugin list */ }
+                }
+
+                function pluginPageHref(name) {
+                    if (!pluginPages || !name) return null;
+                    const key = String(name).trim().toLowerCase();
+                    const page = pluginPages[key] || pluginPages[key.replace(/ plugin$/, '')];
+                    return page ? '#/configurationpage?name=' + encodeURIComponent(page) : null;
+                }
+
+                // Remembers the issue in this browser, so Jellyfin's page can show it in a box you can move.
+                function rememberIssue(issue) {
+                    if (!issue || !issue.title) return;
+                    try {
+                        localStorage.setItem('jellyfin-medic-assist', JSON.stringify({
+                            title: issue.title, current: issue.current || '', suggested: issue.suggested || '',
+                            why: issue.why || '', where: issue.where || '', at: Date.now()
+                        }));
+                    } catch (e) { /* storage blocked: the link still works */ }
+                }
+
+                function linkify(text, issue) {
                     const out = document.createDocumentFragment();
                     const s = String(text || '');
                     let plain = '';
@@ -973,9 +1022,18 @@
                             // Include the rest of the path (e.g. "→ Xtream Library → categories") in the link text.
                             const m = rest.slice(web[0].length).match(/^( → [^,.;(]+)*/);
                             const label = web[0] + (m ? m[0] : '');
+                            let target = web[1];
+                            // "Dashboard → Plugins → Intro Skipper → ..." opens that plugin's own settings page.
+                            if (web[0] === 'Dashboard → Plugins' && m && m[0]) {
+                                const name = m[0].split(' → ')[1];
+                                if (name && !/^(Repositories|Catalog|My Plugins)$/i.test(name.trim())) {
+                                    target = pluginPageHref(name) || target;
+                                }
+                            }
                             flush();
                             const a = el('a', 'md-where-link', label + ' ↗');
-                            a.href = webRoot() + web[1];
+                            a.href = webRoot() + target;
+                            a.addEventListener('click', function () { rememberIssue(issue); });
                             a.target = '_blank';
                             a.rel = 'noopener';
                             a.title = 'Opens in a new tab';
@@ -997,9 +1055,9 @@
                     return out;
                 }
 
-                function whereLine(text) {
+                function whereLine(text, issue) {
                     const p = el('p', 'so-where', 'Where: ');
-                    p.appendChild(linkify(text));
+                    p.appendChild(linkify(text, issue));
                     return p;
                 }
 
@@ -2419,6 +2477,10 @@
                         $('md-tracks-untagsubs-in').checked = !!pick(s, 'TracksRemoveUntaggedSubtitles');
                         $('md-tracks-keepfirst-in').checked = pick(s, 'TracksKeepFirstUntaggedSubtitle') !== false;
                         $('md-tracks-onlysub-in').checked = !!pick(s, 'TracksAllowRemovingOnlySubtitle');
+                        $('md-tracks-window-in').checked = !!pick(s, 'TracksWindowEnabled');
+                        $('md-tracks-window-from').value = String(pick(s, 'TracksWindowStartHour') ?? 1);
+                        $('md-tracks-window-to').value = String(pick(s, 'TracksWindowEndHour') ?? 7);
+                        $('md-tracks-watching-in').checked = pick(s, 'TracksPauseWhileWatching') !== false;
                         syncSubtitleOptions();
                         $('md-tracks-inplace-in').checked = !!pick(s, 'TracksReplaceInPlace');
                         $('md-tracks-conc').value = String(pick(s, 'TracksConcurrentFiles') || 1);
@@ -2457,6 +2519,10 @@
                         TracksRemoveUntaggedSubtitles: $('md-tracks-untagsubs-in').checked,
                         TracksKeepFirstUntaggedSubtitle: $('md-tracks-keepfirst-in').checked,
                         TracksAllowRemovingOnlySubtitle: $('md-tracks-onlysub-in').checked,
+                        TracksWindowEnabled: $('md-tracks-window-in').checked,
+                        TracksWindowStartHour: parseInt($('md-tracks-window-from').value, 10),
+                        TracksWindowEndHour: parseInt($('md-tracks-window-to').value, 10),
+                        TracksPauseWhileWatching: $('md-tracks-watching-in').checked,
                         TracksReplaceInPlace: $('md-tracks-inplace-in').checked,
                         TracksConcurrentFiles: parseInt($('md-tracks-conc').value, 10) || 1,
                         TracksFfmpegThreads: parseInt($('md-tracks-threads').value, 10)
@@ -2659,7 +2725,9 @@
                         if (action !== 'Remove') {
                             if (pick(s, 'Availability')) {
                                 const where = el('p', 'so-muted so-small');
-                                where.appendChild(linkify(pick(s, 'Availability')));
+                                where.appendChild(linkify(pick(s, 'Availability'), {
+                                    title: (ADVICE_LABEL[action] || action) + ': ' + pick(s, 'Plugin'), why: pick(s, 'Reason'), where: pick(s, 'Availability')
+                                }));
                                 card.appendChild(where);
                             }
                             if (!pick(s, 'InCatalogue')) {
@@ -2674,7 +2742,9 @@
                             }
                         } else {
                             const how = el('p', 'so-muted so-small', 'To remove it: ');
-                            how.appendChild(linkify('Dashboard → Plugins → My Plugins'));
+                            how.appendChild(linkify('Dashboard → Plugins → My Plugins', {
+                                title: 'Remove: ' + pick(s, 'Plugin'), why: pick(s, 'Reason'), where: 'Dashboard → Plugins → My Plugins'
+                            }));
                             how.appendChild(document.createTextNode(', then restart Jellyfin.'));
                             card.appendChild(how);
                         }
@@ -2933,6 +3003,13 @@
                 $('md-tracks-dry').addEventListener('click', function () { startTracks(true); });
                 $('md-tracks-go').addEventListener('click', function () { startTracks(false); });
                 $('md-tracks-stop').addEventListener('click', function () { postJson('/JellyfinMedic/Tracks/Stop').catch(function(){}); });
+                $('md-tracks-pause').addEventListener('click', function () {
+                    const resume = $('md-tracks-pause').textContent === 'Resume';
+                    $('md-tracks-pause').disabled = true;
+                    postJson(resume ? '/JellyfinMedic/Tracks/Resume' : '/JellyfinMedic/Tracks/Pause')
+                        .catch(function () {})
+                        .then(function () { $('md-tracks-pause').disabled = false; pollTracks(true); });
+                });
 
                 // ---------- Media report (read-only) ----------
 
@@ -3166,13 +3243,21 @@
                         return 'Building the list of files to change…';
                     }
 
-                    parts.push((dry ? 'Dry run: ' : running ? 'Working: ' : 'Finished: ') + done + ' of ' + total + ' files');
+                    const holding = running && !!pick(p, 'Waiting');
+                    parts.push(holding
+                        ? done + ' of ' + total + ' files done'
+                        : (dry ? 'Dry run: ' : running ? 'Working: ' : 'Finished: ') + done + ' of ' + total + ' files');
 
                     const bytesTotal = pick(p, 'BytesTotal') || 0, bytesDone = pick(p, 'BytesDone') || 0;
                     if (!dry && running && bytesTotal > 0) {
                         parts.push(Math.floor(100 * bytesDone / bytesTotal) + '% of ' + tracksSize(bytesTotal));
                         const left = pick(p, 'SecondsLeft');
-                        parts.push(left == null ? 'working out the time left…' : 'about ' + tracksDuration(left) + ' left, done around ' + tracksFinishTime(left));
+                        const waiting = pick(p, 'Waiting');
+                        if (waiting) {
+                            parts.unshift(waiting === 'Paused' ? 'Paused (press Resume to carry on)' : waiting);
+                        } else {
+                            parts.push(left == null ? 'working out the time left…' : 'about ' + tracksDuration(left) + ' left, done around ' + tracksFinishTime(left));
+                        }
                     }
 
                     if (!running && pick(p, 'StartedUtc') && pick(p, 'FinishedUtc')) {
@@ -3183,7 +3268,7 @@
                     parts.push((pick(p, 'Changed') || 0) + ' changed');
                     parts.push((pick(p, 'Failed') || 0) + ' failed');
                     if (pick(p, 'BytesSaved')) parts.push('saved ' + tracksSize(pick(p, 'BytesSaved')));
-                    if (running && pick(p, 'Current')) parts.push('now: ' + pick(p, 'Current'));
+                    if (running && !holding && pick(p, 'Current')) parts.push('now: ' + pick(p, 'Current'));
                     return parts.join(' · ');
                 }
 
@@ -3192,6 +3277,9 @@
                         const p = await getJson('/JellyfinMedic/Tracks/Progress');
                         const running = pick(p, 'Running');
                         $('md-tracks-stop').hidden = !running;
+                        const realRun = running && !pick(p, 'DryRun');
+                        $('md-tracks-pause').hidden = !realRun;
+                        $('md-tracks-pause').textContent = pick(p, 'Paused') ? 'Resume' : 'Pause';
                         $('md-tracks-dry').disabled = running;
                         $('md-tracks-go').disabled = running;
                         const total = pick(p, 'Total') || 0, done = pick(p, 'Done') || 0;
@@ -3280,6 +3368,7 @@
                     showStatus('Checking your setup…', 'info');
                     try {
                         report = await getJson('/JellyfinMedic/Report');
+                        await ensurePluginPages();
                         hideStatus();
                         renderDashboard();
                         renderRecs();

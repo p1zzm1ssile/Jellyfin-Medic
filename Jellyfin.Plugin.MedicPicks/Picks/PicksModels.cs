@@ -54,6 +54,9 @@ public class DiscoverPick
 
     /// <summary>Title the user watched that led to this pick.</summary>
     public string BecauseOf { get; set; } = string.Empty;
+
+    /// <summary>Japanese animation, by TMDb's original language and genre.</summary>
+    public bool IsAnime { get; set; }
 }
 
 /// <summary>A recommendation as returned by TMDb.</summary>
@@ -72,6 +75,17 @@ public class TmdbTitle
     public string? PosterPath { get; set; }
 
     public double VoteAverage { get; set; }
+
+    public string? OriginalLanguage { get; set; }
+
+    public List<int> GenreIds { get; set; } = new();
+}
+
+/// <summary>Choices a person makes on their own My picks page.</summary>
+public class UserPreferences
+{
+    /// <summary>Only suggest anime from the library that has English audio.</summary>
+    public bool EnglishDubAnime { get; set; }
 }
 
 /// <summary>Shared state for one run of the task across all users.</summary>
