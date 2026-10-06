@@ -5,6 +5,8 @@ All notable changes to Jellyfin Medic are recorded here. The newest version is a
 This project uses [semantic versioning](https://semver.org): given a version X.Y.Z,
 Z changes for fixes, Y for new features, X for changes that break compatibility.
 
+Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
+
 ## [1.0.12] – 2026-10-06
 
 ### Fixed
