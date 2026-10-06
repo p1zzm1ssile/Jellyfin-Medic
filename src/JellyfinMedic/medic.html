@@ -2850,7 +2850,11 @@
                             const b = el('button', 'so-btn so-btn-plain', 'Clear ' + pick(item, 'Label').toLowerCase() + ' (' + pick(item, 'Size') + ')');
                             b.type = 'button';
                             b.addEventListener('click', async function () {
-                                if (!window.confirm('Remove ' + pick(item, 'Count') + ' file(s), freeing ' + pick(item, 'Size') + '? Jellyfin rebuilds anything it still needs.')) return;
+                                const strm = String(pick(item, 'Kind') || '').indexOf('orphan-strm:') === 0;
+                                const note = strm
+                                    ? ' These are stream files Jellyfin has no item for. A re-sync in Xtream Library brings back any you still want.'
+                                    : ' Jellyfin rebuilds anything it still needs.';
+                                if (!window.confirm('Remove ' + pick(item, 'Count') + ' file(s), freeing ' + pick(item, 'Size') + '?' + note)) return;
                                 b.disabled = true;
                                 try {
                                     const r = await postJson('/JellyfinMedic/Cleanup', { kind: pick(item, 'Kind') });

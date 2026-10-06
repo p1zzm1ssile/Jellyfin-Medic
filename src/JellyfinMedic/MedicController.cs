@@ -10,6 +10,7 @@ using MediaBrowser.Common.Plugins;
 using MediaBrowser.Common.Updates;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Session;
@@ -301,6 +302,11 @@ public class MedicController : ControllerBase
     [HttpPost("Tracks/DeleteOriginals")]
     public ActionResult<object> TracksDeleteOriginals()
     {
+        if (TrackCleaner.CurrentProgress().Running)
+        {
+            return StatusCode(StatusCodes.Status409Conflict, "Wait for the track run to finish first.");
+        }
+
         var (deleted, freed) = TrackCleaner.DeleteOriginals(_library, _engine.Libraries);
         WeeklyLedger.AddFreed("Kept originals", freed);
         return Ok(new { Deleted = deleted, Freed = freed, FreedText = SystemProbe.Size(freed) });
@@ -440,6 +446,11 @@ public class MedicController : ControllerBase
     [HttpPost("MedicSettings")]
     public ActionResult<MedicSettingsDto> SaveMedicSettings([FromBody] MedicSettingsDto settings)
     {
+        if (settings is null)
+        {
+            return BadRequest();
+        }
+
         if (Plugin.Instance is null)
         {
             return Problem("Medic isn't fully loaded yet. Try again in a moment.");
@@ -674,19 +685,41 @@ public class MedicController : ControllerBase
 
     /// <summary>Disk space that can usually be freed safely.</summary>
     [HttpGet("Cleanup")]
-    public ActionResult<CleanupReport> GetCleanup() => Ok(Housekeeping.Scan(_paths, TranscodePath()));
+    public ActionResult<CleanupReport> GetCleanup() => Ok(Housekeeping.Scan(_paths, TranscodePath(), KnownStrmPaths));
 
     /// <summary>Removes the leftover files of one kind, after the admin confirms on the page.</summary>
     [HttpPost("Cleanup")]
     public ActionResult<object> RunCleanup([FromQuery] string kind)
     {
-        var (ok, message, freed) = Housekeeping.Clean(kind ?? string.Empty, _paths, TranscodePath());
+        var (ok, message, freed) = Housekeeping.Clean(kind ?? string.Empty, _paths, TranscodePath(), KnownStrmPaths);
         if (ok)
         {
             WeeklyLedger.AddFreed("Clean-ups", freed);
         }
 
         return Ok(new { Success = ok, Message = message, Freed = freed });
+    }
+
+    /// <summary>Every .strm file Jellyfin has an item for, or null if the library couldn't be read.</summary>
+    private ISet<string>? KnownStrmPaths()
+    {
+        try
+        {
+            var known = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+            foreach (var item in _library.GetItemList(new InternalItemsQuery { Recursive = true, IsFolder = false }))
+            {
+                if (item.Path is { } path && path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase))
+                {
+                    known.Add(path);
+                }
+            }
+
+            return known;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private string TranscodePath()
