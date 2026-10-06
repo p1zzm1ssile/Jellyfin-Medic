@@ -39,6 +39,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>With a Seerr API key saved, the Request button makes the request directly, as the person who pressed it.</summary>
     public bool SeerrDirectRequests { get; set; } = true;
 
+    /// <summary>Show each person their Seerr requests and where they've got to (needs the Seerr address and key).</summary>
+    public bool ShowRequests { get; set; } = true;
+
     /// <summary>Users who should not get Discover picks (e.g. children's accounts). Library picks still respect parental controls.</summary>
     public string[] DiscoverDisabledUserIds { get; set; } = Array.Empty<string>();
 

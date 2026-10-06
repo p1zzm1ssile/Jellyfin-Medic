@@ -36,9 +36,11 @@ public class PicksController : ControllerBase
     private readonly IAuthorizationContext _authContext;
     private readonly PicksEngine _engine;
     private readonly SeerrClient _seerr;
+    private readonly RequestTracker _requests;
 
-    public PicksController(PicksStore store, ITaskManager taskManager, IAuthorizationContext authContext, PicksEngine engine, SeerrClient seerr)
+    public PicksController(PicksStore store, ITaskManager taskManager, IAuthorizationContext authContext, PicksEngine engine, SeerrClient seerr, RequestTracker requests)
     {
+        _requests = requests;
         _store = store;
         _taskManager = taskManager;
         _authContext = authContext;
@@ -249,6 +251,87 @@ public class PicksController : ControllerBase
         var result = await _seerr.RequestAsync(config.JellyseerrUrl, userId, request.TmdbId, type, cancellationToken).ConfigureAwait(false);
         return Content(JsonSerializer.Serialize(result, PicksStore.JsonOptions), MediaTypeNames.Application.Json);
     }
+
+    /// <summary>
+    /// The signed-in person's own Seerr requests and where each has got to. Only ever their own:
+    /// Seerr is asked for that one account's requests.
+    /// </summary>
+    [HttpGet("Me/Requests")]
+    [Authorize]
+    [Produces(MediaTypeNames.Application.Json)]
+    public async Task<ActionResult> GetMyRequests(System.Threading.CancellationToken cancellationToken)
+    {
+        var userId = await GetUserIdAsync().ConfigureAwait(false);
+        if (userId == Guid.Empty)
+        {
+            return Unauthorized();
+        }
+
+        var config = Plugin.Instance!.Configuration;
+        if (!TrackingRequests(config))
+        {
+            return Json(new { enabled = false });
+        }
+
+        var (rows, linked) = await _requests.ForUserAsync(config.JellyseerrUrl, userId, cancellationToken).ConfigureAwait(false);
+        return Json(new
+        {
+            enabled = true,
+            linked,
+            reachable = rows is not null,
+            requests = rows ?? new System.Collections.Generic.List<RequestRow>()
+        });
+    }
+
+    /// <summary>Everyone's requests waiting for approval, for admins to approve or decline.</summary>
+    [HttpGet("Admin/Requests")]
+    [Authorize(Policy = AdminPolicy)]
+    [Produces(MediaTypeNames.Application.Json)]
+    public async Task<ActionResult> GetPendingRequests(System.Threading.CancellationToken cancellationToken)
+    {
+        var config = Plugin.Instance!.Configuration;
+        if (!TrackingRequests(config))
+        {
+            return Json(new { enabled = false });
+        }
+
+        var userId = await GetUserIdAsync().ConfigureAwait(false);
+        var rows = await _requests.PendingAsync(config.JellyseerrUrl, userId, cancellationToken).ConfigureAwait(false);
+        return Json(new
+        {
+            enabled = true,
+            reachable = rows is not null,
+            requests = rows ?? new System.Collections.Generic.List<RequestRow>()
+        });
+    }
+
+    [HttpPost("Admin/Requests/{requestId}/Approve")]
+    [Authorize(Policy = AdminPolicy)]
+    public Task<ActionResult> ApproveRequest([FromRoute] int requestId, System.Threading.CancellationToken cancellationToken) =>
+        SetRequestStatus(requestId, true, cancellationToken);
+
+    [HttpPost("Admin/Requests/{requestId}/Decline")]
+    [Authorize(Policy = AdminPolicy)]
+    public Task<ActionResult> DeclineRequest([FromRoute] int requestId, System.Threading.CancellationToken cancellationToken) =>
+        SetRequestStatus(requestId, false, cancellationToken);
+
+    private async Task<ActionResult> SetRequestStatus(int requestId, bool approve, System.Threading.CancellationToken cancellationToken)
+    {
+        var config = Plugin.Instance!.Configuration;
+        if (requestId <= 0 || !TrackingRequests(config))
+        {
+            return BadRequest();
+        }
+
+        var (ok, message) = await _seerr.SetRequestStatusAsync(config.JellyseerrUrl, requestId, approve, cancellationToken).ConfigureAwait(false);
+        return Json(new { ok, message });
+    }
+
+    private bool TrackingRequests(Configuration.PluginConfiguration config) =>
+        config.ShowRequests && !string.IsNullOrWhiteSpace(config.JellyseerrUrl) && _store.GetSeerrKey() is not null;
+
+    private ContentResult Json(object body) =>
+        Content(JsonSerializer.Serialize(body, PicksStore.JsonOptions), MediaTypeNames.Application.Json);
 
     [HttpGet("Page")]
     [AllowAnonymous]
