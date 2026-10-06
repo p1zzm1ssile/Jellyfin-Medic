@@ -315,10 +315,9 @@ public class PicksEngine
 
         // The person's own choices: titles they hid, and the genres they picked.
         var hidden = new HashSet<Guid>(prefs.HiddenItems);
-        var chosenGenres = Genres.Expand(prefs.Genres);
         candidates = candidates
             .Where(c => !hidden.Contains(c.Id))
-            .Where(c => chosenGenres.Count == 0 || Genres.Expand(c.Genres).Overlaps(chosenGenres))
+            .Where(c => Genres.Matches(prefs.Genres, c.Genres, c.Tags, c.Name, prefs.Genres.Count > 0 && IsAnime(c)))
             .ToList();
 
         // First pass: genres + rating (cheap). Second pass: people (one lookup per shortlisted item).
@@ -553,7 +552,6 @@ public class PicksEngine
 
         var tally = new Dictionary<string, DiscoverTally>(StringComparer.Ordinal);
         var hidden = new HashSet<string>(prefs.HiddenTmdb, StringComparer.Ordinal);
-        var chosenGenres = Genres.Expand(prefs.Genres);
 
         foreach (var seed in seeds)
         {
@@ -577,7 +575,8 @@ public class PicksEngine
                     continue; // already on the server, or this person isn't interested
                 }
 
-                if (chosenGenres.Count > 0 && !Genres.Expand(rec.GenreIds.Select(Genres.TmdbName)).Overlaps(chosenGenres))
+                bool recAnime = string.Equals(rec.OriginalLanguage, "ja", StringComparison.OrdinalIgnoreCase) && rec.GenreIds.Contains(16);
+                if (!Genres.Matches(prefs.Genres, rec.GenreIds.Select(Genres.TmdbName), null, rec.Title, recAnime))
                 {
                     continue; // not one of the genres they chose
                 }
