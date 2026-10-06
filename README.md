@@ -107,6 +107,8 @@ Personal picks for everyone on your server, built from what each person actually
 - **Linked to what you've watched.** A separate section with titles from the same world as something you watched: a series' films and the other way round (The Seven Deadly Sins series and its films), the rest of a collection, and titles sharing a franchise tag, such as Marvel series and the MCU films. Admins can turn it off.
 - **Ignore.** "Ignore – don't recommend again" on any pick removes it straight away, and it's never suggested again. "Show them again" brings ignored titles back.
 
+Choices are made in the settings box at the top of the My picks page, and **Update my picks** rebuilds that person's picks straight away. What's new in each version is in [Medic Picks' changelog](Jellyfin.Plugin.MedicPicks/CHANGELOG.md).
+
 Picks are rebuilt every night by the **Build personal picks** scheduled task. Picks from your library follow each user's library access and parental controls.
 
 ### Setting it up
@@ -122,7 +124,7 @@ Each person needs a few watched titles before their picks appear.
 
 ### Privacy
 
-- Picks are built and stored on your server. Each user only sees their own.
+- Picks are built and stored on your server. Each user only sees their own, and their choices (genres, ignored titles and so on) are stored on the server with them.
 - Suggestions from outside your library are off by default. When an admin turns them on, the server sends TMDb the TMDb IDs of titles people have watched. No names or account details are sent.
 - The TMDb and Seerr keys are stored separately from the plugin's other settings, only admins can read them, and they never reach anyone's browser. Requests are made on the server, as the person who pressed Request.
 
