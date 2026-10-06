@@ -3,6 +3,13 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
+## [1.2.0] – 2026-10-06
+
+### Added
+- **My requests.** The My picks page now shows what you've asked for in Seerr and where each one has got to: waiting for approval, approved and looking for a download, waiting in the download queue, downloading (how far it's got, and roughly when it'll be ready), or ready to watch, with a Play button. Series show which episode, or how many, are downloading. Requests made in Seerr itself are included too. Problems show as "there's a problem with the download" rather than a made-up time. The list updates by itself every minute while anything is on its way, and finished requests drop off after two weeks. Each person only ever sees their own requests.
+- **Approve and decline from the My picks page.** Admins see everyone's requests waiting for approval at the top of the page, with who asked, and can approve or decline them there.
+- Download progress comes from Sonarr and Radarr through Seerr, so they need to be connected in Seerr (Settings → Services). It uses the Seerr key Medic Picks already has; no Sonarr or Radarr keys are needed. Admins can turn it off with "Show people their requests" in Medic Picks' settings.
+
 ## [1.1.1] – 2026-10-06
 
 ### Fixed
