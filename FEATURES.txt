@@ -1,0 +1,541 @@
+===============================================================================
+                  JELLYFIN MEDIC AND MEDIC PICKS: FULL FEATURE LIST
+===============================================================================
+
+This repository contains two Jellyfin plugins:
+
+  1. JELLYFIN MEDIC (version 1.0.12)
+     For the person who runs the server. Health checks, performance tests,
+     usage-aware task scheduling, track cleanup and media reports.
+     Needs Jellyfin 12.1 or later. Administrators only.
+
+  2. MEDIC PICKS (version 1.1.1)
+     For everyone who uses the server. Personal viewing suggestions built
+     from what each person actually watches.
+     Needs Jellyfin 12.0 or later.
+
+Both are installed from the same plugin repository:
+  https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/manifest.json
+
+
+===============================================================================
+PART 1: JELLYFIN MEDIC
+===============================================================================
+
+Everything lives on one page in the dashboard sidebar, under
+Plugins > Jellyfin Medic. Only administrators can open it. The page has these
+tabs: Dashboard, Schedule, Checks, Tests, IPTV, Tracks, Media report,
+Plugin directory, and Settings and support.
+
+
+-------------------------------------------------------------------------------
+1.1  DASHBOARD
+-------------------------------------------------------------------------------
+
+A single screen of tiles:
+
+  - Health: how many things need fixing, by severity.
+  - This week: issues fixed and issues that appeared in the last 7 days, how
+    much disk space Medic freed (track cleanup, clean-ups, duplicates), and
+    how often Medic restarted Jellyfin.
+  - Tonight's tasks: what is scheduled to run and when.
+  - Right now: live CPU, memory (as a percentage) and who is watching.
+  - Top issues: the most serious findings from Checks.
+  - Last 24 hours: what ran, what failed, what happened.
+  - Users and access: account summary.
+  - Updates waiting: plugin updates and pending restarts.
+  - Load guard: reports any action the memory guard has taken.
+  - Maintenance panel:
+      * Free up disk space: left-over transcode files, and metadata or image
+        folders for items no longer in your library. Scanning is read-only;
+        nothing is removed until you confirm.
+      * Clear old logs: removes Jellyfin daily logs and FFmpeg playback logs
+        older than a day. Today's log is never touched.
+      * Clear IPTV stream files: removes left-over IPTV .strm files that
+        Jellyfin no longer has an item for. Never touches files less than
+        2 days old, and offers nothing if it can't tell which are left over.
+      * "Is my server exposed?" check: takes a domain or IP, port and
+        protocol (pre-filled with what Medic found), with a shortcut to test
+        the raw 8096 port.
+      * Stop running tasks.
+  - Progress bar: if a track scan or track cleanup is running, a bar at the
+    top of every tab shows how far it's got, with a button to the Tracks tab.
+  - "What's new" panel: after an update, a short summary of what changed is
+    shown once.
+
+
+-------------------------------------------------------------------------------
+1.2  SCHEDULE
+-------------------------------------------------------------------------------
+
+  - Week-at-a-glance timeline. Each task is a coloured block on its day.
+  - Shading behind each hour shows how busy that hour usually is, and a red
+    line marks "now". Click any task for its details.
+  - Learns your quiet hours from your own viewing pattern (sampled every
+    5 minutes, anonymously: only how many people are watching).
+  - Can run a task at different times on different days.
+  - Preview shows the proposed plan before you Apply it.
+  - Every change is backed up first and can be restored (undo).
+  - Avoid window: never schedule tasks between hours you choose (for
+    example 18:00 to 23:00), wrapping past midnight if needed.
+  - Stage order: each night runs the library scan first, then tasks that
+    depend on it (guide, chapter images, trickplay), then upkeep, with
+    monthly jobs last. The schedule list reads in the order the night runs.
+  - No overlaps: each task is given enough time for its longest recent run
+    (with more room for long tasks); early failures don't make a task look
+    quick.
+  - Monthly tasks: Jellyfin has no monthly trigger, so Medic runs monthly
+    tasks itself.
+  - Scheduling help modes:
+      * Off: you run Preview and Apply yourself.
+      * Suggest (default): Medic flags a clearly better schedule in Checks
+        and waits for you to Apply.
+  - Memory load guard (on by default, ceiling 85%): if memory climbs past the
+    ceiling while more than one heavy task is running, Medic stops the extra
+    heavy tasks (keeping the one that started first), then restarts them one
+    at a time once memory recovers.
+  - Scheduled task "Restart Jellyfin for waiting updates" (04:00 by default):
+    restarts Jellyfin when plugin updates are waiting, but only when nobody is
+    watching, no track cleanup is running and no other task is busy. If it
+    isn't safe, it re-checks every 5 minutes for up to an hour.
+  - Scheduled task "Scheduled restart": restarts Jellyfin at times you set
+    (for example weekly, to clear memory), with the same safety checks. Has
+    no time set to begin with, so it never restarts until you add one.
+  - Warns if the Task Grid plugin is also installed, since both can change
+    schedules.
+
+
+-------------------------------------------------------------------------------
+1.3  CHECKS
+-------------------------------------------------------------------------------
+
+Every finding is listed most serious first (Problem, Improve, Tip). Each one
+shows:
+  - the current value and the suggested value,
+  - why it matters,
+  - a "Where" link that opens the right Jellyfin page in a new tab (for
+    plugin issues, that plugin's own settings page), with directions worded
+    for your platform (Unraid, TrueNAS SCALE, Proxmox, Docker, Linux, Windows
+    or macOS),
+  - Ignore: drops it out of the counts. Findings come back on their own if
+    the situation changes.
+  - Long error messages can be expanded and scrolled in full.
+
+The issue on the page where you fix it: when you follow a "Where" link, the
+Jellyfin page shows the issue in a small box (what's set now, what Medic
+suggests, and why). You can drag it, minimise it or close it. It's kept in
+your browser only and disappears when closed or after 30 minutes.
+
+What Medic checks:
+
+HARDWARE AND TRANSCODING
+  - Your GPU isn't being used / no GPU available to Jellyfin.
+  - Hardware acceleration is off, or its type doesn't match your GPU
+    (NVIDIA, Intel and AMD covered).
+  - Hardware encoding is off; no formats ticked for hardware decoding.
+  - Tone mapping off, or tone mapping on without a GPU.
+  - Transcoding or trickplay set to use more threads than your CPU has.
+  - Trickplay images made on the CPU.
+  - Transcode throttling off; old transcode segments not deleted.
+  - Transcode folder in RAM but very small; or "you could transcode to RAM".
+  - FFmpeg wasn't found.
+  - A high share of playback is being transcoded.
+
+STORAGE
+  - Low space for transcodes, on the cache drive, or on the config drive.
+  - Almost no space left for the database.
+  - Log files taking a lot of space; debug logging on.
+  - The database's write-ahead log is large.
+  - On Unraid: database or transcodes going through the user-share layer
+    (slow), and disk health from Unraid's own SMART data (disk errors or a
+    disk dropping out of the array).
+
+SERVER, NETWORK AND LIBRARIES
+  - Remote streaming limit: none set but your upload can't keep up; set
+    higher than your upload can deliver; capped very low; or room to allow
+    better quality away from home.
+  - Remote access on without HTTPS.
+  - Server has no name.
+  - Parallel-task limits set higher than your CPU threads.
+  - The activity log is kept forever.
+  - Per library: a folder can't be found; metadata re-downloaded too often;
+    chapter images or trickplay made during scans; chapter images or
+    trickplay on for a streamed (IPTV) library; very large IPTV library;
+    audio normalisation scanning on; real-time monitoring on (especially on
+    a large library, with advice naming Sonarr for TV, Radarr for films and a
+    daily scan for everything else).
+  - Library changes picked up very quickly.
+  - Live TV: a long TV guide downloaded; a very large number of channels
+    (with the supported ways to clear orphaned channels).
+
+SCHEDULED TASKS
+  - Tasks run while people are usually watching.
+  - The full library scan runs very often.
+  - Database optimisation never runs, or hasn't run for a while.
+  - Tasks have been overloading memory.
+  - A better schedule is available (in Suggest mode).
+  - Failed tasks, named with the plugin they came from.
+  - Jellyfin is waiting for a restart to finish installing updates.
+  - "Still learning when your server is busy" and "Your viewing pattern".
+
+USERS AND SECURITY
+  - Accounts with no password.
+  - Inactive accounts (90 days by default, configurable).
+  - Too many administrators.
+  - Bursts of failed sign-ins.
+  - Accounts signing in from several places in a week.
+  - Accounts that can open every library with no content rating limit.
+
+PLUGINS (general)
+  - Failed to load, disabled, or not compatible with your Jellyfin version.
+  - Waiting for a restart.
+  - Unreadable settings file; leftover settings files from removed plugins.
+  - Debug logging on; more threads than your CPU has; repeating work very
+    often.
+  - May not be set up; blank connection settings (only flagged when none are
+    filled in; built-in-key plugins such as TMDb, OMDb, Fanart and TheTVDB
+    are not flagged).
+  - Dead plugin repositories (only after failing twice in a row).
+  - Broken add-on scripts (JavaScript Injector).
+  - Updates available.
+
+PLUGIN-SPECIFIC RULES
+  - Xtream Library: no series categories ticked; items not removed from
+    dropped categories; too many parallel connections to your provider;
+    sync interval; days of TV guide downloaded.
+  - Intro Skipper: analysing IPTV libraries; analysing during library scans;
+    too many episodes at once; analysis priority.
+  - Home Screen Sections: sections that can't work; sections for content you
+    don't have; rows that search the whole library; hiding IPTV libraries
+    from everyone; Next Up looking through all history.
+  - JavaScript Injector / KefinTweaks: old loader, loaded more than once,
+    KefinTweaks home screen on, clashing with Home Screen Sections.
+  - Jellyfin Enhanced and JellyTweaks settings.
+  - JellyTag / JellyTag Plus: badges drawn on IPTV posters; redraw interval;
+    pre-drawing while people are watching.
+  - SmartLists: lists rebuilt on every library change.
+  - Telegram Notifier and Webhook: a message for every item added (IPTV
+    imports included); empty or broken destinations.
+  - Trakt: syncing IPTV libraries; every library folder excluded.
+  - TMDb: downloading full-size original images (large film/TV libraries).
+  - Media Bar: random items from the whole library.
+  - Auto Collections: example collections still present.
+
+LOG
+  - The same error repeating over and over, with when it last happened.
+  - "Fixed it: count again from now" resets a repeated-error count.
+
+
+-------------------------------------------------------------------------------
+1.4  TESTS
+-------------------------------------------------------------------------------
+
+  - Playback test: plays a 1080p and a 4K HDR film through Jellyfin's real
+    transcoder and reports the speed and whether the GPU did the work.
+  - Image extraction test: times your GPU against your CPU at the work that
+    trickplay and chapter images do.
+  - Internet speed test (Cloudflare): measures the server's own connection
+    and recommends a remote streaming limit for however many people watch
+    away from home.
+
+
+-------------------------------------------------------------------------------
+1.5  IPTV
+-------------------------------------------------------------------------------
+
+  - Counts IPTV films and series by genre and by country.
+  - Shows how much of each actually gets watched, so you can trim what nobody
+    uses ("big genres nobody watches").
+  - Finds live channels that appear several times in different qualities
+    (with advice on merging them in Dispatcharr).
+  - Safe clean-up of left-over IPTV stream files (see Dashboard).
+  - Medic never edits Jellyfin's database.
+
+
+-------------------------------------------------------------------------------
+1.6  TRACKS (track cleanup)
+-------------------------------------------------------------------------------
+
+Removes unwanted audio and subtitle tracks from local files by remuxing:
+no re-encode and no quality loss. IPTV is skipped.
+
+What it keeps:
+  - Your chosen languages (default: eng). Codes with two forms (fre/fra,
+    ger/deu, dut/nld, chi/zho) are treated as the same language.
+  - Forced subtitles.
+  - The last audio track in a file (never removed).
+  - Subtitles in films whose audio isn't in your languages, so foreign films
+    and anime stay watchable.
+  - Fonts stored inside MKV files (needed for styled anime subtitles).
+  - Separate subtitle files beside the film are never changed by stripping.
+
+Untagged (no language) tracks:
+  - Kept by default.
+  - Option: remove untagged subtitles while always keeping untagged audio.
+  - Option: keep the first untagged subtitle in films with no subtitle in
+    your languages (on by default).
+  - Option: let a file's only subtitle go when it's untagged.
+  - Option: remove all untagged tracks, audio included.
+
+Setting languages yourself:
+  - Lists every track with no language set, film by film, one track per row
+    (film, type, format, file size, track size), with pages and search.
+  - Set a language one track at a time, or many at once (everything matching
+    the filter, or just the current page). By default audio is only labelled
+    where it's the film's only audio track, and anime is skipped.
+  - 2-letter codes are saved in 3-letter form ("en" becomes "eng").
+  - Tracks inside a film are labelled, with a readable title such as
+    "English 5.1", on the next run.
+  - Separate subtitle files are renamed straight away so Jellyfin recognises
+    them ("Film (2009).eng.srt"), keeping flags such as forced or sdh.
+
+Running it:
+  - Scan and preview shows what every file would keep before anything
+    changes. The scan runs on the server and carries on if you leave the tab.
+  - The cleaned file keeps the original's name, so Jellyfin keeps the same
+    item, artwork and watched status.
+  - By default the original is kept in a hidden .medic-originals folder
+    (ignored by Jellyfin, Sonarr and Radarr) until you choose "Delete the
+    kept originals". Option to replace in place instead.
+  - Shows how many originals are kept and how much space they take.
+  - Remove duplicate files: tidies titles left with extra copies by older
+    versions; optionally delete the originals too.
+  - Progress, time left and finish time, worked out from file sizes.
+  - Pause (finishes the current file) and Resume; Stop now stops FFmpeg
+    immediately.
+  - Time window: only work between set hours (for example 01:00 to 07:00),
+    carrying on in the next window.
+  - Holds off while anyone is watching (on by default).
+  - Concurrent files and FFmpeg thread options.
+  - If putting the cleaned file in place fails, the original is put back.
+  - Settings sit at the top of the tab with their own Save button.
+
+
+-------------------------------------------------------------------------------
+1.7  MEDIA REPORT (read-only)
+-------------------------------------------------------------------------------
+
+  - What formats your files are in.
+  - Roughly how much space converting to HEVC could save, with a GPU encoder
+    and with software encoding, and which files would save the most.
+  - What's likely to make Jellyfin transcode, such as DTS-only audio or
+    picture-based subtitles.
+  - Files Medic has caught being transcoded during playback, and why
+    (titles and reasons only, not who was watching).
+  - Reads what Jellyfin already knows: nothing is rescanned or changed.
+
+
+-------------------------------------------------------------------------------
+1.8  PLUGIN DIRECTORY
+-------------------------------------------------------------------------------
+
+  - Browse community plugins from the awesome-jellyfin list (fetched live).
+  - Suggestions for your server at the top, each saying why, how important
+    it is, and whether it's in your plugin catalogue.
+  - Worth adding (based on your libraries and what gets watched):
+      * Intro Skipper (high) when most viewing is TV.
+      * AniList or another anime provider (high) when anime is found.
+      * OpenLibrary / Google Books / ComicVine (medium) when you have books.
+      * LrcLib (medium) for synced lyrics with 50+ music tracks.
+      * Playback Reporting (medium) with 2+ users.
+      * Open Subtitles (low) when no subtitle downloader is installed.
+      * Consider: TheTVDB (DVD/absolute order), Fanart (logos and clear art),
+        LDAP Authentication (10+ accounts).
+  - Probably not needed:
+      * Bookshelf (deprecated in Jellyfin 12).
+      * Anime, lyrics, intro-skipper or book providers when there's no
+        matching content.
+  - Nothing is installed or removed for you.
+
+
+-------------------------------------------------------------------------------
+1.9  SETTINGS AND SUPPORT
+-------------------------------------------------------------------------------
+
+  - Medic's own options, each with a "?" button explaining what it does:
+      * Avoid window (on/off, start and end hour).
+      * Inactive account threshold (days).
+      * Load guard (on/off) and memory ceiling (%).
+      * Scheduling help mode (Off or Suggest).
+      * Track cleanup options (on the Tracks tab).
+  - Every Jellyfin setting listed with plain names and a red, yellow or green
+    marker (red needs changing, yellow could be better, green is fine), an
+    Open link to its page (which shows the issue box), and Dismiss to turn a
+    marker green. "Only settings with advice" filter.
+  - "Help improve Medic" export: a masked copy of your plugin settings,
+    with an optional anonymous system summary. Passwords, keys, tokens,
+    usernames, credentials in links and webhook URLs are masked before you
+    see the file. Sending it is always your choice.
+
+
+-------------------------------------------------------------------------------
+1.10  PLATFORM SUPPORT, MIGRATION AND SAFETY
+-------------------------------------------------------------------------------
+
+  - Detects where Jellyfin is running (Unraid, TrueNAS SCALE, Proxmox,
+    Docker, Linux, Windows or macOS) and words its advice to match.
+    GPU device checks need Linux (containers included); disk health uses
+    Unraid's own disk data.
+  - Developed and tested on Unraid with the binhex and linuxserver.io
+    Jellyfin containers.
+  - Server language must be English (tasks are recognised by English names).
+  - Replaces Task Advisor and Setup Optimiser: on first start it copies their
+    schedule backups, run history, monthly tasks, viewing pattern and ignored
+    findings, then flags the old plugins for removal.
+  - All saved data (schedules, run history, monthly tasks, viewing pattern,
+    hand-set languages, weekly history) is written safely so a crash or power
+    cut mid-save can't wipe it.
+
+
+-------------------------------------------------------------------------------
+1.11  PRIVACY (MEDIC)
+-------------------------------------------------------------------------------
+
+  - Admin only.
+  - IP addresses and settings are read and shown to you, never saved into
+    Medic's own files.
+  - Playback records are anonymous: how many people are watching, and which
+    titles were transcoded and why. Not who.
+  - No passwords are ever read, stored or sent.
+  - Internet use only when you ask: the speed test (Cloudflare) and the
+    exposure check (sends only a port number) run when you press the button;
+    the Plugin directory fetches the public awesome-jellyfin list and checks
+    your own plugin repositories.
+
+
+===============================================================================
+PART 2: MEDIC PICKS
+===============================================================================
+
+Personal picks for everyone on the server, built from what each person
+actually watches (genres and people from their watch history). Picks are
+rebuilt every night by the "Build personal picks" scheduled task.
+
+
+-------------------------------------------------------------------------------
+2.1  "PICKS FOR YOU" PLAYLIST
+-------------------------------------------------------------------------------
+
+  - A private playlist for every user, in every Jellyfin app, TV apps
+    included. Name is configurable (default "Picks for you").
+  - Holds titles already on your server.
+  - Series start at their first regular episode, so people can press play
+    straight away.
+  - Rebuilt fresh each run, one person at a time, with no duplicate
+    playlists left behind.
+
+
+-------------------------------------------------------------------------------
+2.2  "MY PICKS" PAGE
+-------------------------------------------------------------------------------
+
+  - Linked automatically from everyone's Jellyfin side menu (web, Jellyfin
+    Desktop, Android and iOS) with no files to edit. Link name configurable
+    (default "My picks"), or turn it off.
+  - Shows why each title was picked.
+  - Sections:
+      * On your server.
+      * Linked to what you've watched.
+      * Not on the server yet (Discover, optional, needs a TMDb key).
+
+
+-------------------------------------------------------------------------------
+2.3  EACH PERSON CHOOSES WHAT THEY SEE
+-------------------------------------------------------------------------------
+
+A settings box at the top of the My picks page:
+
+  - Show: films and series, films only, or series only.
+  - Genres: tick as many as you like. Every standard genre is offered
+    (Action, Adventure, Animation, Anime, Biography, Comedy, Crime,
+    Documentary, Drama, Family, Fantasy, History, Horror, Kids, Music,
+    Mystery, Romance, Science Fiction, Sport, Thriller, War, Western), plus
+    any others in your library. Paired TV genres count too, so Science
+    Fiction also finds "Sci-Fi & Fantasy" series.
+  - Seasonal: Christmas and Halloween picks, found from tags, genres and
+    titles.
+  - How many: 5, 10, 15, 20, 25 or 30 picks in each section.
+  - Dubbed audio only: on the server, only titles with audio in your
+    language (set by the TMDb language). Suggestions from outside the
+    library first made in another language are marked "audio not confirmed".
+    Anime with untagged audio is assumed not to be dubbed.
+  - Update my picks: rebuilds that person's picks straight away.
+
+
+-------------------------------------------------------------------------------
+2.4  LINKED TO WHAT YOU'VE WATCHED
+-------------------------------------------------------------------------------
+
+  - A series' films and the other way round (for example The Seven Deadly
+    Sins series and its films).
+  - Sequels (Frozen, Frozen II) and the rest of a collection.
+  - Titles sharing a franchise tag, such as Marvel series and the MCU films.
+  - Each says why it's there. Only titles the person can see and hasn't
+    watched or started. Genre choices aren't applied, since a franchise spans
+    genres.
+  - Admins can turn this section off.
+
+
+-------------------------------------------------------------------------------
+2.5  IGNORE
+-------------------------------------------------------------------------------
+
+  - "Ignore - don't recommend again" on any pick removes it straight away,
+    and it's never suggested again.
+  - "Show them again" brings ignored titles back.
+
+
+-------------------------------------------------------------------------------
+2.6  DISCOVER (TITLES NOT ON THE SERVER) AND SEERR REQUESTS
+-------------------------------------------------------------------------------
+
+  - Optional suggestions from TMDb recommendations, using a free TMDb API
+    key. Off by default.
+  - TMDb language for titles and overviews (default en-GB).
+  - Seerr (formerly Overseerr / Jellyseerr) integration: each suggestion
+    gets a Request button that sends the request straight to Seerr under
+    that person's own Seerr account, so their permissions, request limits
+    and auto-approval all apply. Each person must have signed in to Seerr
+    once with their Jellyfin login.
+  - "Test Seerr" button in the admin settings.
+  - "Who gets Discover picks": untick accounts (for example children's) to
+    leave them out. Turning Discover off for someone clears their old
+    Discover picks.
+
+
+-------------------------------------------------------------------------------
+2.7  ADMIN SETTINGS (MEDIC PICKS)
+-------------------------------------------------------------------------------
+
+  - Library picks on/off, and how many (default 20).
+  - Linked section on/off.
+  - Create playlists on/off, and playlist name.
+  - Discover on/off, and how many (default 20).
+  - TMDb API key (Save key) and TMDb language.
+  - Seerr address, Seerr API key, direct requests on/off, Test Seerr.
+  - Who gets Discover picks.
+  - Menu link on/off, and its name.
+  - Minimum watched titles before picks are built (default 3).
+  - Build picks now (or wait for the nightly run).
+  - Status view of the last build.
+
+
+-------------------------------------------------------------------------------
+2.8  PRIVACY (MEDIC PICKS)
+-------------------------------------------------------------------------------
+
+  - Picks are built and stored on your server. Each user only sees their own.
+  - Picks from your library follow each user's library access and parental
+    controls.
+  - Discover is off by default. When on, the server sends TMDb only the TMDb
+    IDs of titles people have watched: no names or account details.
+  - TMDb and Seerr keys are stored separately from other settings, readable
+    only by admins, and never reach anyone's browser. Requests are made on
+    the server, as the person who pressed Request.
+  - Preferences and keys are saved safely so a crash mid-save can't wipe
+    them.
+
+
+===============================================================================
+                                     END
+===============================================================================
