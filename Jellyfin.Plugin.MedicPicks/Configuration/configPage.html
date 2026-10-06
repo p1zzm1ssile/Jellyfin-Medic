@@ -26,6 +26,16 @@
                 </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label>
+                        <input is="emby-checkbox" type="checkbox" id="EnableLinkedPicks" />
+                        <span>Suggest titles linked to what each person watched</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        A separate section with a series' films (and the other way round), the rest of a collection,
+                        and titles from the same franchise, such as Marvel series and films.
+                    </div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
                         <input is="emby-checkbox" type="checkbox" id="CreatePlaylists" />
                         <span>Give each user a private playlist of their picks</span>
                     </label>
@@ -195,6 +205,7 @@
                         $('EnableLibraryPicks').checked = config.EnableLibraryPicks;
                         $('LibraryPickCount').value = config.LibraryPickCount;
                         $('CreatePlaylists').checked = config.CreatePlaylists;
+                        $('EnableLinkedPicks').checked = config.EnableLinkedPicks !== false;
                         $('PlaylistName').value = config.PlaylistName || '';
                         $('EnableDiscover').checked = config.EnableDiscover;
                         $('DiscoverPickCount').value = config.DiscoverPickCount;
@@ -218,6 +229,7 @@
                     config.EnableLibraryPicks = $('EnableLibraryPicks').checked;
                     config.LibraryPickCount = parseInt($('LibraryPickCount').value, 10) || 20;
                     config.CreatePlaylists = $('CreatePlaylists').checked;
+                    config.EnableLinkedPicks = $('EnableLinkedPicks').checked;
                     config.PlaylistName = $('PlaylistName').value.trim() || 'Picks for you';
                     config.EnableDiscover = $('EnableDiscover').checked;
                     config.DiscoverPickCount = parseInt($('DiscoverPickCount').value, 10) || 20;

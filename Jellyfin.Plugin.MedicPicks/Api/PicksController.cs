@@ -78,6 +78,7 @@ public class PicksController : ControllerBase
             dubLanguageCode = AudioLanguage.FromTmdb(config.TmdbLanguage).TwoLetter,
             playlistName = config.CreatePlaylists && picks?.PlaylistId is not null ? config.PlaylistName : null,
             inLibrary = picks?.InLibrary ?? new System.Collections.Generic.List<LibraryPick>(),
+            linked = picks?.Linked ?? new System.Collections.Generic.List<LibraryPick>(),
             discover = picks?.Discover ?? new System.Collections.Generic.List<DiscoverPick>()
         };
 
@@ -131,6 +132,7 @@ public class PicksController : ControllerBase
         {
             prefs.HiddenItems.Add(itemId);
             picks?.InLibrary.RemoveAll(p => p.ItemId == itemId);
+            picks?.Linked.RemoveAll(p => p.ItemId == itemId);
         }
         else
         {

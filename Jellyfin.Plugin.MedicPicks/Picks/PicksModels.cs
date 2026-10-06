@@ -17,6 +17,9 @@ public class UserPicks
 
     public List<LibraryPick> InLibrary { get; set; } = new();
 
+    /// <summary>Titles on the server from the same world as something watched: films of a series, the rest of a collection, the same franchise.</summary>
+    public List<LibraryPick> Linked { get; set; } = new();
+
     public List<DiscoverPick> Discover { get; set; } = new();
 
     /// <summary>Genres of the films and series this person can see, for the genre choices on their page.</summary>
