@@ -92,7 +92,7 @@ public class TmdbTitle
 public class UserPreferences
 {
     /// <summary>How many picks each section may show.</summary>
-    public static readonly int[] CountChoices = { 10, 15, 20, 35 };
+    public static readonly int[] CountChoices = { 5, 10, 15, 20, 25, 30 };
 
     /// <summary>"all", "movies" or "series".</summary>
     public string Kind { get; set; } = "all";
@@ -131,7 +131,8 @@ public class UserPreferences
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(30)
             .ToList();
-        Count = CountChoices.Contains(Count) ? Count : 0;
+        // Round anything else to the nearest choice (0 stays "the server's default").
+        Count = Count <= 0 ? 0 : CountChoices.OrderBy(c => Math.Abs(c - Count)).First();
         HiddenItems = (HiddenItems ?? new List<Guid>()).Distinct().TakeLast(1000).ToList();
         HiddenTmdb = (HiddenTmdb ?? new List<string>()).Distinct(StringComparer.Ordinal).TakeLast(1000).ToList();
         return this;

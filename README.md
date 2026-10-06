@@ -103,8 +103,8 @@ Personal picks for everyone on your server, built from what each person actually
 
 - **A private "Picks for you" playlist** for every user, in every Jellyfin app, TV apps included. It holds titles already on your server, and series start at their first episode so people can press play straight away.
 - **A "My picks" page**, linked from everyone's Jellyfin side menu automatically, showing why each title was picked, plus titles that aren't on your server yet. It works in any browser, Jellyfin Desktop and the Android and iOS apps, with no files to edit. If you use Seerr (formerly Overseerr and Jellyseerr), each suggestion gets a **Request** button that sends the request straight to Seerr under that person's own Seerr account, so their permissions, request limits and auto-approval all apply.
-- **Each person chooses what they see.** On their My picks page, anyone can choose films, series or both, pick genres, and show 10, 15, 20 or 35 picks. "Dubbed audio only" leaves out titles on your server with no audio in your language (set by the TMDb language), and marks suggestions from outside your library as "audio not confirmed", because TMDb can't say whether a dub exists.
-- **Not interested.** A button on each pick hides that title for good. "Show them again" brings hidden titles back.
+- **Each person chooses what they see.** On their My picks page, anyone can choose films, series or both, pick genres, and show 5 to 30 picks (in steps of 5). "Dubbed audio only" leaves out titles on your server with no audio in your language (set by the TMDb language), and marks suggestions from outside your library as "audio not confirmed", because TMDb can't say whether a dub exists.
+- **Ignore.** "Ignore – don't recommend again" on any pick removes it straight away, and it's never suggested again. "Show them again" brings ignored titles back.
 
 Picks are rebuilt every night by the **Build personal picks** scheduled task. Picks from your library follow each user's library access and parental controls.
 
