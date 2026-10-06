@@ -3,7 +3,7 @@
 All notable changes to Medic Profiles are recorded here. The newest version is at the top.
 Jellyfin Medic and Medic Picks have their own changelogs.
 
-## [Unreleased]
+## [1.0.1] – 2026-10-06
 
 ### Fixed
 - **Profiles.** The "HEVC plays fine here, which saves space" tip now only appears for profiles that actually give an x265 / HEVC custom format a negative score, and names that format. It used to list every profile, even ones already scoring x265 at 0 or above.
