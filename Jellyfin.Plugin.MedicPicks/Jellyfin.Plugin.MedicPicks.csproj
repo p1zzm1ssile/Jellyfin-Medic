@@ -24,9 +24,9 @@
   <PropertyGroup>
     <RootNamespace>Jellyfin.Plugin.MedicPicks</RootNamespace>
     <AssemblyName>Jellyfin.Plugin.MedicPicks</AssemblyName>
-    <Version>1.1.0.0</Version>
-    <AssemblyVersion>1.1.0.0</AssemblyVersion>
-    <FileVersion>1.1.0.0</FileVersion>
+    <Version>1.1.1.0</Version>
+    <AssemblyVersion>1.1.1.0</AssemblyVersion>
+    <FileVersion>1.1.1.0</FileVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

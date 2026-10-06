@@ -9,7 +9,7 @@ This repository contains two Jellyfin plugins:
      usage-aware task scheduling, track cleanup and media reports.
      Needs Jellyfin 12.1 or later. Administrators only.
 
-  2. MEDIC PICKS (version 1.1.0)
+  2. MEDIC PICKS (version 1.1.1)
      For everyone who uses the server. Personal viewing suggestions built
      from what each person actually watches.
      Needs Jellyfin 12.0 or later.
