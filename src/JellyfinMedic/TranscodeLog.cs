@@ -131,7 +131,7 @@ public static class TranscodeLog
             {
                 string file = FilePath(paths);
                 Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-                File.WriteAllText(file, JsonSerializer.Serialize(data));
+                JellyfinMedic.Api.ScheduleStorage.WriteText(file, JsonSerializer.Serialize(data));
             }
             catch
             {

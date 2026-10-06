@@ -291,7 +291,7 @@ public static class LoadGuardLog
             {
                 string path = Path(paths);
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
-                File.WriteAllText(path, JsonSerializer.Serialize(list));
+                ScheduleStorage.WriteText(path, JsonSerializer.Serialize(list));
             }
             catch
             {

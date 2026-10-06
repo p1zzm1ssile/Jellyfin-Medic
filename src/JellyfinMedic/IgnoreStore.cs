@@ -58,7 +58,7 @@ public static class IgnoreStore
 
             string path = FilePath(paths);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(keys.OrderBy(k => k, StringComparer.Ordinal).ToList(), Indented));
+            ScheduleStorage.WriteText(path, JsonSerializer.Serialize(keys.OrderBy(k => k, StringComparer.Ordinal).ToList(), Indented));
         }
     }
 

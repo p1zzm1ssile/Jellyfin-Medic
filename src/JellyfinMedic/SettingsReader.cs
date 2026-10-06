@@ -34,6 +34,11 @@ public static class SettingsReader
     private static readonly Regex BotToken =
         new(@"bot\d{6,}:[A-Za-z0-9_-]{20,}", RegexOptions.Compiled);
 
+    // Webhook addresses carry their secret in the path, e.g. https://discord.com/api/webhooks/123/abcDEF...
+    // or https://hooks.slack.com/services/T000/B000/XXXX. Anyone with the address can post to the channel.
+    private static readonly Regex WebhookPath =
+        new(@"(?i)((?:discord(?:app)?\.com/api/webhooks|hooks\.slack\.com/services|/api/webhook|/webhooks?)/)[^\s?""'<]+", RegexOptions.Compiled);
+
     /// <summary>Follows a dotted path such as "TrickplayOptions.EnableHwAcceleration".</summary>
     public static bool TryGet(object? root, string path, out object? value)
     {
@@ -283,6 +288,7 @@ public static class SettingsReader
     {
         string masked = QuerySecrets.Replace(text, "$1••••");
         masked = BotToken.Replace(masked, "bot••••");
+        masked = WebhookPath.Replace(masked, "$1••••");
         return UrlUserInfo.Replace(masked, "://••••:••••@");
     }
 
