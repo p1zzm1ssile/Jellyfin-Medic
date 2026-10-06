@@ -43,7 +43,11 @@ public static class Housekeeping
     private static bool LooksLikeItemId(string name) =>
         name.Length == 32 && name.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
 
-    public static CleanupReport Scan(IApplicationPaths paths, string transcodePath)
+    // A .strm file this new may just not have been scanned in yet, so it's never treated as left over.
+    private static readonly TimeSpan StrmMinimumAge = TimeSpan.FromDays(2);
+
+    /// <param name="knownStrm">Every .strm path Jellyfin has an item for, or null if that couldn't be read.</param>
+    public static CleanupReport Scan(IApplicationPaths paths, string transcodePath, Func<ISet<string>?> knownStrm)
     {
         var report = new CleanupReport();
 
@@ -69,6 +73,9 @@ public static class Housekeeping
         // 2. Orphaned .strm files: IPTV stream pointers sitting under the Xtream library folder that
         //    Jellyfin no longer has an item for (left behind when categories are deselected). These are
         //    plain text files; removing them and rescanning is safe, and re-syncing recreates any wanted ones.
+        //    Files Jellyfin still has an item for are never included.
+        ISet<string>? known = null;
+        bool knownRead = false;
         foreach (var dir in StrmRoots(paths))
         {
             if (!Directory.Exists(dir))
@@ -76,13 +83,19 @@ public static class Housekeeping
                 continue;
             }
 
-            var strm = SafeFiles(dir).Where(f => f.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)).ToList();
+            if (!knownRead)
+            {
+                known = knownStrm();
+                knownRead = true;
+            }
+
+            var strm = OrphanStrm(dir, known);
             if (strm.Count > 0)
             {
                 report.Items.Add(new CleanupItem
                 {
                     Kind = "orphan-strm:" + dir,
-                    Label = $"IPTV stream files under {System.IO.Path.GetFileName(dir.TrimEnd('/'))}",
+                    Label = $"Left-over IPTV stream files under {System.IO.Path.GetFileName(dir.TrimEnd('/'))}",
                     Path = dir,
                     Count = strm.Count,
                     Bytes = strm.Sum(FileLength)
@@ -154,7 +167,23 @@ public static class Housekeeping
         return roots.Distinct(StringComparer.OrdinalIgnoreCase);
     }
 
-    public static (bool Ok, string Message, long Freed) Clean(string kind, IApplicationPaths paths, string transcodePath)
+    /// <summary>
+    /// The .strm files under a folder that Jellyfin has no item for, and that are old enough to have
+    /// been scanned. Empty when Jellyfin's items couldn't be read, or when none of them are in this
+    /// folder (the library hasn't been scanned, so every file would look left over).
+    /// </summary>
+    private static List<string> OrphanStrm(string dir, ISet<string>? known)
+    {
+        var files = SafeFiles(dir).Where(f => f.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (known is null || !files.Any(known.Contains))
+        {
+            return new List<string>();
+        }
+
+        return files.Where(f => !known.Contains(f) && Age(f) > StrmMinimumAge).ToList();
+    }
+
+    public static (bool Ok, string Message, long Freed) Clean(string kind, IApplicationPaths paths, string transcodePath, Func<ISet<string>?> knownStrm)
     {
         try
         {
@@ -205,6 +234,13 @@ public static class Housekeeping
             if (kind.StartsWith("orphan-strm:", StringComparison.Ordinal))
             {
                 string dir = kind.Substring("orphan-strm:".Length);
+
+                // Only Xtream Library's own folders, never a folder named in the request.
+                if (!StrmRoots(paths).Contains(dir, StringComparer.OrdinalIgnoreCase))
+                {
+                    return (false, "That isn't an Xtream Library folder.", 0);
+                }
+
                 if (!Directory.Exists(dir))
                 {
                     return (false, "That folder no longer exists.", 0);
@@ -212,7 +248,12 @@ public static class Housekeeping
 
                 // Write a list of what we're about to remove, so it's recoverable knowledge even though
                 // a re-sync recreates wanted files anyway.
-                var files = SafeFiles(dir).Where(f => f.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)).ToList();
+                var files = OrphanStrm(dir, knownStrm());
+                if (files.Count == 0)
+                {
+                    return (false, "There are no left-over stream files to remove.", 0);
+                }
+
                 try
                 {
                     string logDir = System.IO.Path.Combine(paths.PluginConfigurationsPath, "JellyfinMedic", "Cleanups");
