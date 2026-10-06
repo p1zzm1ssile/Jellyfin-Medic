@@ -10,6 +10,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/src/JellyfinMedic/thumb.png",
     "versions": [
       {
+        "version": "1.0.12.0",
+        "changelog": "Merge pull request #3 from p1zzm1ssile/claude/elegant-bohr-jildlj",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/v1.0.12/JellyfinMedic-v1.0.12.zip",
+        "checksum": "dced478429b98790f7feaa765306faa3",
+        "timestamp": "2026-10-06T06:40:22Z"
+      },
+      {
         "version": "1.0.11.0",
         "changelog": "Merge pull request #1 from p1zzm1ssile/claude/elegant-bohr-jildlj",
         "targetAbi": "12.1.0.0",
@@ -85,6 +93,14 @@
     "imageUrl": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPicks/thumb.png",
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPicks/thumb.png",
     "versions": [
+      {
+        "version": "1.0.4.0",
+        "changelog": "Merge pull request #3 from p1zzm1ssile/claude/elegant-bohr-jildlj\n\nMedic 1.0.12 and Medic Picks 1.0.4",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/picks-v1.0.4/MedicPicks-v1.0.4.zip",
+        "checksum": "8f3b29434c7016792fc42fbfd7cc4624",
+        "timestamp": "2026-10-06T06:40:26Z"
+      },
       {
         "version": "1.0.3.0",
         "changelog": "Merge pull request #1 from p1zzm1ssile/claude/elegant-bohr-jildlj\n\nImprove file safety and language code handling",
