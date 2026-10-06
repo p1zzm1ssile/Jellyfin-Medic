@@ -103,7 +103,11 @@ Personal picks for everyone on your server, built from what each person actually
 
 - **A private "Picks for you" playlist** for every user, in every Jellyfin app, TV apps included. It holds titles already on your server, and series start at their first episode so people can press play straight away.
 - **A "My picks" page**, linked from everyone's Jellyfin side menu automatically, showing why each title was picked, plus titles that aren't on your server yet. It works in any browser, Jellyfin Desktop and the Android and iOS apps, with no files to edit. If you use Seerr (formerly Overseerr and Jellyseerr), each suggestion gets a **Request** button that sends the request straight to Seerr under that person's own Seerr account, so their permissions, request limits and auto-approval all apply.
-- **English dubs for anime.** Anyone can tick "Anime: English dubs only" on their My picks page. Their picks then leave out anime on your server that has no English audio, and anime suggestions from outside your library are marked "English dub not confirmed", because TMDb can't say whether a dub exists.
+- **Each person chooses what they see.** On their My picks page, anyone can choose films, series or both, pick genres (including Anime, Biography, Kids and seasonal Christmas and Halloween picks), and show 5 to 30 picks (in steps of 5). "Dubbed audio only" leaves out titles on your server with no audio in your language (set by the TMDb language), and marks suggestions from outside your library as "audio not confirmed", because TMDb can't say whether a dub exists.
+- **Linked to what you've watched.** A separate section with titles from the same world as something you watched: a series' films and the other way round (The Seven Deadly Sins series and its films), the rest of a collection, and titles sharing a franchise tag, such as Marvel series and the MCU films. Admins can turn it off.
+- **Ignore.** "Ignore – don't recommend again" on any pick removes it straight away, and it's never suggested again. "Show them again" brings ignored titles back.
+
+Choices are made in the settings box at the top of the My picks page, and **Update my picks** rebuilds that person's picks straight away. What's new in each version is in [Medic Picks' changelog](Jellyfin.Plugin.MedicPicks/CHANGELOG.md).
 
 Picks are rebuilt every night by the **Build personal picks** scheduled task. Picks from your library follow each user's library access and parental controls.
 
@@ -120,7 +124,7 @@ Each person needs a few watched titles before their picks appear.
 
 ### Privacy
 
-- Picks are built and stored on your server. Each user only sees their own.
+- Picks are built and stored on your server. Each user only sees their own, and their choices (genres, ignored titles and so on) are stored on the server with them.
 - Suggestions from outside your library are off by default. When an admin turns them on, the server sends TMDb the TMDb IDs of titles people have watched. No names or account details are sent.
 - The TMDb and Seerr keys are stored separately from the plugin's other settings, only admins can read them, and they never reach anyone's browser. Requests are made on the server, as the person who pressed Request.
 
