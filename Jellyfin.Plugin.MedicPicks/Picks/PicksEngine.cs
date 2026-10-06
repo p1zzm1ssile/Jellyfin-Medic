@@ -107,7 +107,10 @@ public class PicksEngine
         Func<InternalItemsQuery> userQuery = () => new InternalItemsQuery(user);
 
         var previous = _store.Load(userId);
+        var prefs = _store.LoadPreferences(userId);
+        var language = AudioLanguage.FromTmdb(config.TmdbLanguage);
         var picks = new UserPicks { GeneratedUtc = DateTime.UtcNow, PlaylistId = previous?.PlaylistId };
+        picks.AvailableGenres = LibraryGenres(userQuery);
 
         // 1. What has this user watched? Episodes roll up to their series.
         var watchedQuery = userQuery();
@@ -173,8 +176,8 @@ public class PicksEngine
         // 2. Library picks.
         if (config.EnableLibraryPicks)
         {
-            var prefs = _store.LoadPreferences(userId);
-            picks.InLibrary = BuildLibraryPicks(userQuery, ranked, titles, Math.Clamp(config.LibraryPickCount, 1, 100), prefs.EnglishDubAnime);
+            int libraryCount = prefs.Count > 0 ? prefs.Count : Math.Clamp(config.LibraryPickCount, 1, 100);
+            picks.InLibrary = BuildLibraryPicks(userQuery, ranked, titles, libraryCount, prefs, language);
         }
 
         // 3. Private playlist, visible in every Jellyfin app.
@@ -205,14 +208,38 @@ public class PicksEngine
             && !config.DiscoverDisabledUserIds.Any(id => Guid.TryParse(id, out var g) && g == userId);
 
         picks.Discover = discoverAllowed
-            ? await BuildDiscoverPicksAsync(ranked, context, config.TmdbLanguage, Math.Clamp(config.DiscoverPickCount, 1, 100), cancellationToken)
+            ? await BuildDiscoverPicksAsync(ranked, context, config.TmdbLanguage, prefs.Count > 0 ? prefs.Count : Math.Clamp(config.DiscoverPickCount, 1, 100), prefs, cancellationToken)
                 .ConfigureAwait(false)
             : new List<DiscoverPick>();
 
         _store.Save(userId, picks);
     }
 
-    private List<LibraryPick> BuildLibraryPicks(Func<InternalItemsQuery> userQuery, List<WatchedTitle> ranked, Dictionary<Guid, WatchedTitle> titles, int count, bool englishDubAnime)
+    /// <summary>Every genre among the films and series this person can see, for the choices on their page.</summary>
+    private List<string> LibraryGenres(Func<InternalItemsQuery> userQuery)
+    {
+        try
+        {
+            var query = userQuery();
+            query.IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series };
+            query.Recursive = true;
+            query.IsVirtualItem = false;
+            return _libraryManager.GetItemList(query)
+                .SelectMany(i => i.Genres ?? Array.Empty<string>())
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Select(g => g.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Medic Picks: couldn't list genres");
+            return new List<string>();
+        }
+    }
+
+    private List<LibraryPick> BuildLibraryPicks(Func<InternalItemsQuery> userQuery, List<WatchedTitle> ranked, Dictionary<Guid, WatchedTitle> titles, int count, UserPreferences prefs, AudioLanguage language)
     {
         // Taste profile: genres from everything watched, people from the most-weighted titles.
         var genres = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
@@ -276,8 +303,23 @@ public class PicksEngine
         seriesQuery.IsVirtualItem = false;
 
         var candidates = new List<BaseItem>();
-        candidates.AddRange(_libraryManager.GetItemList(movieQuery));
-        candidates.AddRange(_libraryManager.GetItemList(seriesQuery).Where(s => !titles.ContainsKey(s.Id)));
+        if (prefs.Kind != "series")
+        {
+            candidates.AddRange(_libraryManager.GetItemList(movieQuery));
+        }
+
+        if (prefs.Kind != "movies")
+        {
+            candidates.AddRange(_libraryManager.GetItemList(seriesQuery).Where(s => !titles.ContainsKey(s.Id)));
+        }
+
+        // The person's own choices: titles they hid, and the genres they picked.
+        var hidden = new HashSet<Guid>(prefs.HiddenItems);
+        var chosenGenres = Genres.Expand(prefs.Genres);
+        candidates = candidates
+            .Where(c => !hidden.Contains(c.Id))
+            .Where(c => chosenGenres.Count == 0 || Genres.Expand(c.Genres).Overlaps(chosenGenres))
+            .ToList();
 
         // First pass: genres + rating (cheap). Second pass: people (one lookup per shortlisted item).
         var scored = candidates
@@ -315,7 +357,7 @@ public class PicksEngine
 
         return scored
             .OrderByDescending(s => s.Score)
-            .Where(s => !englishDubAnime || !IsAnime(s.Item) || HasEnglishAudio(userQuery, s.Item))
+            .Where(s => !prefs.DubbedOnly || HasAudioIn(userQuery, s.Item, language))
             .Take(count)
             .Select(s => new LibraryPick
             {
@@ -372,8 +414,12 @@ public class PicksEngine
         return path.Contains("/anime/", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Has an English audio track. A series is judged by its first episode.</summary>
-    private bool HasEnglishAudio(Func<InternalItemsQuery> userQuery, BaseItem item)
+    /// <summary>
+    /// Has audio in the given language. A series is judged by its first episode. When no audio track
+    /// says its language, the film is assumed to be in it, except anime, where untagged audio is
+    /// usually Japanese.
+    /// </summary>
+    private bool HasAudioIn(Func<InternalItemsQuery> userQuery, BaseItem item, AudioLanguage wanted)
     {
         BaseItem? target = item;
         if (item is Series)
@@ -395,16 +441,26 @@ public class PicksEngine
                 return false;
             }
 
+            bool anyTagged = false;
             foreach (var stream in streams)
             {
                 var type = stream.GetType();
                 string kind = type.GetProperty("Type")?.GetValue(stream)?.ToString() ?? string.Empty;
+                if (kind != "Audio")
+                {
+                    continue;
+                }
+
                 string language = (type.GetProperty("Language")?.GetValue(stream) as string ?? string.Empty).Trim().ToLowerInvariant();
-                if (kind == "Audio" && (language is "eng" or "en" or "english"))
+                if (wanted.Matches(language))
                 {
                     return true;
                 }
+
+                anyTagged |= language.Length > 0 && language != "und";
             }
+
+            return !anyTagged && !IsAnime(item);
         }
         catch
         {
@@ -484,15 +540,20 @@ public class PicksEngine
         PicksRunContext context,
         string language,
         int count,
+        UserPreferences prefs,
         CancellationToken cancellationToken)
     {
+        // Recommendations are the same kind as the title they come from, so "movies only" uses only films as seeds.
         var seeds = ranked
             .Select(t => new { t.Item, t.Weight, TmdbId = t.Item.GetProviderId(MetadataProvider.Tmdb) })
             .Where(s => !string.IsNullOrEmpty(s.TmdbId) && (s.Item is Movie || s.Item is Series))
+            .Where(s => prefs.Kind == "all" || (prefs.Kind == "movies") == (s.Item is Movie))
             .Take(DiscoverSeeds)
             .ToList();
 
         var tally = new Dictionary<string, DiscoverTally>(StringComparer.Ordinal);
+        var hidden = new HashSet<string>(prefs.HiddenTmdb, StringComparer.Ordinal);
+        var chosenGenres = Genres.Expand(prefs.Genres);
 
         foreach (var seed in seeds)
         {
@@ -511,9 +572,14 @@ public class PicksEngine
             {
                 var rec = recs[i];
                 var recKey = rec.MediaType + ":" + rec.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                if (context.LibraryTmdbIds.Contains(recKey))
+                if (context.LibraryTmdbIds.Contains(recKey) || hidden.Contains(recKey))
                 {
-                    continue; // already on the server
+                    continue; // already on the server, or this person isn't interested
+                }
+
+                if (chosenGenres.Count > 0 && !Genres.Expand(rec.GenreIds.Select(Genres.TmdbName)).Overlaps(chosenGenres))
+                {
+                    continue; // not one of the genres they chose
                 }
 
                 // Earlier results from a heavily watched seed count for more.
@@ -546,7 +612,8 @@ public class PicksEngine
                 PosterPath = t.Title.PosterPath,
                 Rating = Math.Round(t.Title.VoteAverage, 1),
                 BecauseOf = t.BecauseOf,
-                IsAnime = string.Equals(t.Title.OriginalLanguage, "ja", StringComparison.OrdinalIgnoreCase) && t.Title.GenreIds.Contains(16)
+                IsAnime = string.Equals(t.Title.OriginalLanguage, "ja", StringComparison.OrdinalIgnoreCase) && t.Title.GenreIds.Contains(16),
+                OriginalLanguage = t.Title.OriginalLanguage
             })
             .ToList();
     }
