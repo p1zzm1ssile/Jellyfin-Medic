@@ -102,6 +102,18 @@
                         the button opens the title in Seerr instead.
                     </div>
                 </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="ShowRequests" />
+                        <span>Show people their requests and where they've got to</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        A My requests section on the My picks page: waiting for approval, looking for a download,
+                        downloading (with progress and when it should be ready), or ready to watch. Progress comes from
+                        Sonarr and Radarr through Seerr, so they need to be set up in Seerr. Each person only sees their own.
+                        Admins also see everyone's requests waiting for approval there, with Approve and Decline.
+                    </div>
+                </div>
 
                 <h3>Who gets Discover picks</h3>
                 <div class="fieldDescription" style="margin-bottom:0.8em;">
@@ -212,6 +224,7 @@
                         $('TmdbLanguage').value = config.TmdbLanguage || 'en-GB';
                         $('JellyseerrUrl').value = config.JellyseerrUrl || '';
                         $('SeerrDirectRequests').checked = config.SeerrDirectRequests !== false;
+                        $('ShowRequests').checked = config.ShowRequests !== false;
                         $('MinimumWatchedTitles').value = config.MinimumWatchedTitles;
                         $('AddMenuLink').checked = config.AddMenuLink !== false;
                         $('MenuLinkName').value = config.MenuLinkName || 'My picks';
@@ -236,6 +249,7 @@
                     config.TmdbLanguage = $('TmdbLanguage').value.trim() || 'en-GB';
                     config.JellyseerrUrl = $('JellyseerrUrl').value.trim();
                     config.SeerrDirectRequests = $('SeerrDirectRequests').checked;
+                    config.ShowRequests = $('ShowRequests').checked;
                     config.MinimumWatchedTitles = parseInt($('MinimumWatchedTitles').value, 10) || 3;
                     config.AddMenuLink = $('AddMenuLink').checked;
                     config.MenuLinkName = $('MenuLinkName').value.trim() || 'My picks';

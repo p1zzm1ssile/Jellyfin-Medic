@@ -9,7 +9,7 @@ This repository contains two Jellyfin plugins:
      usage-aware task scheduling, track cleanup and media reports.
      Needs Jellyfin 12.1 or later. Administrators only.
 
-  2. MEDIC PICKS (version 1.1.1)
+  2. MEDIC PICKS (version 1.2.0)
      For everyone who uses the server. Personal viewing suggestions built
      from what each person actually watches.
      Needs Jellyfin 12.0 or later.
@@ -504,7 +504,34 @@ A settings box at the top of the My picks page:
 
 
 -------------------------------------------------------------------------------
-2.7  ADMIN SETTINGS (MEDIC PICKS)
+2.7  MY REQUESTS AND APPROVALS
+-------------------------------------------------------------------------------
+
+  - A "My requests" section on the My picks page, showing each of the
+    person's own Seerr requests and where it has got to:
+      * Waiting for approval.
+      * Approved, looking for a download.
+      * Found, waiting in the download queue.
+      * Downloading: how far it's got, and roughly when it will be ready.
+        Series show which episode, or how many, are downloading.
+      * Partly ready (some episodes), with the rest downloading.
+      * Ready to watch, with a Play button (only if the person can open it).
+      * A problem with the download, or declined, or no longer available.
+  - Includes requests made in Seerr itself, not just from the page.
+  - Problems first, then downloads, then waiting, then finished. Finished
+    requests drop off after two weeks.
+  - Updates by itself every minute while anything is on its way.
+  - Each person only ever sees their own requests.
+  - Admins also see "Waiting for your approval": everyone's requests waiting
+    in Seerr, with who asked, and Approve and Decline buttons.
+  - Progress comes from Sonarr and Radarr through Seerr, so they must be
+    connected in Seerr. Uses the Seerr key Picks already has; no Sonarr or
+    Radarr keys are needed.
+  - Can be turned off in the admin settings ("Show people their requests").
+
+
+-------------------------------------------------------------------------------
+2.8  ADMIN SETTINGS (MEDIC PICKS)
 -------------------------------------------------------------------------------
 
   - Library picks on/off, and how many (default 20).
@@ -513,6 +540,7 @@ A settings box at the top of the My picks page:
   - Discover on/off, and how many (default 20).
   - TMDb API key (Save key) and TMDb language.
   - Seerr address, Seerr API key, direct requests on/off, Test Seerr.
+  - Show people their requests on/off.
   - Who gets Discover picks.
   - Menu link on/off, and its name.
   - Minimum watched titles before picks are built (default 3).
@@ -521,7 +549,7 @@ A settings box at the top of the My picks page:
 
 
 -------------------------------------------------------------------------------
-2.8  PRIVACY (MEDIC PICKS)
+2.9  PRIVACY (MEDIC PICKS)
 -------------------------------------------------------------------------------
 
   - Picks are built and stored on your server. Each user only sees their own.
