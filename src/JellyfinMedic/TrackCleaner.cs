@@ -1042,7 +1042,8 @@ public static class TrackCleaner
         try
         {
             // Map only the kept streams: all video, plus the audio/subtitle tracks we keep, by type-relative index.
-            var args = new List<string> { "-nostdin", "-y", "-loglevel", "error", "-i", plan.Path, "-map", "0:v?", "-map_metadata", "0", "-map_chapters", "0" };
+            // Attachments ("0:t?") are the fonts styled subtitles need in MKV files; without them those subtitles render in the wrong font.
+            var args = new List<string> { "-nostdin", "-y", "-loglevel", "error", "-i", plan.Path, "-map", "0:v?", "-map", "0:t?", "-map_metadata", "0", "-map_chapters", "0" };
 
             // Separate subtitle files aren't in the container, so they're left out of the numbering.
             int audioN = 0, subN = 0, outAudio = 0, outSub = 0;
@@ -1099,7 +1100,16 @@ public static class TrackCleaner
                 // Replace the original only after the new file is verified.
                 string backup = plan.Path + ".medic-orig";
                 File.Move(plan.Path, backup, overwrite: true);
-                File.Move(temp, plan.Path, overwrite: true);
+                try
+                {
+                    File.Move(temp, plan.Path, overwrite: true);
+                }
+                catch
+                {
+                    File.Move(backup, plan.Path, overwrite: true); // put the original back
+                    throw;
+                }
+
                 SafeDelete(backup);
                 freedNow = saved;
             }
@@ -1119,7 +1129,15 @@ public static class TrackCleaner
                 {
                     EnsureOriginalsFolder(plan.Path);
                     File.Move(plan.Path, kept);
-                    File.Move(temp, plan.Path);
+                    try
+                    {
+                        File.Move(temp, plan.Path);
+                    }
+                    catch
+                    {
+                        File.Move(kept, plan.Path); // put the original back
+                        throw;
+                    }
                 }
             }
 
@@ -1482,10 +1500,12 @@ public static class TrackCleaner
             set.Add("eng");
         }
 
-        // Accept both 2- and 3-letter codes for the common ones.
-        foreach (var two in set.Where(s => s.Length == 2).ToList())
+        // Accept 2-letter codes and both 3-letter forms for the common ones ("fre" and "fra" are
+        // both French), by also adding each entry's 2-letter code, which tracks are compared on too.
+        foreach (var code in set.ToList())
         {
-            set.Add(TwoToThree(two));
+            set.Add(TwoToThree(code));
+            set.Add(ThreeToTwo(code));
         }
 
         return set;
@@ -1520,7 +1540,17 @@ public static class TrackCleaner
         using var p = new Process { StartInfo = psi };
         p.Start();
         var err = p.StandardError.ReadToEndAsync();
-        await p.WaitForExitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await p.WaitForExitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Stop pressed: end FFmpeg too, or it carries on writing the file in the background.
+            try { p.Kill(entireProcessTree: true); } catch { /* already gone */ }
+            throw;
+        }
+
         await Task.WhenAny(err, Task.Delay(1000, CancellationToken.None)).ConfigureAwait(false);
         return p.ExitCode;
     }

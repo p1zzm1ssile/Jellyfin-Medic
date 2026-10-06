@@ -108,7 +108,7 @@ public static class UsageStore
 
             string path = FilePath(paths);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(profile, Indented));
+            ScheduleStorage.WriteText(path, JsonSerializer.Serialize(profile, Indented));
         }
     }
 

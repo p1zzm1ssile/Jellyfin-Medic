@@ -37,11 +37,8 @@ public class BuildPicksTask : IScheduledTask
 
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
-#if JELLYFIN12
+        // GetUsers() exists on both Jellyfin 10.11 and 12.
         var userIds = _userManager.GetUsers().Select(u => u.Id).ToList();
-#else
-        var userIds = _userManager.Users.Select(u => u.Id).ToList();
-#endif
 
         var context = _engine.CreateRunContext();
         _logger.LogInformation(

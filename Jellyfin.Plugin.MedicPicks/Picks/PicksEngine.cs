@@ -76,7 +76,25 @@ public class PicksEngine
         return context;
     }
 
+    // One build per person at a time: the nightly task and a preferences save could otherwise both
+    // replace the playlist, leaving a duplicate behind.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, SemaphoreSlim> UserLocks = new();
+
     public async Task BuildForUserAsync(Guid userId, PicksRunContext context, CancellationToken cancellationToken)
+    {
+        var gate = UserLocks.GetOrAdd(userId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await BuildForUserLockedAsync(userId, context, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task BuildForUserLockedAsync(Guid userId, PicksRunContext context, CancellationToken cancellationToken)
     {
         var config = Plugin.Instance!.Configuration;
         var user = _userManager.GetUserById(userId);
@@ -176,16 +194,20 @@ public class PicksEngine
         await ReplacePlaylistAsync(userId, picks, playlistItems, config.PlaylistName, config.EnableLibraryPicks && config.CreatePlaylists)
             .ConfigureAwait(false);
 
+        // Save the new playlist's ID straight away (keeping last run's Discover picks for now), so if the
+        // TMDb step below fails or is stopped, the next run can still find this playlist and replace it.
+        picks.Discover = previous?.Discover ?? picks.Discover;
+        _store.Save(userId, picks);
+
         // 4. Discover picks from TMDb.
         var discoverAllowed = config.EnableDiscover
             && !string.IsNullOrEmpty(context.TmdbKey)
             && !config.DiscoverDisabledUserIds.Any(id => Guid.TryParse(id, out var g) && g == userId);
 
-        if (discoverAllowed)
-        {
-            picks.Discover = await BuildDiscoverPicksAsync(ranked, context, config.TmdbLanguage, Math.Clamp(config.DiscoverPickCount, 1, 100), cancellationToken)
-                .ConfigureAwait(false);
-        }
+        picks.Discover = discoverAllowed
+            ? await BuildDiscoverPicksAsync(ranked, context, config.TmdbLanguage, Math.Clamp(config.DiscoverPickCount, 1, 100), cancellationToken)
+                .ConfigureAwait(false)
+            : new List<DiscoverPick>();
 
         _store.Save(userId, picks);
     }

@@ -55,17 +55,18 @@ public sealed class PlannedTask
 /// need allows it, the recorded run time decides the final cadence: a task that finishes
 /// in seconds can stay daily, a task that takes an hour gets spread out.
 ///
-/// When: tasks are fitted into 15-minute blocks from 01:00, sized from their average run
-/// time plus a 15-minute buffer, so no two planned tasks overlap. The library scan goes
-/// first so later tasks work on an up-to-date library, and tasks that don't run every
-/// night are spread across different nights.
+/// When: tasks are fitted into 15-minute blocks, sized from their run time plus a buffer, so
+/// no two planned tasks overlap. Each night runs in stages: the library scan first, then the
+/// tasks that build on it, then upkeep. A task is only put before an earlier stage when every
+/// slot after it is much busier. Tasks that don't run every night are spread across nights.
 /// </summary>
 public static class SchedulePlanner
 {
     private const int CellMinutes = 15;
     private const int CellsPerDay = 24 * 60 / CellMinutes;
     private const double BufferMinutes = 15;
-    private const double MaxBlockMinutes = 240;
+    private const double MaxBlockMinutes = 720;
+    private const double BufferShare = 0.25;          // runs vary, so leave a quarter of the run time spare (at least 15 minutes)
     private const double CheapMinutes = 5;
     private const double HeavyMinutes = 45;
     private const double LeftAloneDefaultMinutes = 15;
@@ -73,10 +74,12 @@ public static class SchedulePlanner
     // Cost tuning (units: people watching x hours).
     private const double BusyThreshold = 0.5;      // warn when about half a person or more is usually watching
     private const double SameTimeTolerance = 0.5;   // keep one daily time unless per-day times are clearly quieter
-    private const double AfterScanNudge = 0.15;     // prefer running after that day's library scan
+    private const double BeforeEarlierStage = 0.75; // starting before an earlier stage has finished that night
+    private const double FollowNudge = 0.002;       // per 15 minutes of gap after the earlier stages, to keep the night together
     private const double SpreadNudge = 0.002;       // prefer days with less already planned
     private const double TieBreakNudge = 0.0001;    // prefer the early hours when all else is equal
     private const int EarlyHoursCell = 4;           // 01:00
+    private const int NoonCell = 12 * 60 / CellMinutes; // the night is ordered from noon to noon
 
     private static readonly DayOfWeek[] AllDays =
     {
@@ -154,7 +157,7 @@ public static class SchedulePlanner
         var planned = new List<PlannedTask>();
         var leftAlone = new List<PlannedTask>();
         var candidates = new List<Candidate>();
-        var scanEnd = new int[7]; // per day: the cell where the library scan finishes, so dependants can follow it
+        var night = new NightOrder();
 
         foreach (var worker in workers)
         {
@@ -186,22 +189,23 @@ public static class SchedulePlanner
                      .ThenByDescending(x => x.Candidate.Minutes ?? x.Candidate.Rule.DefaultMinutes)
                      .ThenBy(x => x.Candidate.Worker.Name, StringComparer.OrdinalIgnoreCase))
         {
-            planned.Add(Place(grid, busy, scanEnd, candidate, cadence));
+            night.BeginStage(candidate.Rule.Stage);
+            planned.Add(Place(grid, busy, night, candidate, cadence));
         }
 
+        // In the order the night runs (noon to noon), so 23:00 comes before 01:00.
         return planned
-            .OrderBy(p => p.StartMinutes)
+            .OrderBy(p => (p.StartMinutes - (NoonCell * CellMinutes) + (24 * 60)) % (24 * 60))
             .ThenBy(p => p.Worker.Name, StringComparer.OrdinalIgnoreCase)
             .Concat(leftAlone.OrderBy(p => p.Worker.Name, StringComparer.OrdinalIgnoreCase))
             .ToList();
     }
 
-    private static PlannedTask Place(bool[,] grid, BusyProfile busy, int[] scanEnd, Candidate c, Cadence cadence)
+    private static PlannedTask Place(bool[,] grid, BusyProfile busy, NightOrder night, Candidate c, Cadence cadence)
     {
         double estimate = c.Minutes ?? c.Rule.DefaultMinutes;
         int length = BlockCells(estimate);
         long? maxRuntime = MaxRuntime(c.Worker);
-        bool dependsOnScan = c.Rule.Stage >= 1;
 
         // Each day the task runs, with the cell it starts at.
         var slots = new List<(DayOfWeek Day, int Start)>();
@@ -210,8 +214,8 @@ public static class SchedulePlanner
         {
             // One time every day is simplest. Only use different times on different days when
             // that is clearly quieter (your quiet hours differ through the week).
-            var same = BestCommonStart(grid, busy, scanEnd, AllDays, length, dependsOnScan);
-            var perDay = AllDays.Select(d => (Day: d, Best: BestCommonStart(grid, busy, scanEnd, new[] { d }, length, dependsOnScan))).ToList();
+            var same = BestCommonStart(grid, busy, night, AllDays, length);
+            var perDay = AllDays.Select(d => (Day: d, Best: BestCommonStart(grid, busy, night, new[] { d }, length))).ToList();
             bool perDayPossible = perDay.All(p => p.Best is not null);
             double perDayCost = perDayPossible ? perDay.Sum(p => p.Best!.Value.Cost) : double.MaxValue;
 
@@ -236,7 +240,7 @@ public static class SchedulePlanner
             (DayOfWeek[] Days, int Start, double Cost)? best = null;
             foreach (var days in options)
             {
-                if (BestCommonStart(grid, busy, scanEnd, days, length, dependsOnScan) is { } found &&
+                if (BestCommonStart(grid, busy, night, days, length) is { } found &&
                     (best is null || found.Cost < best.Value.Cost))
                 {
                     best = (days, found.Start, found.Cost);
@@ -257,10 +261,7 @@ public static class SchedulePlanner
         foreach (var (day, start) in slots)
         {
             Mark(grid, new[] { day }, start, length);
-            if (c.Rule.Stage == 0)
-            {
-                scanEnd[(int)day] = Math.Max(scanEnd[(int)day], start + length);
-            }
+            night.Placed(day, start, length);
         }
 
         var warnings = CommonWarnings(c);
@@ -345,16 +346,25 @@ public static class SchedulePlanner
 
     private static (double? Minutes, string Evidence) MeasureCost(IScheduledTaskWorker worker, ReliabilityRecord? rec)
     {
+        // The last completed run counts too: libraries grow, so a recent long run beats an old average.
+        var last = worker.LastExecutionResult;
+        double? lastSeconds = last is not null && last.Status == TaskCompletionStatus.Completed
+            ? Math.Max(0, (last.EndTimeUtc - last.StartTimeUtc).TotalSeconds)
+            : null;
+
         if (rec is not null && rec.TotalRuns > 0)
         {
             string runs = rec.TotalRuns == 1 ? "1 recorded run" : $"{rec.TotalRuns} recorded runs";
+            if (lastSeconds is { } l && l > rec.AverageDurationSeconds * 1.2)
+            {
+                return (l / 60, $"its last run took {ScheduleStorage.FormatDuration(l)}, longer than its average of {ScheduleStorage.FormatDuration(rec.AverageDurationSeconds)} over {runs}");
+            }
+
             return (rec.AverageDurationSeconds / 60, $"averages {ScheduleStorage.FormatDuration(rec.AverageDurationSeconds)} over {runs}");
         }
 
-        var last = worker.LastExecutionResult;
-        if (last is not null && last.Status == TaskCompletionStatus.Completed)
+        if (lastSeconds is { } seconds)
         {
-            double seconds = Math.Max(0, (last.EndTimeUtc - last.StartTimeUtc).TotalSeconds);
             return (seconds / 60, $"its last run took {ScheduleStorage.FormatDuration(seconds)}");
         }
 
@@ -423,17 +433,18 @@ public static class SchedulePlanner
 
     private static int BlockCells(double minutes)
     {
-        double total = Math.Min(Math.Max(minutes, 0), MaxBlockMinutes) + BufferMinutes;
+        double run = Math.Min(Math.Max(minutes, 0), MaxBlockMinutes);
+        double total = run + Math.Max(BufferMinutes, run * BufferShare);
         return Math.Max(2, (int)Math.Ceiling(total / CellMinutes));
     }
 
     /// <summary>
     /// The quietest start that is free on every one of the given days. Cost is the expected
-    /// number of people watching while the task runs, plus small nudges: towards starting after
-    /// the library scan on that day, towards days with less already planned, and (when costs are
-    /// equal) towards the early hours.
+    /// number of people watching while the task runs, plus: a penalty for starting before the
+    /// earlier stages have finished that night, a small nudge to follow them closely, a nudge
+    /// towards days with less already planned, and (when costs are equal) the early hours.
     /// </summary>
-    private static (int Start, double Cost)? BestCommonStart(bool[,] grid, BusyProfile busy, int[] scanEnd, DayOfWeek[] days, int length, bool dependsOnScan)
+    private static (int Start, double Cost)? BestCommonStart(bool[,] grid, BusyProfile busy, NightOrder night, DayOfWeek[] days, int length)
     {
         (int Start, double Cost)? best = null;
         for (int start = 0; start + length <= CellsPerDay; start++)
@@ -447,10 +458,7 @@ public static class SchedulePlanner
             foreach (var day in days)
             {
                 cost += busy.CostOver(day, start, length, CellMinutes);
-                if (dependsOnScan && scanEnd[(int)day] > 0 && start < scanEnd[(int)day])
-                {
-                    cost += AfterScanNudge;
-                }
+                cost += night.Cost(day, start);
 
                 cost += Load(grid, day) * SpreadNudge;
             }
@@ -547,6 +555,60 @@ public static class SchedulePlanner
         TimeOfDayTicks = at.Ticks,
         MaxRuntimeTicks = maxRuntime
     };
+
+    /// <summary>
+    /// Keeps each night in stage order. A night runs from 12 hours before that day's library scan
+    /// (or from noon when there's none), so "before" and "after" still make sense across midnight.
+    /// </summary>
+    private sealed class NightOrder
+    {
+        private readonly int[] _anchor = Enumerable.Repeat(-1, 7).ToArray(); // cell the night starts at
+        private readonly int[] _earlierEnd = new int[7];   // end of the earlier stages, in cells after the anchor
+        private readonly int[] _stageEnd = new int[7];     // end of the stage being placed now
+        private int _stage = -1;
+
+        public void BeginStage(int stage)
+        {
+            if (stage == _stage)
+            {
+                return;
+            }
+
+            for (int d = 0; d < 7; d++)
+            {
+                _earlierEnd[d] = Math.Max(_earlierEnd[d], _stageEnd[d]);
+            }
+
+            _stage = stage;
+        }
+
+        public void Placed(DayOfWeek day, int start, int length)
+        {
+            int d = (int)day;
+            if (_anchor[d] < 0)
+            {
+                _anchor[d] = _stage == 0 ? (start - NoonCell + CellsPerDay) % CellsPerDay : NoonCell;
+            }
+
+            _stageEnd[d] = Math.Max(_stageEnd[d], Offset(d, start) + length);
+        }
+
+        public double Cost(DayOfWeek day, int start)
+        {
+            int d = (int)day;
+            if (_anchor[d] < 0 || _earlierEnd[d] == 0)
+            {
+                return 0; // first stage of the night
+            }
+
+            int offset = Offset(d, start);
+            return offset < _earlierEnd[d]
+                ? BeforeEarlierStage
+                : (offset - _earlierEnd[d]) * FollowNudge;
+        }
+
+        private int Offset(int d, int cell) => ((cell - (_anchor[d] < 0 ? NoonCell : _anchor[d])) % CellsPerDay + CellsPerDay) % CellsPerDay;
+    }
 
     private sealed record TaskRule(
         string Keyword,
