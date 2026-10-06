@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Jellyfin.Plugin.MedicPicks.Picks;
 
@@ -16,7 +17,13 @@ public class UserPicks
 
     public List<LibraryPick> InLibrary { get; set; } = new();
 
+    /// <summary>Titles on the server from the same world as something watched: films of a series, the rest of a collection, the same franchise.</summary>
+    public List<LibraryPick> Linked { get; set; } = new();
+
     public List<DiscoverPick> Discover { get; set; } = new();
+
+    /// <summary>Genres of the films and series this person can see, for the genre choices on their page.</summary>
+    public List<string> AvailableGenres { get; set; } = new();
 }
 
 /// <summary>A title that's already on the server.</summary>
@@ -57,6 +64,9 @@ public class DiscoverPick
 
     /// <summary>Japanese animation, by TMDb's original language and genre.</summary>
     public bool IsAnime { get; set; }
+
+    /// <summary>TMDb's original language, e.g. "en" or "ja".</summary>
+    public string? OriginalLanguage { get; set; }
 }
 
 /// <summary>A recommendation as returned by TMDb.</summary>
@@ -84,8 +94,52 @@ public class TmdbTitle
 /// <summary>Choices a person makes on their own My picks page.</summary>
 public class UserPreferences
 {
-    /// <summary>Only suggest anime from the library that has English audio.</summary>
-    public bool EnglishDubAnime { get; set; }
+    /// <summary>How many picks each section may show.</summary>
+    public static readonly int[] CountChoices = { 5, 10, 15, 20, 25, 30 };
+
+    /// <summary>"all", "movies" or "series".</summary>
+    public string Kind { get; set; } = "all";
+
+    /// <summary>Only these genres. Empty means any genre.</summary>
+    public List<string> Genres { get; set; } = new();
+
+    /// <summary>How many picks per section: one of <see cref="CountChoices"/>, or 0 for the server's default.</summary>
+    public int Count { get; set; }
+
+    /// <summary>Only suggest titles with audio in the server's language (on the server); flag ones that may not have it (not on the server).</summary>
+    public bool DubbedOnly { get; set; }
+
+    /// <summary>Titles this person said they're not interested in, by Jellyfin item ID.</summary>
+    public List<Guid> HiddenItems { get; set; } = new();
+
+    /// <summary>Titles not on the server they're not interested in, as "movie:123" or "tv:456".</summary>
+    public List<string> HiddenTmdb { get; set; } = new();
+
+    /// <summary>Older setting ("Anime: English dubs only"), read once and turned into <see cref="DubbedOnly"/>.</summary>
+    public bool? EnglishDubAnime { get; set; }
+
+    /// <summary>Brings older saved choices up to date and keeps values in range.</summary>
+    public UserPreferences Normalise()
+    {
+        if (EnglishDubAnime == true)
+        {
+            DubbedOnly = true;
+        }
+
+        EnglishDubAnime = null;
+        Kind = Kind is "movies" or "series" ? Kind : "all";
+        Genres = (Genres ?? new List<string>())
+            .Where(g => !string.IsNullOrWhiteSpace(g) && g.Length <= 60)
+            .Select(g => g.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(30)
+            .ToList();
+        // Round anything else to the nearest choice (0 stays "the server's default").
+        Count = Count <= 0 ? 0 : CountChoices.OrderBy(c => Math.Abs(c - Count)).First();
+        HiddenItems = (HiddenItems ?? new List<Guid>()).Distinct().TakeLast(1000).ToList();
+        HiddenTmdb = (HiddenTmdb ?? new List<string>()).Distinct(StringComparer.Ordinal).TakeLast(1000).ToList();
+        return this;
+    }
 }
 
 /// <summary>Shared state for one run of the task across all users.</summary>

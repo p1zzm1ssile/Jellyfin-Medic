@@ -135,7 +135,7 @@ public class PicksStore
             var path = Path.Combine(PrefsDir, userId.ToString("N") + ".json");
             if (File.Exists(path))
             {
-                return JsonSerializer.Deserialize<UserPreferences>(File.ReadAllText(path), JsonOptions) ?? new UserPreferences();
+                return (JsonSerializer.Deserialize<UserPreferences>(File.ReadAllText(path), JsonOptions) ?? new UserPreferences()).Normalise();
             }
         }
         catch (Exception ex)

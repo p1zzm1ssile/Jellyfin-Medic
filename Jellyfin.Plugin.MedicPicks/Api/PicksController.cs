@@ -26,9 +26,10 @@ public class PicksController : ControllerBase
     private const string AdminPolicy = "RequiresElevation";
     private const string UserIdClaim = "Jellyfin-UserId";
 
-    // People whose picks are being rebuilt after saving preferences. Saving again meanwhile doesn't start
-    // a second rebuild, so repeated clicks can't pile up library scans and TMDb calls.
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> Rebuilding = new();
+    // People whose picks are being rebuilt after a change, and whether another change came in meanwhile.
+    // A change during a rebuild doesn't start a second one: the running one goes round once more, so
+    // repeated clicks can't pile up library scans and TMDb calls, and the latest choices still apply.
+    private static readonly System.Collections.Generic.Dictionary<Guid, bool> Rebuilding = new();
 
     private readonly PicksStore _store;
     private readonly ITaskManager _taskManager;
@@ -69,8 +70,15 @@ public class PicksController : ControllerBase
             // "direct": the button makes the request; "link": it opens Seerr; "none": it opens TMDb.
             requestMode = RequestMode(config),
             preferences = _store.LoadPreferences(userId),
+            availableGenres = Genres.ForChoices(picks?.AvailableGenres),
+            seasonalGenres = Genres.Seasonal,
+            countChoices = UserPreferences.CountChoices,
+            defaultCount = Math.Clamp(config.LibraryPickCount, 1, 100),
+            dubLanguage = AudioLanguage.FromTmdb(config.TmdbLanguage).Name,
+            dubLanguageCode = AudioLanguage.FromTmdb(config.TmdbLanguage).TwoLetter,
             playlistName = config.CreatePlaylists && picks?.PlaylistId is not null ? config.PlaylistName : null,
             inLibrary = picks?.InLibrary ?? new System.Collections.Generic.List<LibraryPick>(),
+            linked = picks?.Linked ?? new System.Collections.Generic.List<LibraryPick>(),
             discover = picks?.Discover ?? new System.Collections.Generic.List<DiscoverPick>()
         };
 
@@ -93,28 +101,125 @@ public class PicksController : ControllerBase
             return BadRequest();
         }
 
-        _store.SavePreferences(userId, prefs);
-        if (!Rebuilding.TryAdd(userId, 0))
+        // Hidden titles are only changed by Hide and Unhide, so keep the saved ones.
+        var saved = _store.LoadPreferences(userId);
+        prefs.HiddenItems = saved.HiddenItems;
+        prefs.HiddenTmdb = saved.HiddenTmdb;
+        _store.SavePreferences(userId, prefs.Normalise());
+        StartRebuild(userId);
+        return NoContent();
+    }
+
+    /// <summary>"Not interested": hides one title from this person's picks for good, straight away.</summary>
+    [HttpPost("Me/Hide")]
+    [Authorize]
+    public async Task<ActionResult> HideTitle([FromBody] HideRequest request)
+    {
+        var userId = await GetUserIdAsync().ConfigureAwait(false);
+        if (userId == Guid.Empty)
         {
-            return NoContent(); // a rebuild is already going; the nightly run picks up anything it misses
+            return Unauthorized();
+        }
+
+        if (request is null || (request.ItemId is null && (request.TmdbId is null or <= 0)))
+        {
+            return BadRequest();
+        }
+
+        var prefs = _store.LoadPreferences(userId);
+        var picks = _store.Load(userId);
+        if (request.ItemId is { } itemId)
+        {
+            prefs.HiddenItems.Add(itemId);
+            picks?.InLibrary.RemoveAll(p => p.ItemId == itemId);
+            picks?.Linked.RemoveAll(p => p.ItemId == itemId);
+        }
+        else
+        {
+            string key = (request.MediaType == "tv" ? "tv:" : "movie:") + request.TmdbId!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            prefs.HiddenTmdb.Add(key);
+            picks?.Discover.RemoveAll(p => (p.MediaType == "tv" ? "tv:" : "movie:") + p.TmdbId.ToString(System.Globalization.CultureInfo.InvariantCulture) == key);
+        }
+
+        _store.SavePreferences(userId, prefs.Normalise());
+        if (picks is not null)
+        {
+            _store.Save(userId, picks);
+        }
+
+        RebuildAgainIfRunning(userId);
+        return NoContent();
+    }
+
+    /// <summary>Shows every hidden title again, and rebuilds this person's picks.</summary>
+    [HttpPost("Me/Unhide")]
+    [Authorize]
+    public async Task<ActionResult> UnhideAll()
+    {
+        var userId = await GetUserIdAsync().ConfigureAwait(false);
+        if (userId == Guid.Empty)
+        {
+            return Unauthorized();
+        }
+
+        var prefs = _store.LoadPreferences(userId);
+        prefs.HiddenItems.Clear();
+        prefs.HiddenTmdb.Clear();
+        _store.SavePreferences(userId, prefs);
+        StartRebuild(userId);
+        return NoContent();
+    }
+
+    private void StartRebuild(Guid userId)
+    {
+        lock (Rebuilding)
+        {
+            if (Rebuilding.ContainsKey(userId))
+            {
+                Rebuilding[userId] = true; // the running rebuild goes round again with the new choices
+                return;
+            }
+
+            Rebuilding[userId] = false;
         }
 
         _ = Task.Run(async () =>
         {
-            try
+            while (true)
             {
-                await _engine.BuildForUserAsync(userId, _engine.CreateRunContext(), System.Threading.CancellationToken.None).ConfigureAwait(false);
-            }
-            catch
-            {
-                // The nightly run will catch up.
-            }
-            finally
-            {
-                Rebuilding.TryRemove(userId, out _);
+                try
+                {
+                    await _engine.BuildForUserAsync(userId, _engine.CreateRunContext(), System.Threading.CancellationToken.None).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // The nightly run will catch up.
+                }
+
+                lock (Rebuilding)
+                {
+                    if (!Rebuilding[userId])
+                    {
+                        Rebuilding.Remove(userId);
+                        return;
+                    }
+
+                    Rebuilding[userId] = false;
+                }
             }
         });
-        return NoContent();
+    }
+
+    /// <summary>If a rebuild is running for this person, it goes round again so it doesn't undo a change.</summary>
+    private static void RebuildAgainIfRunning(Guid userId)
+    {
+        lock (Rebuilding)
+        {
+            if (Rebuilding.ContainsKey(userId))
+            {
+                Rebuilding[userId] = true;
+            }
+        }
     }
 
     /// <summary>Requests a title in Seerr as the signed-in person, using their own Seerr account.</summary>
@@ -220,6 +325,15 @@ public class PicksController : ControllerBase
     public class TmdbKeyRequest
     {
         public string? Key { get; set; }
+    }
+
+    public class HideRequest
+    {
+        public Guid? ItemId { get; set; }
+
+        public int? TmdbId { get; set; }
+
+        public string? MediaType { get; set; }
     }
 
     public class TitleRequest

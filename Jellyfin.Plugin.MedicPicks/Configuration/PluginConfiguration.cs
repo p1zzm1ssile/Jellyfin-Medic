@@ -15,6 +15,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>How many "on your server" picks each user gets.</summary>
     public int LibraryPickCount { get; set; } = 20;
 
+    /// <summary>A "Linked to what you've watched" section: films of a series, the rest of a collection, the same franchise.</summary>
+    public bool EnableLinkedPicks { get; set; } = true;
+
     /// <summary>Write each user's library picks to a private playlist (shows in every Jellyfin app).</summary>
     public bool CreatePlaylists { get; set; } = true;
 
