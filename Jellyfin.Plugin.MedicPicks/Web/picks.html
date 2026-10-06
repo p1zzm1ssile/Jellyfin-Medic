@@ -165,6 +165,33 @@
   button.action:disabled { cursor: default; opacity: 0.75; }
   .request-msg { font-size: 0.8125rem; color: var(--muted); margin: 6px 0 0; }
 
+
+  /* Requests: a compact list, not a shelf, since it's about status rather than browsing. */
+  .requests { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; max-width: 760px; }
+  .req {
+    display: grid; grid-template-columns: 56px 1fr auto; gap: 4px 14px; align-items: center;
+    padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  }
+  .req > * { grid-column: 2; }
+  .req .poster { grid-column: 1; grid-row: 1 / span 3; align-self: start; width: 56px; border-radius: 4px; }
+  .req .poster.missing { font-size: 0.7rem; padding: 4px; overflow: hidden; overflow-wrap: anywhere; }
+  .req-title { font-weight: 600; margin: 0; line-height: 1.3; overflow-wrap: anywhere; }
+  .req-state { margin: 0; font-size: 0.875rem; color: var(--muted); }
+  .req-state strong { color: var(--text); font-weight: 600; }
+  .req[data-state="trouble"] { border-color: #c98a2b; }
+  .req[data-state="trouble"] .req-state strong { color: #e0a54a; }
+  .req[data-state="available"] .req-state strong, .req[data-state="partial"] .req-state strong { color: #4cc38a; }
+  .req > .req-actions { grid-column: 3; grid-row: 1 / span 3; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .req-actions .action { margin-top: 0; }
+  .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; max-width: 320px; }
+  .bar > span { display: block; height: 100%; background: var(--brand); }
+  .req-msg { font-size: 0.8125rem; color: var(--muted); margin: 0; }
+  @media (max-width: 520px) {
+    .req { grid-template-columns: 48px 1fr; }
+    .req .poster { width: 48px; }
+    .req > .req-actions { grid-row: auto; grid-column: 2; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  }
+
   .message {
     margin-top: 40px;
     padding: 20px;
@@ -216,6 +243,18 @@
   </form>
 
   <div class="message" id="message" hidden></div>
+
+  <section id="approvals-section" hidden>
+    <h2>Waiting for your approval</h2>
+    <p class="section-note">Everyone&rsquo;s requests waiting for approval in Seerr. You see these because you&rsquo;re an admin.</p>
+    <ul class="requests" id="approvals"></ul>
+  </section>
+
+  <section id="requests-section" hidden>
+    <h2>My requests</h2>
+    <p class="section-note" id="requests-note">What you&rsquo;ve asked for and where it&rsquo;s got to. This updates by itself while anything is downloading.</p>
+    <ul class="requests" id="requests"></ul>
+  </section>
 
   <section id="library-section" hidden>
     <h2>On your server</h2>
@@ -385,6 +424,7 @@
           if (st === 'approved' || st === 'requested' || st === 'exists') {
             btn.textContent = st === 'exists' ? 'Already requested' : 'Requested \u2713';
             note.textContent = st === 'exists' ? '' : r.message;
+            refreshRequests();
           } else {
             btn.disabled = false;
             btn.textContent = 'Request';
@@ -443,6 +483,181 @@
     });
   }
 
+
+  // ---- Requests: where each of this person's Seerr requests has got to ----
+
+  var isAdmin = false;
+  var requestsTimer = null;
+  var MOVING = ['downloading', 'partial', 'queued', 'searching', 'pending', 'trouble'];
+
+  function formatEta(iso) {
+    var when = new Date(iso);
+    var mins = Math.round((when - new Date()) / 60000);
+    if (!(mins > 0)) return 'should be ready any moment';
+    var sameDay = when.toDateString() === new Date().toDateString();
+    var at = sameDay
+      ? when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+      : when.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    var left = mins < 60 ? mins + ' min' : mins < 48 * 60 ? Math.round(mins / 60) + ' h' : Math.round(mins / 1440) + ' days';
+    return 'ready around ' + at + ' (about ' + left + ')';
+  }
+
+  function requestPoster(r) {
+    var src = r.posterPath ? 'https://image.tmdb.org/t/p/w154' + r.posterPath : null;
+    return poster(src, 'Poster for ' + r.title, r.title);
+  }
+
+  function requestRow(r) {
+    var li = el('li', 'req');
+    li.setAttribute('data-state', r.state);
+    li.appendChild(requestPoster(r));
+
+    var title = el('p', 'req-title', r.title);
+    if (r.year) {
+      title.appendChild(document.createTextNode(' '));
+      title.appendChild(el('span', 'year', '(' + r.year + ')'));
+    }
+    if (r.is4k) title.appendChild(document.createTextNode(' · 4K'));
+    li.appendChild(title);
+
+    var state = el('p', 'req-state');
+    state.appendChild(el('strong', null, r.stateText));
+    var extra = [];
+    if (r.detail) extra.push(r.detail);
+    if (r.progress != null && (r.state === 'downloading' || r.state === 'partial')) extra.push(r.progress + '%');
+    if (r.etaUtc && (r.state === 'downloading' || r.state === 'partial')) extra.push(formatEta(r.etaUtc));
+    if (r.requestedBy) extra.push('asked for by ' + r.requestedBy);
+    if (extra.length) state.appendChild(document.createTextNode(' · ' + extra.join(' · ')));
+    li.appendChild(state);
+
+    if (r.progress != null && (r.state === 'downloading' || r.state === 'partial')) {
+      var bar = el('div', 'bar');
+      bar.setAttribute('role', 'progressbar');
+      bar.setAttribute('aria-valuemin', '0');
+      bar.setAttribute('aria-valuemax', '100');
+      bar.setAttribute('aria-valuenow', String(r.progress));
+      bar.setAttribute('aria-label', 'Downloaded');
+      var fill = el('span');
+      fill.style.width = r.progress + '%';
+      bar.appendChild(fill);
+      li.appendChild(bar);
+    }
+    return li;
+  }
+
+  function playLink(r) {
+    var a = el('a', 'action', 'Play');
+    a.href = '../web/#/details?id=' + encodeURIComponent(r.playItemId) +
+      (session.Id ? '&serverId=' + encodeURIComponent(session.Id) : '');
+    return a;
+  }
+
+  function renderRequests(data) {
+    var list = document.getElementById('requests');
+    list.textContent = '';
+    if (!data || !data.enabled) {
+      document.getElementById('requests-section').hidden = true;
+      return false;
+    }
+
+    var note = document.getElementById('requests-note');
+    if (!data.linked) {
+      note.textContent = 'Sign in to Seerr once with your Jellyfin login, and your requests will show here.';
+    } else if (!data.reachable) {
+      note.textContent = 'Couldn’t reach Seerr just now, so your requests can’t be shown. This page tries again by itself.';
+    } else {
+      note.textContent = 'What you’ve asked for and where it’s got to. This updates by itself while anything is downloading.';
+    }
+
+    var rows = data.requests || [];
+    rows.forEach(function (r) {
+      var li = requestRow(r);
+      if (r.playItemId) {
+        var actions = el('div', 'req-actions');
+        actions.appendChild(playLink(r));
+        li.appendChild(actions);
+      }
+      list.appendChild(li);
+    });
+
+    // Show the section when there's something to show, or something to explain.
+    document.getElementById('requests-section').hidden = rows.length === 0 && data.linked && data.reachable;
+    return !data.reachable || rows.some(function (r) { return MOVING.indexOf(r.state) >= 0; });
+  }
+
+  function approvalButtons(r, li) {
+    var actions = el('div', 'req-actions');
+    var msg = el('p', 'req-msg');
+    msg.setAttribute('aria-live', 'polite');
+    function button(text, verb) {
+      var b = el('button', 'action', text);
+      b.type = 'button';
+      b.addEventListener('click', function () {
+        actions.querySelectorAll('button').forEach(function (x) { x.disabled = true; });
+        msg.textContent = verb === 'Approve' ? 'Approving…' : 'Declining…';
+        postJson('Admin/Requests/' + encodeURIComponent(r.id) + '/' + verb, {}, session)
+          .then(function (res) {
+            if (res && res.ok) {
+              li.remove();
+              if (!document.getElementById('approvals').children.length) {
+                document.getElementById('approvals-section').hidden = true;
+              }
+              refreshRequests();
+            } else {
+              msg.textContent = (res && res.message) || 'That didn’t work. Try again.';
+              actions.querySelectorAll('button').forEach(function (x) { x.disabled = false; });
+            }
+          })
+          .catch(function () {
+            msg.textContent = 'That didn’t work. Try again.';
+            actions.querySelectorAll('button').forEach(function (x) { x.disabled = false; });
+          });
+      });
+      return b;
+    }
+    actions.appendChild(button('Approve', 'Approve'));
+    actions.appendChild(button('Decline', 'Decline'));
+    actions.appendChild(msg);
+    return actions;
+  }
+
+  function renderApprovals(data) {
+    var list = document.getElementById('approvals');
+    list.textContent = '';
+    var rows = (data && data.enabled && data.requests) || [];
+    rows.forEach(function (r) {
+      var li = requestRow(r);
+      li.appendChild(approvalButtons(r, li));
+      list.appendChild(li);
+    });
+    document.getElementById('approvals-section').hidden = rows.length === 0;
+  }
+
+  function refreshRequests() {
+    clearTimeout(requestsTimer);
+    var mine = getJson('Me/Requests', session).then(renderRequests).catch(function () { return false; });
+    var theirs = isAdmin
+      ? getJson('Admin/Requests', session).then(function (d) { renderApprovals(d); return rowsOf(d).length > 0; }).catch(function () { return false; })
+      : Promise.resolve(false);
+    return Promise.all([mine, theirs]).then(function (moving) {
+      // Keep it current while something's on its way; stop once everything has settled.
+      if (moving[0] || moving[1]) {
+        requestsTimer = setTimeout(function () {
+          if (document.hidden) {
+            document.addEventListener('visibilitychange', function again() {
+              document.removeEventListener('visibilitychange', again);
+              refreshRequests();
+            });
+          } else {
+            refreshRequests();
+          }
+        }, 60000);
+      }
+    });
+  }
+
+  function rowsOf(d) { return (d && d.enabled && d.requests) || []; }
+
   var session = getSession();
   if (!session) {
     message([
@@ -458,8 +673,10 @@
         document.getElementById('heading').textContent = 'Picks for ' + me.Name;
         document.title = 'Picks for ' + me.Name;
       }
+      isAdmin = !!(me && me.Policy && me.Policy.IsAdministrator);
     })
-    .catch(function () { /* the heading falls back to "Your picks" */ });
+    .catch(function () { /* the heading falls back to "Your picks" */ })
+    .then(refreshRequests);
 
   var lastGenerated = null;
 
