@@ -142,7 +142,20 @@
   }
   .action:hover { background: var(--accent); color: var(--bg); }
 
-  .prefs { margin: 18px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .prefs { margin: 20px 0 0; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; max-width: 760px; }
+  .prefs-row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  .prefs-row + .prefs-row, .genres { margin-top: 12px; }
+  .field { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; }
+  .field select {
+    font: inherit; font-weight: 400; color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-height: 36px;
+  }
+  .genres summary { cursor: pointer; font-weight: 600; }
+  .genre-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; margin-top: 10px; }
+  .genre-list label { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; min-height: 28px; }
+  .genre-list input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .link-btn { background: none; border: 0; padding: 4px 0; color: var(--accent); font: inherit; font-size: 0.875rem; cursor: pointer; text-decoration: underline; }
+  .not-interested { align-self: flex-start; margin-top: 6px; font-size: 0.8125rem; color: var(--muted); }
   .toggle { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; cursor: pointer; }
   .toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
   .prefs-note { color: var(--muted); font-size: 0.875rem; }
@@ -172,10 +185,32 @@
 
   <h1 id="heading">Your picks</h1>
   <p class="lede" id="lede">Chosen from what you've been watching. They're rebuilt every night.</p>
-  <div class="prefs" id="prefs" hidden>
-    <label class="toggle"><input type="checkbox" id="dub-only"> <span>Anime: English dubs only</span></label>
-    <span class="prefs-note" id="prefs-note">Leaves out anime on this server that has no English audio.</span>
-  </div>
+  <form class="prefs" id="prefs" hidden>
+    <div class="prefs-row">
+      <label class="field"><span>Show</span>
+        <select id="kind">
+          <option value="all">Films and series</option>
+          <option value="movies">Films only</option>
+          <option value="series">Series only</option>
+        </select>
+      </label>
+      <label class="field"><span>How many</span><select id="count"></select></label>
+      <label class="toggle"><input type="checkbox" id="dub-only"> <span>Dubbed audio only</span></label>
+    </div>
+    <details class="genres" id="genres-box" hidden>
+      <summary id="genres-summary">Genres: any</summary>
+      <div class="genre-list" id="genre-list"></div>
+      <button type="button" class="link-btn" id="genres-clear">Clear genres</button>
+    </details>
+    <div class="prefs-row">
+      <button type="submit" class="action" id="apply">Update my picks</button>
+      <span class="prefs-note" id="prefs-note" aria-live="polite"></span>
+    </div>
+    <p class="prefs-note" id="hidden-note" hidden>
+      <span id="hidden-count"></span>
+      <button type="button" class="link-btn" id="unhide">Show them again</button>
+    </p>
+  </form>
 
   <div class="message" id="message" hidden></div>
 
@@ -280,6 +315,7 @@
       link.appendChild(titleLine(pick.name, pick.year));
       li.appendChild(link);
       if (pick.reason) li.appendChild(el('div', 'talker', pick.reason));
+      li.appendChild(notInterested(li, { itemId: pick.itemId }, session));
       list.appendChild(li);
     });
   }
@@ -294,6 +330,34 @@
       if (!r.ok) throw new Error('http ' + r.status);
       return r.status === 204 ? null : r.json();
     });
+  }
+
+  var hiddenCount = 0;
+
+  function updateHiddenNote() {
+    document.getElementById('hidden-count').textContent =
+      hiddenCount === 1 ? 'You\u2019ve hidden 1 title.' : 'You\u2019ve hidden ' + hiddenCount + ' titles.';
+    document.getElementById('hidden-note').hidden = hiddenCount === 0;
+  }
+
+  // "Not interested": hides the title for good, straight away.
+  function notInterested(li, body, session) {
+    var btn = el('button', 'link-btn not-interested', 'Not interested');
+    btn.type = 'button';
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      postJson('Me/Hide', body, session)
+        .then(function () {
+          li.remove();
+          hiddenCount++;
+          updateHiddenNote();
+        })
+        .catch(function () {
+          btn.disabled = false;
+          btn.textContent = 'Couldn\u2019t hide it. Try again';
+        });
+    });
+    return btn;
   }
 
   function requestButton(pick, type, session) {
@@ -338,7 +402,9 @@
       li.appendChild(poster(src, 'Poster for ' + pick.title, pick.title));
       li.appendChild(titleLine(pick.title, pick.year));
       if (pick.becauseOf) li.appendChild(el('div', 'talker', 'Because you watched ' + pick.becauseOf));
-      if (pick.isAnime && prefs.englishDubAnime) li.appendChild(el('span', 'chip', 'English dub not confirmed'));
+      if (prefs.dubbedOnly && pick.originalLanguage && pick.originalLanguage !== data.dubLanguageCode) {
+        li.appendChild(el('span', 'chip', (data.dubLanguage || 'English') + ' audio not confirmed'));
+      }
 
       if (pick.overview) {
         var details = el('details', 'overview');
@@ -363,6 +429,7 @@
         }
         li.appendChild(action);
       }
+      li.appendChild(notInterested(li, { tmdbId: pick.tmdbId, mediaType: type }, session));
       list.appendChild(li);
     });
   }
@@ -402,7 +469,7 @@
     }
 
     var prefs = data.preferences || {};
-    document.getElementById('dub-only').checked = !!prefs.englishDubAnime;
+    fillPrefs(data, prefs);
     show('prefs');
 
     var lib = data.inLibrary || [];
@@ -437,34 +504,120 @@
     return getJson('Me', session).then(render);
   }
 
-  // Changing the dub choice rebuilds this person's picks straight away.
-  document.getElementById('dub-only').addEventListener('change', function () {
-    var box = this;
+  function dubNote(data) {
+    return 'Dubbed audio only: on your server, only titles with ' + (data.dubLanguage || 'English') +
+      ' audio. Titles not on the server yet that may not have it are marked.';
+  }
+
+  var lastData = null;
+
+  function fillPrefs(data, prefs) {
+    lastData = data;
+    document.getElementById('kind').value = prefs.kind || 'all';
+    document.getElementById('dub-only').checked = !!prefs.dubbedOnly;
+
+    var choices = data.countChoices || [10, 15, 20, 35];
+    var count = prefs.count || data.defaultCount || 20;
+    if (choices.indexOf(count) < 0) {
+      // The server's default isn't one of the choices: pick the nearest.
+      count = choices.reduce(function (a, b) { return Math.abs(b - count) < Math.abs(a - count) ? b : a; });
+    }
+    var select = document.getElementById('count');
+    select.textContent = '';
+    choices.forEach(function (n) {
+      var o = el('option', null, String(n));
+      o.value = String(n);
+      select.appendChild(o);
+    });
+    select.value = String(count);
+
+    var chosen = (prefs.genres || []).map(function (g) { return g.toLowerCase(); });
+    var genres = (data.availableGenres || []).slice();
+    (prefs.genres || []).forEach(function (g) {
+      if (genres.map(function (x) { return x.toLowerCase(); }).indexOf(g.toLowerCase()) < 0) genres.push(g);
+    });
+    var list = document.getElementById('genre-list');
+    list.textContent = '';
+    genres.forEach(function (g) {
+      var label = el('label');
+      var box = el('input');
+      box.type = 'checkbox';
+      box.value = g;
+      box.checked = chosen.indexOf(g.toLowerCase()) >= 0;
+      box.addEventListener('change', genreSummary);
+      label.appendChild(box);
+      label.appendChild(el('span', null, g));
+      list.appendChild(label);
+    });
+    document.getElementById('genres-box').hidden = genres.length === 0;
+    genreSummary();
+
+    hiddenCount = (prefs.hiddenItems || []).length + (prefs.hiddenTmdb || []).length;
+    updateHiddenNote();
+    document.getElementById('prefs-note').textContent = prefs.dubbedOnly ? dubNote(data) : '';
+  }
+
+  function chosenGenres() {
+    return Array.prototype.slice.call(document.querySelectorAll('#genre-list input:checked'))
+      .map(function (b) { return b.value; });
+  }
+
+  function genreSummary() {
+    var g = chosenGenres();
+    document.getElementById('genres-summary').textContent =
+      g.length === 0 ? 'Genres: any' : 'Genres: ' + (g.length <= 3 ? g.join(', ') : g.length + ' chosen');
+  }
+
+  document.getElementById('genres-clear').addEventListener('click', function () {
+    document.querySelectorAll('#genre-list input').forEach(function (b) { b.checked = false; });
+    genreSummary();
+  });
+
+  // Saving the choices rebuilds this person's picks straight away; poll until the new ones are ready.
+  function rebuildAndWait(send, busyText) {
     var note = document.getElementById('prefs-note');
-    box.disabled = true;
-    note.textContent = 'Updating your picks\u2026';
+    var apply = document.getElementById('apply');
+    apply.disabled = true;
+    note.textContent = busyText;
     var before = lastGenerated;
-    postJson('Me/Preferences', { englishDubAnime: box.checked }, session)
+    send()
       .then(function () {
         var tries = 0;
         (function poll() {
           tries++;
           getJson('Me', session).then(function (data) {
-            if (data.generatedUtc !== before || tries >= 15) {
+            if (data.generatedUtc !== before || tries >= 20) {
               render(data);
-              box.disabled = false;
-              note.textContent = 'Leaves out anime on this server that has no English audio.';
+              apply.disabled = false;
             } else {
               setTimeout(poll, 2000);
             }
-          }).catch(function () { box.disabled = false; });
+          }).catch(function () { apply.disabled = false; });
         })();
       })
       .catch(function () {
-        box.checked = !box.checked;
-        box.disabled = false;
+        apply.disabled = false;
         note.textContent = 'Couldn\u2019t save that just now. Try again.';
       });
+  }
+
+  document.getElementById('prefs').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var body = {
+      kind: document.getElementById('kind').value,
+      count: parseInt(document.getElementById('count').value, 10) || 0,
+      dubbedOnly: document.getElementById('dub-only').checked,
+      genres: chosenGenres()
+    };
+    rebuildAndWait(function () { return postJson('Me/Preferences', body, session); }, 'Updating your picks\u2026');
+  });
+
+  document.getElementById('unhide').addEventListener('click', function () {
+    rebuildAndWait(function () { return postJson('Me/Unhide', {}, session); }, 'Bringing hidden titles back\u2026');
+  });
+
+  document.getElementById('dub-only').addEventListener('change', function () {
+    document.getElementById('prefs-note').textContent = this.checked && lastData ? dubNote(lastData) : '';
   });
 
   load().catch(function (err) {
