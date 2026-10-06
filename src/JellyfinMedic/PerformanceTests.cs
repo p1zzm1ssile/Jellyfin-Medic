@@ -495,6 +495,6 @@ public static class SpeedStore
     {
         string path = FilePath(paths);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(result, Indented), Encoding.UTF8);
+        JellyfinMedic.Api.ScheduleStorage.WriteText(path, JsonSerializer.Serialize(result, Indented));
     }
 }

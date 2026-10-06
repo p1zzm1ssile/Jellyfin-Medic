@@ -60,7 +60,7 @@ public class PluginConfiguration : BasePluginConfiguration
     // Hold off starting the next file while anyone is watching.
     public bool TracksPauseWhileWatching { get; set; } = true;
 
-    public bool TracksReplaceInPlace { get; set; }              // off = write a copy beside the original
+    public bool TracksReplaceInPlace { get; set; }              // off = keep the original in a hidden .medic-originals folder beside it
 
     public int TracksConcurrentFiles { get; set; } = 1;
 
