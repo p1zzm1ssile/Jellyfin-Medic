@@ -1,0 +1,844 @@
+<div id="MedicProfilesPage" data-role="page" class="page type-interior pluginConfigurationPage">
+    <div data-role="content">
+        <div class="content-primary">
+
+            <div class="mp-topbar">
+                <h2 class="mp-title"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7cc0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="10" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg>Medic Profiles</h2>
+                <button id="mp-refresh" type="button" class="mp-btn mp-btn-plain">Refresh</button>
+            </div>
+            <p class="mp-muted mp-intro">Sonarr and Radarr, from your Jellyfin dashboard. Nothing changes in either until you press a button.</p>
+
+            <div class="mp-tabs" role="tablist" aria-label="Medic Profiles sections">
+                <button type="button" role="tab" class="mp-tab" data-tab="downloads" aria-selected="true">Downloads</button>
+                <button type="button" role="tab" class="mp-tab" data-tab="blocked" aria-selected="false" tabindex="-1">Blocked</button>
+                <button type="button" role="tab" class="mp-tab" data-tab="profiles" aria-selected="false" tabindex="-1">Profiles</button>
+                <button type="button" role="tab" class="mp-tab" data-tab="history" aria-selected="false" tabindex="-1">History</button>
+                <button type="button" role="tab" class="mp-tab" data-tab="settings" aria-selected="false" tabindex="-1">Settings</button>
+            </div>
+
+            <div id="mp-setup" class="mp-banner" hidden>
+                Add your Sonarr and Radarr addresses and API keys on the <button type="button" class="mp-link" id="mp-go-settings">Settings</button> tab to get started.
+            </div>
+            <div id="mp-errors"></div>
+
+            <!-- Downloads -->
+            <section class="mp-panel" data-panel="downloads" role="tabpanel">
+                <div class="mp-toolbar">
+                    <div class="mp-filters" role="group" aria-label="Show">
+                        <button type="button" class="mp-filter" data-filter="all" aria-pressed="true">All</button>
+                        <button type="button" class="mp-filter" data-filter="problems" aria-pressed="false">Problems</button>
+                        <button type="button" class="mp-filter" data-filter="sonarr" aria-pressed="false">Sonarr</button>
+                        <button type="button" class="mp-filter" data-filter="radarr" aria-pressed="false">Radarr</button>
+                    </div>
+                    <span id="mp-queue-summary" class="mp-muted mp-small" aria-live="polite"></span>
+                </div>
+                <ul id="mp-queue" class="mp-list"></ul>
+                <p id="mp-queue-empty" class="mp-muted" hidden>Nothing is downloading.</p>
+            </section>
+
+            <!-- Blocked -->
+            <section class="mp-panel" data-panel="blocked" role="tabpanel" hidden>
+                <p class="mp-muted">Releases Sonarr and Radarr won't grab again. Unblock one if it was blocked by mistake.</p>
+                <ul id="mp-blocked" class="mp-list"></ul>
+                <p id="mp-blocked-empty" class="mp-muted" hidden>Nothing is blocked.</p>
+            </section>
+
+            <!-- Profiles -->
+            <section class="mp-panel" data-panel="profiles" role="tabpanel" hidden>
+                <p id="mp-evidence" class="mp-muted"></p>
+                <div class="mp-toolbar">
+                    <button type="button" id="mp-advice-refresh" class="mp-btn mp-btn-plain">Check again</button>
+                    <span id="mp-advice-when" class="mp-muted mp-small"></span>
+                </div>
+                <h3 class="mp-h3">Suggestions</h3>
+                <p class="mp-muted mp-small">Read-only for now: make these changes in Sonarr or Radarr yourself. Medic Profiles doesn't change your profiles.</p>
+                <ul id="mp-suggestions" class="mp-list"></ul>
+                <p id="mp-suggestions-empty" class="mp-muted" hidden>No suggestions. Your profiles look right for how this server is used.</p>
+                <h3 class="mp-h3">Your profiles</h3>
+                <div id="mp-profiles"></div>
+            </section>
+
+            <!-- History -->
+            <section class="mp-panel" data-panel="history" role="tabpanel" hidden>
+                <p class="mp-muted">What's been removed, blocked, unblocked or imported from here.</p>
+                <ul id="mp-history" class="mp-list"></ul>
+                <p id="mp-history-empty" class="mp-muted" hidden>Nothing yet.</p>
+            </section>
+
+            <!-- Settings -->
+            <section class="mp-panel" data-panel="settings" role="tabpanel" hidden>
+                <form id="mp-settings" class="mp-form">
+                    <fieldset>
+                        <legend>Sonarr</legend>
+                        <label class="mp-field"><span>Address</span>
+                            <input type="text" id="mp-sonarr-url" class="mp-input" placeholder="http://192.168.1.10:8989" autocomplete="off" spellcheck="false"></label>
+                        <label class="mp-field"><span>API key</span>
+                            <input type="password" id="mp-sonarr-key" class="mp-input" autocomplete="off" spellcheck="false"></label>
+                        <p class="mp-muted mp-small">In Sonarr: Settings → General → API Key. <span id="mp-sonarr-keystate"></span></p>
+                        <div class="mp-row">
+                            <button type="button" class="mp-btn mp-btn-plain" data-test="sonarr">Test Sonarr</button>
+                            <button type="button" class="mp-btn mp-btn-plain" data-clear="sonarr">Remove key</button>
+                            <span class="mp-small" data-test-result="sonarr" aria-live="polite"></span>
+                        </div>
+                    </fieldset>
+                    <fieldset>
+                        <legend>Radarr</legend>
+                        <label class="mp-field"><span>Address</span>
+                            <input type="text" id="mp-radarr-url" class="mp-input" placeholder="http://192.168.1.10:7878" autocomplete="off" spellcheck="false"></label>
+                        <label class="mp-field"><span>API key</span>
+                            <input type="password" id="mp-radarr-key" class="mp-input" autocomplete="off" spellcheck="false"></label>
+                        <p class="mp-muted mp-small">In Radarr: Settings → General → API Key. <span id="mp-radarr-keystate"></span></p>
+                        <div class="mp-row">
+                            <button type="button" class="mp-btn mp-btn-plain" data-test="radarr">Test Radarr</button>
+                            <button type="button" class="mp-btn mp-btn-plain" data-clear="radarr">Remove key</button>
+                            <span class="mp-small" data-test-result="radarr" aria-live="polite"></span>
+                        </div>
+                    </fieldset>
+                    <fieldset>
+                        <legend>Downloads</legend>
+                        <label class="mp-field"><span>Call a download stuck after</span>
+                            <input type="number" id="mp-stuck" class="mp-input mp-narrow" min="1" max="168"> <span>hours with no progress estimate</span></label>
+                    </fieldset>
+                    <p class="mp-muted mp-small">Use addresses the Jellyfin server can reach. The keys are kept on the server, separate from other settings, and never sent to a browser.</p>
+                    <div class="mp-row">
+                        <button type="submit" class="mp-btn mp-btn-accent">Save</button>
+                        <span id="mp-settings-note" class="mp-small" aria-live="polite"></span>
+                    </div>
+                </form>
+            </section>
+        </div>
+    </div>
+
+    <style>
+        /* Every rule is scoped to this page so nothing leaks into the rest of the Jellyfin dashboard. */
+        #MedicProfilesPage [hidden] { display: none !important; }
+        #MedicProfilesPage { color: #fff; }
+        #MedicProfilesPage .mp-muted { color: #aaa; }
+        #MedicProfilesPage .mp-small { font-size: 0.85em; }
+        #MedicProfilesPage .mp-intro { margin: 0 0 14px; }
+        #MedicProfilesPage .mp-topbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; }
+        #MedicProfilesPage .mp-title { margin: 0; display: flex; align-items: center; gap: 10px; }
+        #MedicProfilesPage .mp-btn { color: #fff; min-height: 38px; padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer; font: inherit; }
+        #MedicProfilesPage .mp-btn:disabled { opacity: 0.45; cursor: default; }
+        #MedicProfilesPage .mp-btn-accent { background: #1f6fd1; }
+        #MedicProfilesPage .mp-btn-plain { background: transparent; border: 1px solid #3a3e46; }
+        #MedicProfilesPage .mp-btn-danger { background: #8c2b2b; }
+        #MedicProfilesPage .mp-btn-small { min-height: 32px; padding: 4px 10px; font-size: 0.9em; }
+        #MedicProfilesPage .mp-link { background: none; border: none; color: #7cc0ff; text-decoration: underline; font: inherit; padding: 0; cursor: pointer; }
+        #MedicProfilesPage button:focus-visible, #MedicProfilesPage .mp-input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+        #MedicProfilesPage .mp-tabs { display: flex; gap: 4px; border-bottom: 1px solid #444; margin-bottom: 16px; flex-wrap: wrap; }
+        #MedicProfilesPage .mp-tab { background: none; border: none; color: #aaa; font: inherit; padding: 10px 14px; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+        #MedicProfilesPage .mp-tab[aria-selected="true"] { color: #fff; border-bottom-color: #00a4dc; }
+
+        #MedicProfilesPage .mp-banner { padding: 12px 14px; border-radius: 6px; background: #134e6f; margin-bottom: 14px; }
+        #MedicProfilesPage .mp-banner.error { background: #6b2323; }
+        #MedicProfilesPage .mp-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+        #MedicProfilesPage .mp-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+        #MedicProfilesPage .mp-filter { background: #333; color: #ccc; border: 1px solid #555; padding: 6px 12px; font: inherit; cursor: pointer; border-radius: 4px; }
+        #MedicProfilesPage .mp-filter[aria-pressed="true"] { background: #00a4dc; border-color: #00a4dc; color: #fff; }
+
+        #MedicProfilesPage .mp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+        #MedicProfilesPage .mp-card { background: #1c1e22; border: 1px solid #2e3138; border-left: 4px solid #2e3138; border-radius: 6px; padding: 12px 14px; }
+        #MedicProfilesPage .mp-card[data-health="problem"], #MedicProfilesPage .mp-card[data-sev="problem"] { border-left-color: #e05555; }
+        #MedicProfilesPage .mp-card[data-health="stuck"], #MedicProfilesPage .mp-card[data-sev="improve"] { border-left-color: #e0a54a; }
+        #MedicProfilesPage .mp-card[data-sev="tip"] { border-left-color: #00a4dc; }
+        #MedicProfilesPage .mp-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+        #MedicProfilesPage .mp-card-title { font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+        #MedicProfilesPage .mp-release { margin: 2px 0 0; color: #9aa; font-size: 0.82em; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+        #MedicProfilesPage .mp-meta { margin: 6px 0 0; color: #bbb; font-size: 0.88em; }
+        #MedicProfilesPage .mp-badge { display: inline-block; font-size: 0.75em; padding: 1px 7px; border-radius: 999px; border: 1px solid #555; color: #ccc; margin-right: 6px; vertical-align: 1px; }
+        #MedicProfilesPage .mp-problem { margin: 6px 0 0; font-weight: 600; }
+        #MedicProfilesPage .mp-card[data-health="problem"] .mp-problem { color: #ff9a9e; }
+        #MedicProfilesPage .mp-card[data-health="stuck"] .mp-problem { color: #ffd27a; }
+        #MedicProfilesPage .mp-bar { height: 6px; border-radius: 3px; background: #33363d; overflow: hidden; margin-top: 8px; max-width: 420px; }
+        #MedicProfilesPage .mp-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #aa5cc3, #00a4dc); }
+        #MedicProfilesPage .mp-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        #MedicProfilesPage details.mp-messages { margin-top: 6px; font-size: 0.85em; color: #ccc; }
+        #MedicProfilesPage details.mp-messages summary { cursor: pointer; color: #aaa; }
+        #MedicProfilesPage details.mp-messages ul { margin: 6px 0 0; padding-left: 18px; }
+
+        #MedicProfilesPage .mp-confirm, #MedicProfilesPage .mp-import { margin-top: 10px; padding: 12px; background: #15171b; border-radius: 6px; }
+        #MedicProfilesPage .mp-confirm p { margin: 0 0 8px; }
+        #MedicProfilesPage .mp-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+        #MedicProfilesPage .mp-check { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+        #MedicProfilesPage .mp-check input { width: 18px; height: 18px; accent-color: #00a4dc; }
+        #MedicProfilesPage .mp-file { border-top: 1px solid #2e3138; padding: 10px 0; }
+        #MedicProfilesPage .mp-file:first-of-type { border-top: none; }
+        #MedicProfilesPage .mp-reject { color: #ffd27a; font-size: 0.85em; margin: 4px 0 0; }
+        #MedicProfilesPage .mp-results { list-style: none; margin: 6px 0 0; padding: 0; max-height: 220px; overflow: auto; }
+        #MedicProfilesPage .mp-results button { display: block; width: 100%; text-align: left; background: #23262c; border: 1px solid #33363d; color: #fff; padding: 6px 10px; margin-top: 4px; border-radius: 4px; cursor: pointer; font: inherit; }
+        #MedicProfilesPage .mp-episodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 14px; max-height: 260px; overflow: auto; margin-top: 6px; }
+        #MedicProfilesPage .mp-note { font-size: 0.88em; margin: 8px 0 0; }
+        #MedicProfilesPage .mp-note.ok { color: #7fe0b5; }
+        #MedicProfilesPage .mp-note.bad { color: #ff9a9e; }
+
+        #MedicProfilesPage .mp-h3 { margin: 22px 0 6px; }
+        #MedicProfilesPage .mp-sug-line { margin: 6px 0 0; }
+        #MedicProfilesPage .mp-sug-line strong { color: #ddd; }
+        #MedicProfilesPage table.mp-table { width: 100%; border-collapse: collapse; font-size: 0.88em; margin-bottom: 16px; }
+        #MedicProfilesPage .mp-table th, #MedicProfilesPage .mp-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #2e3138; vertical-align: top; }
+        #MedicProfilesPage .mp-table th { color: #aaa; font-weight: 600; }
+        #MedicProfilesPage .mp-tablewrap { overflow-x: auto; }
+
+        #MedicProfilesPage .mp-form fieldset { border: 1px solid #2e3138; border-radius: 6px; padding: 12px 14px; margin: 0 0 14px; max-width: 640px; }
+        #MedicProfilesPage .mp-form legend { padding: 0 6px; font-weight: 600; }
+        #MedicProfilesPage .mp-field { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+        #MedicProfilesPage .mp-field > span:first-child { min-width: 80px; }
+        #MedicProfilesPage .mp-input { background: #15171b; color: #fff; border: 1px solid #3a3e46; border-radius: 6px; padding: 8px 10px; font: inherit; min-height: 38px; flex: 1 1 260px; }
+        #MedicProfilesPage .mp-input.mp-narrow { flex: 0 0 80px; }
+        #MedicProfilesPage select.mp-input { flex: 0 1 auto; }
+    </style>
+
+    <script>
+        (function () {
+            const REFRESH_MS = 30000;
+
+            function el(tag, cls, text) {
+                const node = document.createElement(tag);
+                if (cls) node.className = cls;
+                if (text !== undefined && text !== null) node.textContent = text;
+                return node;
+            }
+
+            function getJson(path, params) {
+                return ApiClient.getJSON(ApiClient.getUrl('MedicProfiles/' + path, params));
+            }
+
+            function post(path, body, expectJson) {
+                const req = {
+                    type: 'POST',
+                    url: ApiClient.getUrl('MedicProfiles/' + path),
+                    data: JSON.stringify(body || {}),
+                    contentType: 'application/json'
+                };
+                if (expectJson !== false) req.dataType = 'json';
+                return ApiClient.ajax(req);
+            }
+
+            function size(bytes) {
+                if (!bytes) return '';
+                const gb = bytes / 1073741824;
+                return gb >= 1 ? gb.toFixed(gb >= 10 ? 0 : 1) + ' GB' : Math.max(1, Math.round(bytes / 1048576)) + ' MB';
+            }
+
+            function when(iso) {
+                const d = new Date(iso);
+                if (isNaN(d.getTime())) return '';
+                return d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+            }
+
+            function eta(iso) {
+                const d = new Date(iso);
+                const mins = Math.round((d - new Date()) / 60000);
+                if (isNaN(mins) || mins <= 0) return '';
+                const left = mins < 60 ? mins + ' min' : mins < 2880 ? Math.round(mins / 60) + ' h' : Math.round(mins / 1440) + ' days';
+                const sameDay = d.toDateString() === new Date().toDateString();
+                return 'done around ' + (sameDay ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : when(iso)) + ' (' + left + ')';
+            }
+
+            function appName(app) { return app === 'sonarr' ? 'Sonarr' : 'Radarr'; }
+
+            function init(page) {
+                const $ = function (id) { return page.querySelector('#' + id); };
+                let activeTab = 'downloads';
+                let filter = 'all';
+                let queue = [];
+                let timer = null;
+                // While a confirm or import panel is open, the list isn't redrawn under the admin's hands.
+                let busyPanels = 0;
+
+                // ---------- Tabs ----------
+                const tabs = Array.prototype.slice.call(page.querySelectorAll('.mp-tab'));
+                function showTab(name) {
+                    activeTab = name;
+                    tabs.forEach(function (t) {
+                        const on = t.getAttribute('data-tab') === name;
+                        t.setAttribute('aria-selected', on ? 'true' : 'false');
+                        t.tabIndex = on ? 0 : -1;
+                    });
+                    page.querySelectorAll('.mp-panel').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
+                    load(name);
+                }
+                tabs.forEach(function (t, i) {
+                    t.addEventListener('click', function () { showTab(t.getAttribute('data-tab')); });
+                    t.addEventListener('keydown', function (e) {
+                        const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+                        if (!step) return;
+                        const next = tabs[(i + step + tabs.length) % tabs.length];
+                        next.focus();
+                        showTab(next.getAttribute('data-tab'));
+                    });
+                });
+                $('mp-go-settings').addEventListener('click', function () { showTab('settings'); });
+                $('mp-refresh').addEventListener('click', function () { load(activeTab, true); });
+
+                function load(name, force) {
+                    clearTimeout(timer);
+                    if (name === 'downloads') loadQueue();
+                    else if (name === 'blocked') loadBlocked();
+                    else if (name === 'profiles') loadAdvice(!!force);
+                    else if (name === 'history') loadHistory();
+                    else if (name === 'settings') loadSettings();
+                }
+
+                function showSetup(configured) {
+                    $('mp-setup').hidden = !configured || configured.sonarr || configured.radarr;
+                }
+
+                function showErrors(errors) {
+                    const box = $('mp-errors');
+                    box.textContent = '';
+                    Object.keys(errors || {}).forEach(function (app) {
+                        box.appendChild(el('div', 'mp-banner error', appName(app) + ': ' + errors[app]));
+                    });
+                }
+
+                // ---------- Downloads ----------
+                page.querySelectorAll('.mp-filter').forEach(function (b) {
+                    b.addEventListener('click', function () {
+                        filter = b.getAttribute('data-filter');
+                        page.querySelectorAll('.mp-filter').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+                        renderQueue();
+                    });
+                });
+
+                // auto: the 30-second refresh, which waits while a confirm or import panel is open.
+                function loadQueue(auto) {
+                    if (auto === true && busyPanels > 0) { scheduleQueue(); return; }
+                    getJson('Queue').then(function (data) {
+                        showSetup(data.configured);
+                        showErrors(data.errors);
+                        queue = data.rows || [];
+                        renderQueue();
+                    }).catch(function () {
+                        showErrors({ radarr: 'Medic Profiles couldn’t load the queue. Reload the page and try again.' });
+                    }).then(scheduleQueue);
+                }
+
+                function scheduleQueue() {
+                    clearTimeout(timer);
+                    if (activeTab === 'downloads' && !page._mpHidden) timer = setTimeout(function () { loadQueue(true); }, REFRESH_MS);
+                }
+
+                function renderQueue() {
+                    const list = $('mp-queue');
+                    // Redrawing closes any open panel.
+                    busyPanels = 0;
+                    list.textContent = '';
+                    const rows = queue.filter(function (r) {
+                        return filter === 'all' || (filter === 'problems' ? r.health !== 'ok' : r.app === filter);
+                    });
+                    const problems = queue.filter(function (r) { return r.health !== 'ok'; }).length;
+                    $('mp-queue-summary').textContent = queue.length
+                        ? queue.length + ' download' + (queue.length === 1 ? '' : 's') + (problems ? ', ' + problems + ' need' + (problems === 1 ? 's' : '') + ' attention' : '') + '. Updates every 30 seconds.'
+                        : '';
+                    $('mp-queue-empty').hidden = rows.length > 0;
+                    $('mp-queue-empty').textContent = queue.length ? 'Nothing matches this filter.' : 'Nothing is downloading.';
+                    rows.forEach(function (r) { list.appendChild(downloadCard(r)); });
+                }
+
+                function downloadCard(r) {
+                    const li = el('li', 'mp-card');
+                    li.setAttribute('data-health', r.health);
+                    const head = el('div', 'mp-card-head');
+                    const left = el('div');
+                    const title = el('p', 'mp-card-title');
+                    title.appendChild(el('span', 'mp-badge', appName(r.app)));
+                    title.appendChild(document.createTextNode(r.mediaTitle));
+                    left.appendChild(title);
+                    left.appendChild(el('p', 'mp-release', r.releaseTitle));
+                    const meta = [];
+                    if (r.quality) meta.push(r.quality);
+                    if (r.size) meta.push(size(r.size));
+                    if (r.progress !== null && r.progress !== undefined) meta.push(r.progress + '%');
+                    if (r.etaUtc && r.health === 'ok') { const e = eta(r.etaUtc); if (e) meta.push(e); }
+                    if (r.downloadClient) meta.push(r.downloadClient);
+                    if (r.indexer) meta.push(r.indexer);
+                    left.appendChild(el('p', 'mp-meta', meta.join(' · ')));
+                    if (r.problem) left.appendChild(el('p', 'mp-problem', r.problem));
+                    if (r.progress !== null && r.progress !== undefined && r.health === 'ok') {
+                        const bar = el('div', 'mp-bar');
+                        bar.setAttribute('role', 'progressbar');
+                        bar.setAttribute('aria-valuenow', String(r.progress));
+                        bar.setAttribute('aria-valuemin', '0');
+                        bar.setAttribute('aria-valuemax', '100');
+                        bar.setAttribute('aria-label', 'Downloaded');
+                        const fill = el('span');
+                        fill.style.width = r.progress + '%';
+                        bar.appendChild(fill);
+                        left.appendChild(bar);
+                    }
+                    if (r.messages && r.messages.length) {
+                        const d = el('details', 'mp-messages');
+                        d.open = r.health !== 'ok';
+                        d.appendChild(el('summary', null, 'What ' + appName(r.app) + ' says'));
+                        const ul = el('ul');
+                        r.messages.forEach(function (m) { ul.appendChild(el('li', null, m)); });
+                        d.appendChild(ul);
+                        left.appendChild(d);
+                    }
+                    head.appendChild(left);
+
+                    const actions = el('div', 'mp-actions');
+                    const panel = el('div');
+                    if (r.canImport || r.unknown || r.health === 'problem') {
+                        actions.appendChild(button('Import manually', 'mp-btn mp-btn-plain mp-btn-small', function () { openImport(r, panel); }));
+                    }
+                    actions.appendChild(button('Remove', 'mp-btn mp-btn-plain mp-btn-small', function () { openRemove(r, panel, false); }));
+                    actions.appendChild(button('Remove and block', 'mp-btn mp-btn-danger mp-btn-small', function () { openRemove(r, panel, true); }));
+                    head.appendChild(actions);
+                    li.appendChild(head);
+                    li.appendChild(panel);
+                    return li;
+                }
+
+                function button(text, cls, onClick) {
+                    const b = el('button', cls, text);
+                    b.type = 'button';
+                    b.addEventListener('click', onClick);
+                    return b;
+                }
+
+                // A panel under a card; only one at a time, and the list stays still while it's open.
+                function openPanel(container, cls) {
+                    closePanel(container);
+                    const box = el('div', cls);
+                    container.appendChild(box);
+                    container._open = true;
+                    busyPanels++;
+                    return box;
+                }
+
+                function closePanel(container) {
+                    if (container._open) {
+                        container._open = false;
+                        busyPanels = Math.max(0, busyPanels - 1);
+                    }
+                    container.textContent = '';
+                }
+
+                function openRemove(r, container, block) {
+                    const box = openPanel(container, 'mp-confirm');
+                    box.appendChild(el('p', null, block
+                        ? 'Remove “' + r.mediaTitle + '” from ' + appName(r.app) + ' and the download client, and block this release so it’s never grabbed again?'
+                        : 'Remove “' + r.mediaTitle + '” from ' + appName(r.app) + ' and the download client? It isn’t blocked, so it could be grabbed again.'));
+                    let again = null;
+                    if (block) {
+                        const label = el('label', 'mp-check');
+                        again = el('input');
+                        again.type = 'checkbox';
+                        again.checked = true;
+                        label.appendChild(again);
+                        label.appendChild(el('span', null, 'Search for a different release straight away'));
+                        box.appendChild(label);
+                    }
+                    const row = el('div', 'mp-row');
+                    const note = el('p', 'mp-note');
+                    note.setAttribute('aria-live', 'polite');
+                    const go = button(block ? 'Remove and block' : 'Remove', 'mp-btn ' + (block ? 'mp-btn-danger' : 'mp-btn-accent') + ' mp-btn-small', function () {
+                        go.disabled = true;
+                        note.className = 'mp-note';
+                        note.textContent = 'Working…';
+                        post('Queue/Remove', { app: r.app, queueIds: r.queueIds, block: block, searchAgain: again ? again.checked : false, title: r.mediaTitle })
+                            .then(function (res) {
+                                note.className = 'mp-note ' + (res.ok ? 'ok' : 'bad');
+                                note.textContent = res.message;
+                                if (res.ok) setTimeout(function () { closePanel(container); loadQueue(); }, 1500);
+                                else go.disabled = false;
+                            })
+                            .catch(function () { note.className = 'mp-note bad'; note.textContent = 'That didn’t work. Try again.'; go.disabled = false; });
+                    });
+                    row.appendChild(go);
+                    row.appendChild(button('Cancel', 'mp-btn mp-btn-plain mp-btn-small', function () { closePanel(container); }));
+                    box.appendChild(row);
+                    box.appendChild(note);
+                    go.focus();
+                }
+
+                // ---------- Import by hand ----------
+                function openImport(r, container) {
+                    const box = openPanel(container, 'mp-import');
+                    box.appendChild(el('p', 'mp-muted', 'Looking at the files in this download…'));
+                    getJson('Import/' + r.app, { downloadId: r.downloadId }).then(function (res) {
+                        box.textContent = '';
+                        if (!res.ok) {
+                            box.appendChild(el('p', 'mp-note bad', res.message || 'The files couldn’t be read.'));
+                            box.appendChild(button('Close', 'mp-btn mp-btn-plain mp-btn-small', function () { closePanel(container); }));
+                            return;
+                        }
+                        renderImport(r, res.files, box, container);
+                    }).catch(function () {
+                        box.textContent = '';
+                        box.appendChild(el('p', 'mp-note bad', 'The files couldn’t be read.'));
+                        box.appendChild(button('Close', 'mp-btn mp-btn-plain mp-btn-small', function () { closePanel(container); }));
+                    });
+                }
+
+                function renderImport(r, files, box, container) {
+                    box.appendChild(el('p', null, 'Choose what each file is, then import. Files ' + appName(r.app) + ' refused say why.'));
+                    const states = files.map(function (f) {
+                        const s = { file: f, include: f.rejections.length === 0 || !!f.mediaId, mediaId: f.mediaId, mediaTitle: f.mediaTitle, episodeIds: (f.episodes || []).map(function (e) { return e.id; }) };
+                        box.appendChild(fileBlock(r, s));
+                        return s;
+                    });
+
+                    const row = el('div', 'mp-row');
+                    const modeLabel = el('label', 'mp-field');
+                    modeLabel.appendChild(el('span', null, 'How'));
+                    const mode = el('select', 'mp-input');
+                    [['auto', 'As ' + appName(r.app) + ' normally does (recommended)'], ['move', 'Move the files'], ['copy', 'Copy the files (keeps seeding)']].forEach(function (o) {
+                        const opt = el('option', null, o[1]);
+                        opt.value = o[0];
+                        mode.appendChild(opt);
+                    });
+                    modeLabel.appendChild(mode);
+                    box.appendChild(modeLabel);
+                    const note = el('p', 'mp-note');
+                    note.setAttribute('aria-live', 'polite');
+                    const go = button('Import', 'mp-btn mp-btn-accent mp-btn-small', function () {
+                        const chosen = states.filter(function (s) { return s.include; });
+                        if (!chosen.length) { note.className = 'mp-note bad'; note.textContent = 'Tick at least one file.'; return; }
+                        go.disabled = true;
+                        note.className = 'mp-note';
+                        note.textContent = 'Importing…';
+                        post('Import', {
+                            app: r.app, downloadId: r.downloadId, importMode: mode.value, title: r.mediaTitle,
+                            files: chosen.map(function (s) {
+                                return {
+                                    path: s.file.path, mediaId: s.mediaId, episodeIds: s.episodeIds,
+                                    qualityRaw: s.file.qualityRaw, languagesRaw: s.file.languagesRaw,
+                                    releaseGroup: s.file.releaseGroup, indexerFlags: s.file.indexerFlags, releaseType: s.file.releaseType
+                                };
+                            })
+                        }).then(function (res) {
+                            note.className = 'mp-note ' + (res.ok ? 'ok' : 'bad');
+                            note.textContent = res.message;
+                            if (res.ok) setTimeout(function () { closePanel(container); loadQueue(); }, 2500);
+                            else go.disabled = false;
+                        }).catch(function () { note.className = 'mp-note bad'; note.textContent = 'That didn’t work. Try again.'; go.disabled = false; });
+                    });
+                    row.appendChild(go);
+                    row.appendChild(button('Cancel', 'mp-btn mp-btn-plain mp-btn-small', function () { closePanel(container); }));
+                    box.appendChild(row);
+                    box.appendChild(note);
+                }
+
+                function fileBlock(r, s) {
+                    const f = s.file;
+                    const div = el('div', 'mp-file');
+                    const label = el('label', 'mp-check');
+                    const box = el('input');
+                    box.type = 'checkbox';
+                    box.checked = s.include;
+                    box.addEventListener('change', function () { s.include = box.checked; });
+                    label.appendChild(box);
+                    label.appendChild(el('span', 'mp-release', f.name));
+                    div.appendChild(label);
+                    div.appendChild(el('p', 'mp-meta', [f.quality, size(f.size), f.languages].filter(Boolean).join(' · ')));
+                    f.rejections.forEach(function (x) { div.appendChild(el('p', 'mp-reject', '⚠ ' + x)); });
+
+                    const match = el('p', 'mp-meta');
+                    const matchText = el('span');
+                    function describe() {
+                        let t = s.mediaTitle ? 'Is: ' + s.mediaTitle : 'Not matched yet';
+                        if (r.app === 'sonarr' && s.mediaId) {
+                            t += s.episodeIds.length ? ' · ' + s.episodeIds.length + ' episode' + (s.episodeIds.length === 1 ? '' : 's') + ' chosen' : ' · no episodes chosen';
+                        }
+                        matchText.textContent = t + ' ';
+                    }
+                    describe();
+                    match.appendChild(matchText);
+                    const picker = el('div');
+                    match.appendChild(button(r.app === 'sonarr' ? 'Change series' : 'Change film', 'mp-link', function () { openSearch(r, s, picker, describe); }));
+                    if (r.app === 'sonarr') {
+                        match.appendChild(document.createTextNode(' · '));
+                        match.appendChild(button('Choose episodes', 'mp-link', function () { openEpisodes(s, picker, describe); }));
+                    }
+                    div.appendChild(match);
+                    div.appendChild(picker);
+                    return div;
+                }
+
+                function openSearch(r, s, picker, describe) {
+                    picker.textContent = '';
+                    const input = el('input', 'mp-input');
+                    input.type = 'search';
+                    input.placeholder = 'Type part of the title';
+                    input.setAttribute('aria-label', 'Search ' + appName(r.app));
+                    const results = el('ul', 'mp-results');
+                    picker.appendChild(input);
+                    picker.appendChild(results);
+                    let t = null;
+                    input.addEventListener('input', function () {
+                        clearTimeout(t);
+                        t = setTimeout(function () {
+                            getJson('Library/' + r.app, { q: input.value }).then(function (res) {
+                                results.textContent = '';
+                                if (!res.ok) { results.appendChild(el('li', 'mp-note bad', res.message)); return; }
+                                if (!res.results.length && input.value.trim()) results.appendChild(el('li', 'mp-muted mp-small', 'Nothing in ' + appName(r.app) + ' matches. Add it there first.'));
+                                res.results.forEach(function (m) {
+                                    const li = el('li');
+                                    li.appendChild(button(m.title + (m.year ? ' (' + m.year + ')' : ''), '', function () {
+                                        s.mediaId = m.id;
+                                        s.mediaTitle = m.title + (m.year ? ' (' + m.year + ')' : '');
+                                        s.include = true;
+                                        if (r.app === 'sonarr') { s.episodeIds = []; openEpisodes(s, picker, describe); }
+                                        else picker.textContent = '';
+                                        describe();
+                                    }));
+                                    results.appendChild(li);
+                                });
+                            }).catch(function () { results.textContent = ''; results.appendChild(el('li', 'mp-note bad', 'The search didn\u2019t work. Try again.')); });
+                        }, 250);
+                    });
+                    input.focus();
+                }
+
+                function openEpisodes(s, picker, describe) {
+                    picker.textContent = '';
+                    if (!s.mediaId) { picker.appendChild(el('p', 'mp-note bad', 'Choose the series first.')); return; }
+                    picker.appendChild(el('p', 'mp-muted mp-small', 'Loading episodes…'));
+                    getJson('Episodes', { seriesId: s.mediaId }).then(function (res) {
+                        picker.textContent = '';
+                        if (!res.ok) { picker.appendChild(el('p', 'mp-note bad', res.message)); return; }
+                        const seasons = Array.from(new Set(res.episodes.map(function (e) { return e.seasonNumber; })));
+                        const chosen = new Set(s.episodeIds);
+                        const firstChosen = res.episodes.find(function (e) { return chosen.has(e.id); });
+                        const select = el('select', 'mp-input');
+                        select.setAttribute('aria-label', 'Season');
+                        seasons.forEach(function (n) { const o = el('option', null, n === 0 ? 'Specials' : 'Season ' + n); o.value = String(n); select.appendChild(o); });
+                        if (firstChosen) select.value = String(firstChosen.seasonNumber);
+                        else if (seasons.indexOf(1) >= 0) select.value = '1';
+                        const grid = el('div', 'mp-episodes');
+                        function fill() {
+                            grid.textContent = '';
+                            res.episodes.filter(function (e) { return String(e.seasonNumber) === select.value; }).forEach(function (e) {
+                                const label = el('label', 'mp-check');
+                                const cb = el('input');
+                                cb.type = 'checkbox';
+                                cb.checked = chosen.has(e.id);
+                                cb.addEventListener('change', function () {
+                                    if (cb.checked) chosen.add(e.id); else chosen.delete(e.id);
+                                    s.episodeIds = Array.from(chosen);
+                                    describe();
+                                });
+                                label.appendChild(cb);
+                                label.appendChild(el('span', null, 'E' + String(e.episodeNumber).padStart(2, '0') + (e.title ? ' ' + e.title : '') + (e.hasFile ? ' (has a file)' : '')));
+                                grid.appendChild(label);
+                            });
+                        }
+                        select.addEventListener('change', fill);
+                        fill();
+                        picker.appendChild(select);
+                        picker.appendChild(grid);
+                    }).catch(function () { picker.textContent = ''; picker.appendChild(el('p', 'mp-note bad', 'The episodes couldn\u2019t be loaded.')); });
+                }
+
+                // ---------- Blocked ----------
+                function loadBlocked() {
+                    getJson('Blocked').then(function (data) {
+                        showSetup(data.configured);
+                        showErrors(data.errors);
+                        const list = $('mp-blocked');
+                        list.textContent = '';
+                        (data.rows || []).forEach(function (b) {
+                            const li = el('li', 'mp-card');
+                            const head = el('div', 'mp-card-head');
+                            const left = el('div');
+                            const title = el('p', 'mp-card-title');
+                            title.appendChild(el('span', 'mp-badge', appName(b.app)));
+                            title.appendChild(document.createTextNode(b.mediaTitle || 'Unknown title'));
+                            left.appendChild(title);
+                            left.appendChild(el('p', 'mp-release', b.releaseTitle));
+                            left.appendChild(el('p', 'mp-meta', [b.quality, b.indexer, b.dateUtc ? 'blocked ' + when(b.dateUtc) : ''].filter(Boolean).join(' · ')));
+                            if (b.message) left.appendChild(el('p', 'mp-meta', b.message));
+                            head.appendChild(left);
+                            const note = el('p', 'mp-note');
+                            const unblock = button('Unblock', 'mp-btn mp-btn-plain mp-btn-small', function () {
+                                if (unblock.getAttribute('data-sure') !== 'yes') {
+                                    unblock.setAttribute('data-sure', 'yes');
+                                    unblock.textContent = 'Press again to unblock';
+                                    return;
+                                }
+                                unblock.disabled = true;
+                                post('Blocked/Unblock', { app: b.app, id: b.id, title: b.mediaTitle || b.releaseTitle }).then(function (res) {
+                                    note.className = 'mp-note ' + (res.ok ? 'ok' : 'bad');
+                                    note.textContent = res.message;
+                                    if (res.ok) setTimeout(function () { li.remove(); $('mp-blocked-empty').hidden = list.children.length > 0; }, 1200);
+                                    else unblock.disabled = false;
+                                }).catch(function () { note.className = 'mp-note bad'; note.textContent = 'That didn\u2019t work. Try again.'; unblock.disabled = false; });
+                            });
+                            head.appendChild(unblock);
+                            li.appendChild(head);
+                            li.appendChild(note);
+                            list.appendChild(li);
+                        });
+                        $('mp-blocked-empty').hidden = list.children.length > 0;
+                    });
+                }
+
+                // ---------- Profiles ----------
+                $('mp-advice-refresh').addEventListener('click', function () { loadAdvice(true); });
+
+                function loadAdvice(refresh) {
+                    $('mp-evidence').textContent = refresh ? 'Checking your profiles and playback…' : '';
+                    getJson('Advice', { refresh: refresh ? 'true' : 'false' }).then(function (data) {
+                        showSetup(data.configured);
+                        const rep = data.report;
+                        showErrors(rep.errors);
+                        const ev = rep.evidence || {};
+                        $('mp-evidence').textContent = ev.fromMedic
+                            ? 'Based on ' + ev.transcodedFiles + ' file' + (ev.transcodedFiles === 1 ? '' : 's') + ' Jellyfin Medic caught being transcoded' + (ev.sinceUtc ? ' since ' + when(ev.sinceUtc) : '') + ', a sample of ' + ev.sampledFiles + ' files from your library, and your profiles themselves.'
+                            : 'Install Jellyfin Medic to base these on what actually gets transcoded here. For now they come from your profiles and a sample of ' + ev.sampledFiles + ' files from your library.';
+                        $('mp-advice-when').textContent = rep.generatedUtc ? 'Checked ' + when(rep.generatedUtc) : '';
+
+                        const list = $('mp-suggestions');
+                        list.textContent = '';
+                        (rep.suggestions || []).forEach(function (sg) {
+                            const li = el('li', 'mp-card');
+                            li.setAttribute('data-sev', sg.severity);
+                            const title = el('p', 'mp-card-title');
+                            title.appendChild(el('span', 'mp-badge', appName(sg.app)));
+                            title.appendChild(el('span', 'mp-badge', sg.severity === 'problem' ? 'Fix' : sg.severity === 'improve' ? 'Improve' : 'Tip'));
+                            title.appendChild(document.createTextNode(sg.title));
+                            li.appendChild(title);
+                            function line(label, text) {
+                                if (!text) return;
+                                const p = el('p', 'mp-sug-line');
+                                p.appendChild(el('strong', null, label + ': '));
+                                p.appendChild(document.createTextNode(text));
+                                li.appendChild(p);
+                            }
+                            line('Profiles', (sg.profiles || []).join(', '));
+                            line('Change', sg.change);
+                            line('Why', sg.why);
+                            line('Seen here', sg.evidence);
+                            list.appendChild(li);
+                        });
+                        $('mp-suggestions-empty').hidden = list.children.length > 0 || !(data.configured.sonarr || data.configured.radarr);
+
+                        const wrap = $('mp-profiles');
+                        wrap.textContent = '';
+                        ['sonarr', 'radarr'].forEach(function (app) {
+                            const rows = (rep.profiles || []).filter(function (p) { return p.app === app; });
+                            if (!rows.length) return;
+                            wrap.appendChild(el('h4', null, appName(app)));
+                            const tw = el('div', 'mp-tablewrap');
+                            const table = el('table', 'mp-table');
+                            const thead = el('tr');
+                            ['Profile', 'Used by', 'Allowed qualities', 'Upgrade until', 'Custom format scores'].forEach(function (h) { thead.appendChild(el('th', null, h)); });
+                            table.appendChild(thead);
+                            rows.forEach(function (p) {
+                                const tr = el('tr');
+                                tr.appendChild(el('td', null, p.name));
+                                tr.appendChild(el('td', null, p.inUse === null || p.inUse === undefined ? '?' : String(p.inUse)));
+                                tr.appendChild(el('td', null, p.allowed.join(', ') || 'None'));
+                                tr.appendChild(el('td', null, (p.cutoff || '?') + (p.upgradeAllowed ? '' : ' (upgrades off)')));
+                                tr.appendChild(el('td', null, (p.scores.length ? p.scores.join(', ') : 'None') + (p.minFormatScore ? ' · minimum ' + p.minFormatScore : '')));
+                                table.appendChild(tr);
+                            });
+                            tw.appendChild(table);
+                            wrap.appendChild(tw);
+                        });
+                    }).catch(function () {
+                        $('mp-evidence').textContent = 'The profiles couldn’t be checked just now.';
+                    });
+                }
+
+                // ---------- History ----------
+                function loadHistory() {
+                    getJson('History').then(function (data) {
+                        const list = $('mp-history');
+                        list.textContent = '';
+                        const words = { remove: 'Removed', block: 'Removed and blocked', unblock: 'Unblocked', import: 'Imported by hand' };
+                        (data.rows || []).forEach(function (h) {
+                            const li = el('li', 'mp-card');
+                            const title = el('p', 'mp-card-title');
+                            title.appendChild(el('span', 'mp-badge', appName(h.app)));
+                            title.appendChild(document.createTextNode((words[h.action] || h.action) + ': ' + h.title));
+                            li.appendChild(title);
+                            li.appendChild(el('p', 'mp-meta', [when(h.utc), h.detail, h.by ? 'by ' + h.by : ''].filter(Boolean).join(' · ')));
+                            list.appendChild(li);
+                        });
+                        $('mp-history-empty').hidden = list.children.length > 0;
+                    });
+                }
+
+                // ---------- Settings ----------
+                function loadSettings() {
+                    getJson('Status').then(function (st) {
+                        $('mp-sonarr-url').value = st.sonarr.url || '';
+                        $('mp-radarr-url').value = st.radarr.url || '';
+                        $('mp-sonarr-key').value = '';
+                        $('mp-radarr-key').value = '';
+                        $('mp-sonarr-key').placeholder = st.sonarr.keySet ? 'Saved. Type a new one to replace it.' : 'Paste the API key';
+                        $('mp-radarr-key').placeholder = st.radarr.keySet ? 'Saved. Type a new one to replace it.' : 'Paste the API key';
+                        $('mp-sonarr-keystate').textContent = st.sonarr.keySet ? 'A key is saved.' : 'No key saved yet.';
+                        $('mp-radarr-keystate').textContent = st.radarr.keySet ? 'A key is saved.' : 'No key saved yet.';
+                        $('mp-stuck').value = st.stuckAfterHours;
+                    });
+                }
+
+                function settingsBody(extra) {
+                    return Object.assign({
+                        sonarrUrl: $('mp-sonarr-url').value,
+                        radarrUrl: $('mp-radarr-url').value,
+                        sonarrKey: $('mp-sonarr-key').value,
+                        radarrKey: $('mp-radarr-key').value,
+                        stuckAfterHours: parseInt($('mp-stuck').value, 10) || 6
+                    }, extra || {});
+                }
+
+                $('mp-settings').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    const note = $('mp-settings-note');
+                    note.textContent = 'Saving…';
+                    post('Settings', settingsBody(), false).then(function () {
+                        note.textContent = 'Saved.';
+                        loadSettings();
+                    }).catch(function () { note.textContent = 'Couldn’t save. Try again.'; });
+                });
+
+                page.querySelectorAll('[data-test]').forEach(function (b) {
+                    b.addEventListener('click', function () {
+                        const app = b.getAttribute('data-test');
+                        const out = page.querySelector('[data-test-result="' + app + '"]');
+                        out.textContent = 'Saving and testing…';
+                        // Test what's on screen: save first, so a newly typed address or key is the one tried.
+                        post('Settings', settingsBody(), false)
+                            .then(function () { return post('Test/' + app, {}); })
+                            .then(function (res) { out.textContent = res.message; out.style.color = res.ok ? '#7fe0b5' : '#ff9a9e'; loadSettings(); })
+                            .catch(function () { out.textContent = 'The test couldn’t run.'; out.style.color = '#ff9a9e'; });
+                    });
+                });
+
+                page.querySelectorAll('[data-clear]').forEach(function (b) {
+                    b.addEventListener('click', function () {
+                        const app = b.getAttribute('data-clear');
+                        const extra = app === 'sonarr' ? { clearSonarrKey: true, sonarrKey: '' } : { clearRadarrKey: true, radarrKey: '' };
+                        post('Settings', settingsBody(extra), false).then(loadSettings);
+                    });
+                });
+
+                page._mpStop = function () { clearTimeout(timer); };
+                return function refresh() { load(activeTab); };
+            }
+
+            const page = document.getElementById('MedicProfilesPage');
+            page.addEventListener('pageshow', function () {
+                page._mpHidden = false;
+                // Wire everything up once; later visits just refresh the data.
+                if (!page._profilesRefresh) {
+                    page._profilesRefresh = init(page);
+                }
+                page._profilesRefresh();
+            });
+            page.addEventListener('pagehide', function () {
+                // Stop the 30-second refresh when the admin leaves the page.
+                page._mpHidden = true;
+                if (page._mpStop) page._mpStop();
+            });
+        })();
+    </script>
+</div>

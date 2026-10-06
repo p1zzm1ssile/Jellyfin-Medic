@@ -1,0 +1,118 @@
+# Builds and releases Medic Profiles when you push a tag like profiles-v1.0.0,
+# then adds it to manifest.json beside Jellyfin Medic.
+# Jellyfin Medic keeps its own release.yml and its v1.x.x tags; this file doesn't touch them.
+# Profiles releases are never marked "Latest", so the repo page keeps showing Jellyfin Medic.
+
+name: Release Medic Profiles
+
+on:
+  push:
+    tags:
+      - 'profiles-v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manifest-update
+  cancel-in-progress: false
+
+env:
+  PROJECT: 'Jellyfin.Plugin.MedicProfiles/Jellyfin.Plugin.MedicProfiles.csproj'
+  DLL: 'Jellyfin.Plugin.MedicProfiles.dll'
+  GUID: '1eb65368-7b2e-4a55-8f2b-b56134f3fe68'
+  NAME: 'Medic Profiles'
+  OWNER: 'P1zzm1ssile'
+  TARGET_ABI: '12.0.0.0'   # built against Jellyfin 12.0, so it loads on 12.0 and 12.1
+  DESCRIPTION: "Sonarr and Radarr from your Jellyfin dashboard: downloads, fixes and profile advice."
+  OVERVIEW: "See what Sonarr and Radarr are downloading, remove, block or import stuck and wrong downloads by hand, and get quality profile advice from what your server actually plays."
+  IMAGE: 'https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicProfiles/thumb.png'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Version from the tag
+        id: meta
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#profiles-v}"
+          IFS='.' read -r A B C D <<< "$VER"
+          VER4="${A:-0}.${B:-0}.${C:-0}.${D:-0}"
+          echo "version=$VER4" >> "$GITHUB_OUTPUT"
+          echo "zip=MedicProfiles-v${VER}.zip" >> "$GITHUB_OUTPUT"
+          if [ "${A:-0}" = "0" ]; then echo "prerelease=true"; else echo "prerelease=false"; fi >> "$GITHUB_OUTPUT"
+
+      - name: Check the tag matches the project version
+        shell: bash
+        run: |
+          WANT="${{ steps.meta.outputs.version }}"
+          HAVE="$(grep -oP '(?<=<Version>)[^<]+' "$PROJECT" | head -1)"
+          if [ "$WANT" != "$HAVE" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME is $WANT but $PROJECT says $HAVE. Tag the commit that has the new version."
+            exit 1
+          fi
+
+      - name: Build
+        shell: bash
+        run: |
+          dotnet publish "$PROJECT" -c Release -o out \
+            -p:JellyfinTarget=12 \
+            -p:Version="${{ steps.meta.outputs.version }}" \
+            -p:AssemblyVersion="${{ steps.meta.outputs.version }}" \
+            -p:FileVersion="${{ steps.meta.outputs.version }}"
+
+      - name: Package
+        id: pkg
+        shell: bash
+        run: |
+          zip -j "${{ steps.meta.outputs.zip }}" "out/$DLL"
+          echo "md5=$(md5sum "${{ steps.meta.outputs.zip }}" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          NOTES="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/-----BEGIN/,$d')"
+          [ -z "$NOTES" ] && NOTES="$NAME ${{ steps.meta.outputs.version }}"
+          printf '%s\n' "$NOTES" > notes.txt
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRE=""
+          [ "${{ steps.meta.outputs.prerelease }}" = "true" ] && PRE="--prerelease"
+          gh release create "$GITHUB_REF_NAME" "${{ steps.meta.outputs.zip }}" \
+            --title "$NAME ${{ steps.meta.outputs.version }}" \
+            --notes-file notes.txt --latest=false $PRE
+
+      - name: Add the version to manifest.json on main
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 scripts/update_manifest.py \
+            --guid "$GUID" \
+            --name "$NAME" \
+            --version "${{ steps.meta.outputs.version }}" \
+            --abi "$TARGET_ABI" \
+            --url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${{ steps.meta.outputs.zip }}" \
+            --checksum "${{ steps.pkg.outputs.md5 }}" \
+            --changelog-file notes.txt \
+            --owner "$OWNER" \
+            --description "$DESCRIPTION" \
+            --overview "$OVERVIEW" \
+            --image-url "$IMAGE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "manifest: $NAME ${{ steps.meta.outputs.version }}"
+          for attempt in 1 2 3; do
+            git push origin main && break
+            git pull --rebase origin main
+          done
