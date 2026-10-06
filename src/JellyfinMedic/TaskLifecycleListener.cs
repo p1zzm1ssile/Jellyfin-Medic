@@ -102,7 +102,13 @@ public sealed class TaskLifecycleListener : IHostedService
                 entry.Failures++;
             }
 
-            entry.AverageDurationSeconds = Math.Round(((entry.AverageDurationSeconds * (entry.TotalRuns - 1)) + durationSeconds) / entry.TotalRuns, 1);
+            // Only completed runs count towards the average: a run that fails early would make the
+            // task look quick, and the planner would then give it too short a slot.
+            if (!failed)
+            {
+                int completed = Math.Max(1, entry.TotalRuns - entry.Failures);
+                entry.AverageDurationSeconds = Math.Round(((entry.AverageDurationSeconds * (completed - 1)) + durationSeconds) / completed, 1);
+            }
             entry.RequiresExclusiveExecution = entry.FailureRatePercent > 30;
 
             if (failed && entry.OriginalTriggers is null)
