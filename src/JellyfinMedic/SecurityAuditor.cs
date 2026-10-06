@@ -149,6 +149,26 @@ public static class SecurityAuditor
 
         try
         {
+            // Jellyfin 10.9 and later: GetPagedResultAsync(ActivityLogQuery), newest first.
+            var asyncMethod = activityManager.GetType().GetMethods()
+                .FirstOrDefault(m => m.Name == "GetPagedResultAsync" && m.GetParameters().Length == 1);
+            if (asyncMethod is not null)
+            {
+                object? query = Activator.CreateInstance(asyncMethod.GetParameters()[0].ParameterType);
+                SetIfPresent(query, "MinDate", sinceUtc);
+                SetIfPresent(query, "Limit", 500);
+                if (asyncMethod.Invoke(activityManager, new[] { query }) is System.Threading.Tasks.Task task
+                    && task.Wait(TimeSpan.FromSeconds(15)))
+                {
+                    object? result = task.GetType().GetProperty("Result")?.GetValue(task);
+                    if (SettingsReader.Get(result, "Items") is IEnumerable found && found is not string)
+                    {
+                        return found.Cast<object>().Where(e => e is not null).ToList();
+                    }
+                }
+            }
+
+            // Older versions.
             foreach (var method in activityManager.GetType().GetMethods().Where(m => m.Name is "GetPagedResult" or "GetActivityLogEntries"))
             {
                 var parameters = method.GetParameters();
@@ -178,6 +198,15 @@ public static class SecurityAuditor
         }
 
         return new List<object>();
+    }
+
+    private static void SetIfPresent(object? target, string name, object value)
+    {
+        var property = target?.GetType().GetProperty(name);
+        if (property is { CanWrite: true })
+        {
+            property.SetValue(target, value);
+        }
     }
 
     private static string? ExtractIp(string text)

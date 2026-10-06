@@ -57,10 +57,18 @@ public static class ScheduleStorage
         }
     }
 
-    public static void WriteJson<T>(string path, T value)
+    public static void WriteJson<T>(string path, T value) => WriteText(path, JsonSerializer.Serialize(value, Indented));
+
+    /// <summary>
+    /// Writes to a temporary file, then swaps it in. A crash or power cut mid-write leaves the old file
+    /// whole, instead of a broken one that reads back as empty and loses everything in it.
+    /// </summary>
+    public static void WriteText(string path, string text)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(value, Indented));
+        string tmp = path + ".tmp";
+        File.WriteAllText(tmp, text);
+        File.Move(tmp, path, overwrite: true);
     }
 
     public static Dictionary<string, ReliabilityRecord> LoadProfile(IApplicationPaths paths)

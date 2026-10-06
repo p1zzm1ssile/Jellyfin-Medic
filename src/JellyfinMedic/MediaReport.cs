@@ -492,7 +492,7 @@ public static class MediaReport
         {
             string file = FilePath(paths);
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-            File.WriteAllText(file, JsonSerializer.Serialize(report));
+            JellyfinMedic.Api.ScheduleStorage.WriteText(file, JsonSerializer.Serialize(report));
         }
         catch
         {
