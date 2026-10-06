@@ -223,6 +223,12 @@
     <ul class="shelf" id="library"></ul>
   </section>
 
+  <section id="linked-section" hidden>
+    <h2>Linked to what you&rsquo;ve watched</h2>
+    <p class="section-note">From the same world: a series&rsquo; films, the rest of a collection, the same franchise. On your server now.</p>
+    <ul class="shelf" id="linked"></ul>
+  </section>
+
   <section id="discover-section" hidden>
     <h2>Not on the server yet</h2>
     <p class="section-note" id="discover-note"></p>
@@ -306,8 +312,8 @@
     return img;
   }
 
-  function renderLibrary(items, session) {
-    var list = document.getElementById('library');
+  function renderLibrary(items, session, listId) {
+    var list = document.getElementById(listId || 'library');
     items.forEach(function (pick) {
       var li = el('li', 'pick');
       var link = el('a', 'poster-link');
@@ -462,7 +468,9 @@
     document.getElementById('message').hidden = true;
     document.getElementById('library').textContent = '';
     document.getElementById('discover').textContent = '';
+    document.getElementById('linked').textContent = '';
     document.getElementById('library-section').hidden = true;
+    document.getElementById('linked-section').hidden = true;
     document.getElementById('discover-section').hidden = true;
 
     if (data.generatedUtc) {
@@ -477,6 +485,7 @@
 
     var lib = data.inLibrary || [];
     var disc = data.discover || [];
+    var linked = data.linked || [];
 
     if (lib.length) {
       if (data.playlistName) {
@@ -486,6 +495,11 @@
       }
       renderLibrary(lib, session);
       show('library-section');
+    }
+
+    if (linked.length) {
+      renderLibrary(linked, session, 'linked');
+      show('linked-section');
     }
 
     if (disc.length) {
@@ -498,7 +512,7 @@
       show('discover-section');
     }
 
-    if (!lib.length && !disc.length) {
+    if (!lib.length && !disc.length && !linked.length) {
       message([data.note || 'Nothing to suggest yet. Picks are built overnight from what you watch.']);
     }
   }

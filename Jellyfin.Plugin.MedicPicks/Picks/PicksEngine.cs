@@ -180,6 +180,21 @@ public class PicksEngine
             picks.InLibrary = BuildLibraryPicks(userQuery, ranked, titles, libraryCount, prefs, language);
         }
 
+        // 2b. Titles from the same world as something watched.
+        if (config.EnableLinkedPicks)
+        {
+            int linkedCount = prefs.Count > 0 ? prefs.Count : Math.Clamp(config.LibraryPickCount, 1, 100);
+            var alreadyPicked = new HashSet<Guid>(picks.InLibrary.Select(p => p.ItemId));
+            try
+            {
+                picks.Linked = BuildLinkedPicks(userQuery, ranked, titles, linkedCount, prefs, language, alreadyPicked);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Medic Picks: couldn't build linked picks for user {UserId}", userId);
+            }
+        }
+
         // 3. Private playlist, visible in every Jellyfin app.
         var playlistItems = new List<Guid>();
         if (config.EnableLibraryPicks && config.CreatePlaylists)
@@ -213,6 +228,208 @@ public class PicksEngine
             : new List<DiscoverPick>();
 
         _store.Save(userId, picks);
+    }
+
+    /// <summary>
+    /// Titles from the same world as something this person watched: a series' films and the other way
+    /// round (matched on the name, e.g. "The Seven Deadly Sins" and "The Seven Deadly Sins: Prisoners of the
+    /// Sky"), the rest of a collection, and titles sharing a franchise tag such as "marvel cinematic universe
+    /// (mcu)". Only titles they can see and haven't watched or started. Genre choices aren't applied here,
+    /// because a franchise spans genres.
+    /// </summary>
+    private List<LibraryPick> BuildLinkedPicks(
+        Func<InternalItemsQuery> userQuery,
+        List<WatchedTitle> ranked,
+        Dictionary<Guid, WatchedTitle> titles,
+        int count,
+        UserPreferences prefs,
+        AudioLanguage language,
+        HashSet<Guid> alreadyPicked)
+    {
+        var pool = new List<BaseItem>();
+        if (prefs.Kind != "series")
+        {
+            var movies = userQuery();
+            movies.IncludeItemTypes = new[] { BaseItemKind.Movie };
+            movies.IsPlayed = false;
+            movies.Recursive = true;
+            movies.IsVirtualItem = false;
+            pool.AddRange(_libraryManager.GetItemList(movies));
+        }
+
+        if (prefs.Kind != "movies")
+        {
+            var series = userQuery();
+            series.IncludeItemTypes = new[] { BaseItemKind.Series };
+            series.Recursive = true;
+            series.IsVirtualItem = false;
+            pool.AddRange(_libraryManager.GetItemList(series));
+        }
+
+        var hidden = new HashSet<Guid>(prefs.HiddenItems);
+        var poolById = pool
+            .Where(c => !titles.ContainsKey(c.Id) && !hidden.Contains(c.Id) && !alreadyPicked.Contains(c.Id))
+            .GroupBy(c => c.Id)
+            .ToDictionary(g => g.Key, g => g.First());
+        if (poolById.Count == 0)
+        {
+            return new List<LibraryPick>();
+        }
+
+        var found = new Dictionary<Guid, LinkedTally>();
+        void Link(BaseItem item, WatchedTitle seed, string reason, double strength)
+        {
+            if (!found.TryGetValue(item.Id, out var tally))
+            {
+                tally = new LinkedTally(item);
+                found[item.Id] = tally;
+            }
+
+            double score = seed.Weight * strength;
+            tally.Score += score;
+            if (score > tally.BestScore)
+            {
+                tally.BestScore = score;
+                tally.Reason = reason;
+            }
+        }
+
+        // 1. Names: a series and its films, a film and its sequels.
+        var poolNames = poolById.Values.Select(c => (Item: c, Key: NameKey(c.Name))).Where(x => x.Key.Length > 0).ToList();
+        foreach (var seed in ranked)
+        {
+            string key = NameKey(seed.Item.Name);
+            if (key.Length == 0)
+            {
+                continue;
+            }
+
+            foreach (var (item, itemKey) in poolNames)
+            {
+                bool sameKind = item.GetType() == seed.Item.GetType();
+                string shorter = itemKey.Length < key.Length ? itemKey : key;
+                bool prefix = itemKey.StartsWith(key + " ", StringComparison.Ordinal) || key.StartsWith(itemKey + " ", StringComparison.Ordinal);
+
+                // Same name: a film and a series of it. One name starting with the other: a sequel or spin-off,
+                // as long as the shorter name is distinctive. A one-word name ("Avatar") only links the same
+                // kind, so the Avatar films don't pull in Avatar: The Last Airbender.
+                bool linked = itemKey == key
+                    ? !sameKind && Distinctive(key)
+                    : prefix && Distinctive(shorter) && (shorter.Contains(' ', StringComparison.Ordinal) || sameKind);
+                if (linked)
+                {
+                    Link(item, seed, "From " + seed.Item.Name, 1.0);
+                }
+            }
+        }
+
+        // 2. Collections: the rest of a collection something was watched from.
+        var boxQuery = userQuery();
+        boxQuery.IncludeItemTypes = new[] { BaseItemKind.BoxSet };
+        boxQuery.Recursive = true;
+        foreach (var box in _libraryManager.GetItemList(boxQuery).OfType<Folder>())
+        {
+            List<BaseItem> members;
+            try
+            {
+                members = box.GetLinkedChildren().ToList();
+            }
+            catch
+            {
+                continue;
+            }
+
+            var seed = members.Where(m => titles.ContainsKey(m.Id)).Select(m => titles[m.Id]).OrderByDescending(w => w.Weight).FirstOrDefault();
+            if (seed is null)
+            {
+                continue;
+            }
+
+            foreach (var member in members)
+            {
+                if (poolById.TryGetValue(member.Id, out var item))
+                {
+                    Link(item, seed, "Part of " + box.Name, 0.9);
+                }
+            }
+        }
+
+        // 3. Franchise tags shared with something watched.
+        var tagSeeds = new Dictionary<string, WatchedTitle>(StringComparer.OrdinalIgnoreCase);
+        foreach (var seed in ranked)
+        {
+            foreach (var tag in (seed.Item.Tags ?? Array.Empty<string>()).Where(IsFranchiseTag))
+            {
+                tagSeeds.TryAdd(tag, seed); // ranked, so the first is the most-weighted
+            }
+        }
+
+        if (tagSeeds.Count > 0)
+        {
+            foreach (var item in poolById.Values)
+            {
+                foreach (var tag in item.Tags ?? Array.Empty<string>())
+                {
+                    if (tagSeeds.TryGetValue(tag, out var seed))
+                    {
+                        Link(item, seed, "Also in the " + FranchiseName(tag), 0.7);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Strongest links first; within the same link, in release order.
+        return found.Values
+            .OrderByDescending(t => Math.Round(t.Score, 3))
+            .ThenBy(t => t.Item.ProductionYear ?? int.MaxValue)
+            .Where(t => !prefs.DubbedOnly || HasAudioIn(userQuery, t.Item, language))
+            .Take(count)
+            .Select(t => new LibraryPick
+            {
+                ItemId = t.Item.Id,
+                Name = t.Item.Name,
+                Year = t.Item.ProductionYear,
+                Kind = t.Item is Series ? "Series" : "Movie",
+                Reason = t.Reason
+            })
+            .ToList();
+    }
+
+    /// <summary>A name to compare on: lower case, letters and digits only, without a leading "the".</summary>
+    private static string NameKey(string? name)
+    {
+        var chars = (name ?? string.Empty).ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : ' ').ToArray();
+        string key = string.Join(' ', new string(chars).Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        return key.StartsWith("the ", StringComparison.Ordinal) ? key[4..] : key;
+    }
+
+    // Short one-word names ("up", "lost", "it") would link unrelated titles, so they aren't used.
+    private static bool Distinctive(string key) => key.Contains(' ', StringComparison.Ordinal) || key.Length >= 6;
+
+    private static bool IsFranchiseTag(string tag)
+    {
+        string t = tag.ToLowerInvariant();
+        return t.Contains("universe", StringComparison.Ordinal) || t.Contains("franchise", StringComparison.Ordinal)
+            || t.Contains("(mcu)", StringComparison.Ordinal) || t.Contains("dceu", StringComparison.Ordinal)
+            || t.Contains("monsterverse", StringComparison.Ordinal) || t.Contains("wizarding world", StringComparison.Ordinal);
+    }
+
+    /// <summary>"marvel cinematic universe (mcu)" becomes "Marvel Cinematic Universe (MCU)".</summary>
+    private static string FranchiseName(string tag)
+    {
+        string name = System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(tag.Trim().ToLowerInvariant());
+
+        // Short words with no vowels are initials: "Dc" becomes "DC".
+        name = string.Join(' ', name.Split(' ').Select(w => w.Length is >= 2 and <= 3 && !w.Any(c => "aeiouAEIOU".Contains(c)) && w.All(char.IsLetter) ? w.ToUpperInvariant() : w));
+        int open = name.IndexOf('(', StringComparison.Ordinal);
+        int close = name.IndexOf(')', StringComparison.Ordinal);
+        if (open >= 0 && close > open && close - open <= 6)
+        {
+            name = name[..open] + name[open..(close + 1)].ToUpperInvariant() + name[(close + 1)..];
+        }
+
+        return name;
     }
 
     /// <summary>Every genre among the films and series this person can see, for the choices on their page.</summary>
@@ -676,6 +893,19 @@ public class PicksEngine
         public double BestPersonScore { get; set; }
 
         public PersonTaste? BestPerson { get; set; }
+    }
+
+    private sealed class LinkedTally
+    {
+        public LinkedTally(BaseItem item) => Item = item;
+
+        public BaseItem Item { get; }
+
+        public double Score { get; set; }
+
+        public double BestScore { get; set; }
+
+        public string Reason { get; set; } = string.Empty;
     }
 
     private sealed class DiscoverTally
