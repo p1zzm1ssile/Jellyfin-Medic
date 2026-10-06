@@ -44,6 +44,10 @@ public sealed class LoadGuard : IHostedService, IDisposable
     private readonly List<string> _deferred = new();
     private DateTime _lastActionUtc = DateTime.MinValue;
 
+    // When each running task started, from Jellyfin's TaskExecuting event, so "the one that started first"
+    // really is. A running task's LastExecutionResult is its previous run, so it can't be used for this.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _startedUtc = new();
+
     public LoadGuard(ITaskManager tasks, IApplicationPaths paths, ILogger<LoadGuard> logger)
     {
         _tasks = tasks;
@@ -53,14 +57,24 @@ public sealed class LoadGuard : IHostedService, IDisposable
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        _tasks.TaskExecuting += OnTaskExecuting;
         _timer = new Timer(_ => Tick(), null, CheckEvery, CheckEvery);
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
+        _tasks.TaskExecuting -= OnTaskExecuting;
         _timer?.Change(Timeout.Infinite, Timeout.Infinite);
         return Task.CompletedTask;
+    }
+
+    private void OnTaskExecuting(object? sender, Jellyfin.Data.Events.GenericEventArgs<IScheduledTaskWorker> e)
+    {
+        if (e?.Argument is { } worker)
+        {
+            _startedUtc[worker.Id.ToString()] = DateTime.UtcNow;
+        }
     }
 
     public void Dispose() => _timer?.Dispose();
@@ -151,11 +165,10 @@ public sealed class LoadGuard : IHostedService, IDisposable
 
     private static bool IsHeavy(string name) => HeavyWords.Any(w => name.Contains(w, StringComparison.OrdinalIgnoreCase));
 
-    private static DateTime StartedAt(IScheduledTaskWorker worker)
+    private DateTime StartedAt(IScheduledTaskWorker worker)
     {
-        // Running tasks don't expose a start time directly; approximate with the last execution's
-        // start if present, else now. Good enough to pick "the one that started first" most of the time.
-        return worker.LastExecutionResult?.StartTimeUtc ?? DateTime.UtcNow;
+        // A task already running when Medic started has been going longest, so it counts as first.
+        return _startedUtc.TryGetValue(worker.Id.ToString(), out var started) ? started : DateTime.MinValue;
     }
 
     /// <summary>
