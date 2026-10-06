@@ -2,7 +2,7 @@
                   JELLYFIN MEDIC AND MEDIC PICKS: FULL FEATURE LIST
 ===============================================================================
 
-This repository contains two Jellyfin plugins:
+This repository contains three Jellyfin plugins:
 
   1. JELLYFIN MEDIC (version 1.0.12)
      For the person who runs the server. Health checks, performance tests,
@@ -14,7 +14,12 @@ This repository contains two Jellyfin plugins:
      from what each person actually watches.
      Needs Jellyfin 12.0 or later.
 
-Both are installed from the same plugin repository:
+  3. MEDIC PROFILES (version 1.0.0)
+     For the person who runs the server. Sonarr and Radarr from the Jellyfin
+     dashboard: downloads, fixes, and quality profile advice.
+     Needs Jellyfin 12.0 or later. Administrators only.
+
+All three are installed from the same plugin repository:
   https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/manifest.json
 
 
@@ -562,6 +567,120 @@ A settings box at the top of the My picks page:
     the server, as the person who pressed Request.
   - Preferences and keys are saved safely so a crash mid-save can't wipe
     them.
+
+
+===============================================================================
+PART 3: MEDIC PROFILES
+===============================================================================
+
+One page in the dashboard sidebar, under Plugins > Medic Profiles. Only
+administrators can open it. Nothing changes in Sonarr or Radarr until you
+press a button. Tabs: Downloads, Blocked, Profiles, History, Settings.
+
+
+-------------------------------------------------------------------------------
+3.1  DOWNLOADS
+-------------------------------------------------------------------------------
+
+  - Everything Sonarr and Radarr are downloading, in one list: what it's
+    meant to be, the release name, quality, size, progress, when it should
+    finish, the download client and the indexer.
+  - A season pack is one row ("Frieren - season 1, 2 episodes"), not one
+    row per episode.
+  - Problems first, with Sonarr's or Radarr's own explanation:
+      * Finished, but couldn't be imported (e.g. a .exe instead of a video,
+        not an upgrade, wrong episode matched).
+      * Failed, or the download client reports a problem or can't be reached.
+      * Not matched to anything in Sonarr or Radarr.
+      * Stuck: no progress estimate after a set number of hours (6 by
+        default, changeable in Settings).
+  - Filters: All, Problems, Sonarr, Radarr. Updates every 30 seconds, and
+    holds still while you're confirming or importing.
+  - Remove: takes it out of Sonarr or Radarr and the download client.
+  - Remove and block: the same, and blocklists that release so it's never
+    grabbed again. Searches for a different release straight away unless
+    you untick it.
+  - Every action asks you to confirm first.
+
+
+-------------------------------------------------------------------------------
+3.2  IMPORT MANUALLY
+-------------------------------------------------------------------------------
+
+  - For downloads that finished but weren't imported.
+  - Lists each file in the download with its quality, size and languages,
+    what Sonarr or Radarr thinks it is, and why it refused it.
+  - Change film / Change series: search your Sonarr or Radarr library when
+    the match is wrong.
+  - Choose episodes: pick the season and tick the episodes a file contains.
+  - How: as Sonarr or Radarr normally does, move, or copy (keeps seeding).
+  - Keeps the quality and languages Sonarr or Radarr detected.
+  - Only files that are actually in that download can be imported.
+  - If there are no usable files (still unpacking, a password-protected
+    archive, not a video), it says so, so you can remove and block instead.
+
+
+-------------------------------------------------------------------------------
+3.3  BLOCKED
+-------------------------------------------------------------------------------
+
+  - The releases Sonarr and Radarr won't grab again, newest first, with the
+    title, release name, quality, indexer and when it was blocked.
+  - Unblock (press twice to confirm) if something was blocked by mistake.
+
+
+-------------------------------------------------------------------------------
+3.4  PROFILES (PROFILARR-STYLE ADVICE, READ-ONLY)
+-------------------------------------------------------------------------------
+
+  - Reads every quality profile and custom format in Sonarr and Radarr,
+    and shows each profile: how many films or series use it, allowed
+    qualities, "upgrade until", and custom format scores.
+  - Suggestions from what this server actually plays. With Jellyfin Medic
+    installed, these use Medic's record of which files were transcoded and
+    why, and look at each of those files' codecs:
+      * Avoid releases whose only audio is DTS or TrueHD.
+      * Prefer H.264 over HEVC (x265), or the opposite: HEVC plays fine
+        here, which saves space.
+      * Avoid AV1 releases.
+      * Avoid Dolby Vision with no HDR10 fallback, or keep HDR in a
+        separate profile when most screens don't show it.
+      * Stop grabbing 4K for devices that can't show it.
+      * Untick Remux when its bitrate is too high to stream.
+    Each one names the matching custom format (or says to add one, with
+    the TRaSH Guides name) and only lists profiles not already set that way.
+  - Suggestions from the profiles themselves:
+      * Cinema recordings and unknown quality allowed (CAM, TELESYNC...).
+      * A minimum custom format score nothing can reach, so nothing
+        downloads.
+      * Custom formats scored 0 everywhere, which do nothing.
+      * Profiles nobody uses.
+  - Each suggestion: which profiles, what to change, why, and what was seen
+    on this server. Problems first.
+  - Also samples up to 1,500 files from the library to see what's common.
+  - Read-only: you make the changes in Sonarr or Radarr. Checked again
+    every hour, or on "Check again".
+
+
+-------------------------------------------------------------------------------
+3.5  HISTORY AND SETTINGS
+-------------------------------------------------------------------------------
+
+  - History: what was removed, blocked, unblocked or imported from here,
+    when, and by which admin (last 200 kept).
+  - Settings: Sonarr and Radarr addresses and API keys, a Test button for
+    each, Remove key, and the "stuck after" hours.
+
+
+-------------------------------------------------------------------------------
+3.6  PRIVACY AND SAFETY (MEDIC PROFILES)
+-------------------------------------------------------------------------------
+
+  - Admin only, every part.
+  - The Sonarr and Radarr API keys are stored on the server in their own
+    file, separate from other settings, and never sent to a browser.
+  - Release names from indexers are shown as plain text, never as page code.
+  - Talks only to your own Sonarr and Radarr.
 
 
 ===============================================================================

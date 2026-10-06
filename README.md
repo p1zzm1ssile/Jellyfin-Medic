@@ -6,7 +6,7 @@ Health checks, performance tests and usage-aware task scheduling for your Jellyf
 
 [![Build and Release](https://github.com/P1zzm1ssile/Jellyfin-Medic/actions/workflows/release.yml/badge.svg)](https://github.com/P1zzm1ssile/Jellyfin-Medic/actions/workflows/release.yml) [![Licence: GPL v3](https://img.shields.io/badge/licence-GPLv3-blue.svg)](LICENSE) ![Jellyfin 12.1+](https://img.shields.io/badge/Jellyfin-12.1%2B-00a4dc.svg)
 
-This repository has two plugins: **Jellyfin Medic**, for the person who runs the server, and **[Medic Picks](#medic-picks)**, personal viewing suggestions for everyone who uses it.
+This repository has three plugins: **Jellyfin Medic**, for the person who runs the server; **[Medic Picks](#medic-picks)**, personal viewing suggestions for everyone who uses it; and **[Medic Profiles](#medic-profiles)**, Sonarr and Radarr from your Jellyfin dashboard.
 
 ---
 
@@ -67,7 +67,7 @@ Change Medic's own options, browse every Jellyfin setting with a red, yellow or 
 
 ## Requirements
 
-- **Jellyfin 12.1 or later** for Jellyfin Medic, **12.0 or later** for Medic Picks.
+- **Jellyfin 12.1 or later** for Jellyfin Medic, **12.0 or later** for Medic Picks and Medic Profiles.
 - **Server language set to English** (tasks are recognised by their English names).
 - Runs wherever Jellyfin does: **Unraid, TrueNAS SCALE, Proxmox, Docker, Linux, Windows and macOS**. Medic works out which one it's on and words its advice and directions to match. A few checks depend on the platform: GPU device checks need Linux (containers included), and disk health uses Unraid's own disk data.
 - Developed and tested on **Unraid**, with both the **binhex-Jellyfin** and **linuxserver.io Jellyfin** containers. Reports from other platforms are very welcome. GPU checks cover NVIDIA, Intel and AMD.
@@ -80,7 +80,7 @@ Change Medic's own options, browse every Jellyfin setting with a red, yellow or 
 2. Enter:
    - **Name:** `Jellyfin Medic`
    - **URL:** `https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/manifest.json`
-3. Save, open the **Catalog** tab, install **Jellyfin Medic** and/or **Medic Picks**, and restart Jellyfin.
+3. Save, open the **Catalog** tab, install **Jellyfin Medic**, **Medic Picks** and/or **Medic Profiles**, and restart Jellyfin.
 
 ### Manual install
 
@@ -88,6 +88,7 @@ Download the latest zip from [Releases](https://github.com/P1zzm1ssile/Jellyfin-
 
 - Jellyfin Medic: a `JellyfinMedic` folder containing `JellyfinMedic.dll`
 - Medic Picks: a `MedicPicks` folder containing `Jellyfin.Plugin.MedicPicks.dll`
+- Medic Profiles: a `MedicProfiles` folder containing `Jellyfin.Plugin.MedicProfiles.dll`
 
 Plugin images only appear when a plugin is installed from the repository.
 
@@ -132,6 +133,25 @@ Each person needs a few watched titles before their picks appear.
 
 ---
 
+## Medic Profiles
+
+Sonarr and Radarr, from your Jellyfin dashboard, under **Plugins → Medic Profiles**. Admins only. Nothing changes in Sonarr or Radarr until you press a button.
+
+- **Downloads.** Everything Sonarr and Radarr are downloading, in one list, with progress and when it should finish. Problems come first, with Sonarr's or Radarr's own explanation: couldn't be imported, failed, unwanted files, not matched, or stalled. **Remove**, or **Remove and block** so that release is never grabbed again and a different one is searched for.
+- **Import manually.** For downloads that finished but weren't imported: see each file, what Sonarr or Radarr thinks it is and why it refused, fix the film, series or episodes if the match is wrong, and import.
+- **Blocked.** What Sonarr and Radarr won't grab again, with Unblock.
+- **Profiles.** Advice on your quality profiles and custom formats, from what your server actually plays (with Jellyfin Medic installed, from the files it caught being transcoded and why) and from the profiles themselves. For example: avoid DTS-only audio if your TVs can't play it, avoid 4K for devices that can't show it, or untick cinema recordings. Read-only for now: you make the changes in Sonarr or Radarr.
+- **History** of what was removed, blocked, unblocked or imported, and by whom.
+
+### Setting it up
+
+1. Install **Medic Profiles** from the catalogue and restart Jellyfin.
+2. Open **Plugins → Medic Profiles → Settings**, add your Sonarr and Radarr addresses (ones the Jellyfin server can reach) and their API keys (in each: Settings → General → API Key), and press **Test**.
+
+The keys are kept on the server in their own file, only admins can use them, and they never reach a browser. What's new in each version is in [Medic Profiles' changelog](Jellyfin.Plugin.MedicProfiles/CHANGELOG.md).
+
+---
+
 ## Privacy
 
 - **Admin only.** Every part of Jellyfin Medic requires an administrator account.
@@ -150,9 +170,10 @@ Requires the .NET 10 SDK.
 ```
 dotnet publish src/JellyfinMedic/JellyfinMedic.csproj -c Release -o publish/JellyfinMedic
 dotnet publish Jellyfin.Plugin.MedicPicks/Jellyfin.Plugin.MedicPicks.csproj -c Release -o publish/MedicPicks
+dotnet publish Jellyfin.Plugin.MedicProfiles/Jellyfin.Plugin.MedicProfiles.csproj -c Release -o publish/MedicProfiles
 ```
 
-Releases are automatic: push a tag like `v1.0.6` for Jellyfin Medic, or `picks-v1.0.1` for Medic Picks, and GitHub Actions builds the plugin, creates the release, and adds it to `manifest.json`.
+Releases are automatic: push a tag like `v1.0.6` for Jellyfin Medic, `picks-v1.0.1` for Medic Picks, or `profiles-v1.0.0` for Medic Profiles, and GitHub Actions builds the plugin, creates the release, and adds it to `manifest.json`.
 
 ---
 
