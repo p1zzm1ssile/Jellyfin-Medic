@@ -94,6 +94,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPicks/thumb.png",
     "versions": [
       {
+        "version": "1.1.1.0",
+        "changelog": "Merge pull request #5 from p1zzm1ssile/claude/oth-plugins-features-doc-rsjkag\n\nRelease Medic Picks v1.1.1 with build verification and cache fix",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/picks-v1.1.1/MedicPicks-v1.1.1.zip",
+        "checksum": "9e798ffd399dc6e9b83ec40f7ce40b63",
+        "timestamp": "2026-10-06T08:48:23Z"
+      },
+      {
         "version": "1.1.0.0",
         "changelog": "manifest: Medic Picks 1.0.4.0",
         "targetAbi": "12.0.0.0",
