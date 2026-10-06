@@ -3,6 +3,12 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
+## [1.1.1] – 2026-10-06
+
+### Fixed
+- **1.1.0 didn't include its new features.** The 1.1.0 download was built from the 1.0.4 code by mistake, so the My picks page still showed "Anime: English dubs only" and none of the choices below. 1.1.1 is the real 1.1.0: install it and restart Jellyfin.
+- The My picks page is no longer kept in the browser's cache, so a new version shows straight away after an update.
+
 ## [1.1.0] – 2026-10-06
 
 ### Added

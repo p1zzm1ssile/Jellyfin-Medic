@@ -260,6 +260,8 @@ public class PicksController : ControllerBase
             return NotFound();
         }
 
+        // Always check for a newer page, so an update shows straight away instead of a cached copy.
+        Response.Headers.CacheControl = "no-cache";
         using var reader = new StreamReader(stream);
         return Content(reader.ReadToEnd(), MediaTypeNames.Text.Html);
     }

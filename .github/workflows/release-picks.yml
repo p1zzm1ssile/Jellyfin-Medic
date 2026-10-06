@@ -51,6 +51,16 @@ jobs:
           echo "zip=MedicPicks-v${VER}.zip" >> "$GITHUB_OUTPUT"
           if [ "${A:-0}" = "0" ]; then echo "prerelease=true"; else echo "prerelease=false"; fi >> "$GITHUB_OUTPUT"
 
+      - name: Check the tag matches the project version
+        shell: bash
+        run: |
+          WANT="${{ steps.meta.outputs.version }}"
+          HAVE="$(grep -oP '(?<=<Version>)[^<]+' "$PROJECT" | head -1)"
+          if [ "$WANT" != "$HAVE" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME is $WANT but $PROJECT says $HAVE. Tag the commit that has the new version."
+            exit 1
+          fi
+
       - name: Build
         shell: bash
         run: |
