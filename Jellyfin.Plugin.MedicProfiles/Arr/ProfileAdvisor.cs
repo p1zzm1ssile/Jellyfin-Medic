@@ -550,11 +550,12 @@ public class ProfileAdvisor
             }
         }
 
+        var hevcPattern = new Regex(@"(x265|hevc|h\.?265)", RegexOptions.IgnoreCase);
         if (Sig("hevc") >= MinFiles)
         {
             var sug = Penalise(
                 "Prefer H.264 over HEVC (x265)",
-                new Regex(@"(x265|hevc|h\.?265)", RegexOptions.IgnoreCase),
+                hevcPattern,
                 "x265 (HD)",
                 "Some of your devices can't play HEVC, so those files are converted on the fly. That costs CPU or GPU time and can buffer.",
                 Files(Sig("hevc")) + " transcoded because the device couldn't play HEVC.",
@@ -566,16 +567,23 @@ public class ProfileAdvisor
         }
         else if (Sig("libFiles") >= 100 && Sig("libHevc") * 5 >= Sig("libFiles") && evidence.FromMedic && Sig("hevc") == 0)
         {
-            list.Add(new Suggestion
+            // Only profiles that actually hold x265 back. Scored 0 or above (or with no such format), x265 already gets through.
+            var hevcFormats = data.CustomFormats.Where(f => hevcPattern.IsMatch(f)).ToList();
+            var penalised = active.Where(p => hevcFormats.Any(f => data.Scores.GetValueOrDefault(p.Id)?.GetValueOrDefault(f) < 0)).ToList();
+            var negative = hevcFormats.Where(f => penalised.Any(p => data.Scores[p.Id].GetValueOrDefault(f) < 0)).ToList();
+            if (penalised.Count > 0)
             {
-                App = appKey,
-                Severity = "tip",
-                Title = "HEVC plays fine here, which saves space",
-                Profiles = active.Select(p => p.Name).ToList(),
-                Change = "If disk space matters, you can let x265 releases through (score them 0 rather than negative), keeping a release-group custom format so poor re-encodes are still avoided.",
-                Why = "Your HEVC files aren't being transcoded, so your devices play them directly. HEVC is often 30–50% smaller for the same picture. TRaSH Guides discourage x265 at 1080p mainly because many such releases are low-quality re-encodes, not for playback reasons.",
-                Evidence = $"{Pct(Sig("libHevc"), Sig("libFiles"))}% of sampled files are HEVC, and none were caught being transcoded for it."
-            });
+                list.Add(new Suggestion
+                {
+                    App = appKey,
+                    Severity = "tip",
+                    Title = "HEVC plays fine here, which saves space",
+                    Profiles = penalised.Select(p => p.Name).ToList(),
+                    Change = "If disk space matters, you can let x265 releases through: score " + Names(negative) + " 0 rather than negative in these profiles, keeping a release-group custom format so poor re-encodes are still avoided.",
+                    Why = "Your HEVC files aren't being transcoded, so your devices play them directly. HEVC is often 30–50% smaller for the same picture. TRaSH Guides discourage x265 at 1080p mainly because many such releases are low-quality re-encodes, not for playback reasons.",
+                    Evidence = $"{Pct(Sig("libHevc"), Sig("libFiles"))}% of sampled files are HEVC, and none were caught being transcoded for it."
+                });
+            }
         }
 
         if (Sig("av1") >= MinFiles)
