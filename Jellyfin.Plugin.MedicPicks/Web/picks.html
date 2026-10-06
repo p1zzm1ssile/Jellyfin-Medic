@@ -152,6 +152,7 @@
   }
   .genres summary { cursor: pointer; font-weight: 600; }
   .genre-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; margin-top: 10px; }
+  .genre-group { margin: 14px 0 0; font-weight: 600; color: var(--muted); font-size: 0.875rem; }
   .genre-list label { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; min-height: 28px; }
   .genre-list input { width: 18px; height: 18px; accent-color: var(--accent); }
   .link-btn { background: none; border: 0; padding: 4px 0; color: var(--accent); font: inherit; font-size: 0.875rem; cursor: pointer; text-decoration: underline; }
@@ -200,6 +201,8 @@
     <details class="genres" id="genres-box" hidden>
       <summary id="genres-summary">Genres: any</summary>
       <div class="genre-list" id="genre-list"></div>
+      <p class="genre-group" id="seasonal-heading" hidden>Seasonal</p>
+      <div class="genre-list" id="genre-seasonal"></div>
       <button type="button" class="link-btn" id="genres-clear">Clear genres</button>
     </details>
     <div class="prefs-row">
@@ -531,25 +534,35 @@
     });
     select.value = String(count);
 
-    var chosen = (prefs.genres || []).map(function (g) { return g.toLowerCase(); });
+    var lower = function (list) { return list.map(function (x) { return x.toLowerCase(); }); };
+    var chosen = lower(prefs.genres || []);
+    var seasonal = (data.seasonalGenres || []).slice();
     var genres = (data.availableGenres || []).slice();
+    // Keep any saved choice that's no longer in either list, so it can still be unticked.
     (prefs.genres || []).forEach(function (g) {
-      if (genres.map(function (x) { return x.toLowerCase(); }).indexOf(g.toLowerCase()) < 0) genres.push(g);
+      if (lower(genres).indexOf(g.toLowerCase()) < 0 && lower(seasonal).indexOf(g.toLowerCase()) < 0) genres.push(g);
     });
-    var list = document.getElementById('genre-list');
-    list.textContent = '';
-    genres.forEach(function (g) {
-      var label = el('label');
-      var box = el('input');
-      box.type = 'checkbox';
-      box.value = g;
-      box.checked = chosen.indexOf(g.toLowerCase()) >= 0;
-      box.addEventListener('change', genreSummary);
-      label.appendChild(box);
-      label.appendChild(el('span', null, g));
-      list.appendChild(label);
-    });
-    document.getElementById('genres-box').hidden = genres.length === 0;
+
+    function fill(id, names) {
+      var list = document.getElementById(id);
+      list.textContent = '';
+      names.forEach(function (g) {
+        var label = el('label');
+        var box = el('input');
+        box.type = 'checkbox';
+        box.value = g;
+        box.checked = chosen.indexOf(g.toLowerCase()) >= 0;
+        box.addEventListener('change', genreSummary);
+        label.appendChild(box);
+        label.appendChild(el('span', null, g));
+        list.appendChild(label);
+      });
+    }
+
+    fill('genre-list', genres);
+    fill('genre-seasonal', seasonal);
+    document.getElementById('seasonal-heading').hidden = seasonal.length === 0;
+    document.getElementById('genres-box').hidden = genres.length + seasonal.length === 0;
     genreSummary();
 
     hiddenCount = (prefs.hiddenItems || []).length + (prefs.hiddenTmdb || []).length;
@@ -558,7 +571,7 @@
   }
 
   function chosenGenres() {
-    return Array.prototype.slice.call(document.querySelectorAll('#genre-list input:checked'))
+    return Array.prototype.slice.call(document.querySelectorAll('#genres-box input:checked'))
       .map(function (b) { return b.value; });
   }
 
@@ -569,7 +582,7 @@
   }
 
   document.getElementById('genres-clear').addEventListener('click', function () {
-    document.querySelectorAll('#genre-list input').forEach(function (b) { b.checked = false; });
+    document.querySelectorAll('#genres-box input').forEach(function (b) { b.checked = false; });
     genreSummary();
   });
 

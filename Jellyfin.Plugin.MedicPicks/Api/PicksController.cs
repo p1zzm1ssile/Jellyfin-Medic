@@ -70,7 +70,8 @@ public class PicksController : ControllerBase
             // "direct": the button makes the request; "link": it opens Seerr; "none": it opens TMDb.
             requestMode = RequestMode(config),
             preferences = _store.LoadPreferences(userId),
-            availableGenres = picks?.AvailableGenres ?? new System.Collections.Generic.List<string>(),
+            availableGenres = Genres.ForChoices(picks?.AvailableGenres),
+            seasonalGenres = Genres.Seasonal,
             countChoices = UserPreferences.CountChoices,
             defaultCount = Math.Clamp(config.LibraryPickCount, 1, 100),
             dubLanguage = AudioLanguage.FromTmdb(config.TmdbLanguage).Name,

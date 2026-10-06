@@ -23,6 +23,92 @@ public static class Genres
 
     public static string TmdbName(int id) => TmdbGenres.TryGetValue(id, out var name) ? name : string.Empty;
 
+    /// <summary>Always offered, whatever the library's own genres are.</summary>
+    public static readonly string[] Standard =
+    {
+        "Action", "Adventure", "Animation", "Anime", "Biography", "Comedy", "Crime", "Documentary", "Drama",
+        "Family", "Fantasy", "History", "Horror", "Kids", "Music", "Mystery", "Romance", "Science Fiction",
+        "Sport", "Thriller", "War", "Western"
+    };
+
+    /// <summary>Seasonal choices, found from tags, genres and titles.</summary>
+    public static readonly string[] Seasonal = { "Christmas", "Halloween" };
+
+    // Choices that aren't plain genres: the words that find them in a title's tags, genres or name.
+    private static readonly Dictionary<string, string[]> Keywords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Christmas"] = new[] { "christmas", "xmas", "x-mas", "santa claus", "noel", "yuletide", "holiday season", "nativity" },
+        ["Halloween"] = new[] { "halloween", "trick or treat", "all hallows" },
+        ["Biography"] = new[] { "biography", "biopic", "biographical" },
+        ["Kids"] = new[] { "kids", "children", "family" },
+        ["Sport"] = new[] { "sport", "sports" }
+    };
+
+    // Matched on the title's name too (seasonal films usually say so); the rest only on tags and genres.
+    private static readonly HashSet<string> ByName = new(StringComparer.OrdinalIgnoreCase) { "Christmas", "Halloween" };
+
+    /// <summary>The standard genres plus any others the library has, alphabetically, without the seasonal ones.</summary>
+    public static List<string> ForChoices(IEnumerable<string>? libraryGenres)
+    {
+        var names = new List<string>(Standard);
+        foreach (var g in libraryGenres ?? Array.Empty<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(g) && !names.Contains(g.Trim(), StringComparer.OrdinalIgnoreCase)
+                && !Seasonal.Contains(g.Trim(), StringComparer.OrdinalIgnoreCase))
+            {
+                names.Add(g.Trim());
+            }
+        }
+
+        return names.OrderBy(g => g, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>True when a title fits any of the chosen genres (or there are none chosen).</summary>
+    public static bool Matches(IReadOnlyCollection<string> chosen, IEnumerable<string>? genres, IEnumerable<string>? tags, string? name, bool isAnime)
+    {
+        if (chosen.Count == 0)
+        {
+            return true;
+        }
+
+        var itemGenres = Expand(genres);
+        var words = itemGenres.Concat(tags ?? Array.Empty<string>()).Select(w => w.ToLowerInvariant()).ToList();
+        string title = " " + (name ?? string.Empty).ToLowerInvariant() + " ";
+
+        foreach (var choice in chosen)
+        {
+            if (choice.Equals("Anime", StringComparison.OrdinalIgnoreCase))
+            {
+                if (isAnime)
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (Expand(new[] { choice }).Overlaps(itemGenres))
+            {
+                return true;
+            }
+
+            if (Keywords.TryGetValue(choice, out var keys))
+            {
+                if (words.Any(w => keys.Any(k => w.Contains(k, StringComparison.Ordinal))))
+                {
+                    return true;
+                }
+
+                if (ByName.Contains(choice) && keys.Any(k => title.Contains(" " + k, StringComparison.Ordinal)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Each genre plus the names it covers, lower case: "Sci-Fi &amp; Fantasy" gives sci-fi &amp; fantasy, sci-fi, science fiction and fantasy.</summary>
     public static HashSet<string> Expand(IEnumerable<string>? genres)
     {
