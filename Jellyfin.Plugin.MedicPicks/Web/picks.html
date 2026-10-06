@@ -155,7 +155,7 @@
   .genre-list label { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; min-height: 28px; }
   .genre-list input { width: 18px; height: 18px; accent-color: var(--accent); }
   .link-btn { background: none; border: 0; padding: 4px 0; color: var(--accent); font: inherit; font-size: 0.875rem; cursor: pointer; text-decoration: underline; }
-  .not-interested { align-self: flex-start; margin-top: 6px; font-size: 0.8125rem; color: var(--muted); }
+  .not-interested { align-self: flex-start; margin-top: 6px; font-size: 0.8125rem; color: var(--muted); text-align: left; }
   .toggle { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; cursor: pointer; }
   .toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
   .prefs-note { color: var(--muted); font-size: 0.875rem; }
@@ -336,13 +336,13 @@
 
   function updateHiddenNote() {
     document.getElementById('hidden-count').textContent =
-      hiddenCount === 1 ? 'You\u2019ve hidden 1 title.' : 'You\u2019ve hidden ' + hiddenCount + ' titles.';
+      hiddenCount === 1 ? 'You\u2019ve ignored 1 title, so it won\u2019t be recommended again.' : 'You\u2019ve ignored ' + hiddenCount + ' titles, so they won\u2019t be recommended again.';
     document.getElementById('hidden-note').hidden = hiddenCount === 0;
   }
 
-  // "Not interested": hides the title for good, straight away.
+  // "Ignore": hides the title straight away, and it's never recommended again (until "Show them again").
   function notInterested(li, body, session) {
-    var btn = el('button', 'link-btn not-interested', 'Not interested');
+    var btn = el('button', 'link-btn not-interested', 'Ignore \u2013 don\u2019t recommend again');
     btn.type = 'button';
     btn.addEventListener('click', function () {
       btn.disabled = true;
@@ -354,7 +354,7 @@
         })
         .catch(function () {
           btn.disabled = false;
-          btn.textContent = 'Couldn\u2019t hide it. Try again';
+          btn.textContent = 'Couldn\u2019t ignore it. Try again';
         });
     });
     return btn;
@@ -516,7 +516,7 @@
     document.getElementById('kind').value = prefs.kind || 'all';
     document.getElementById('dub-only').checked = !!prefs.dubbedOnly;
 
-    var choices = data.countChoices || [10, 15, 20, 35];
+    var choices = data.countChoices || [5, 10, 15, 20, 25, 30];
     var count = prefs.count || data.defaultCount || 20;
     if (choices.indexOf(count) < 0) {
       // The server's default isn't one of the choices: pick the nearest.
@@ -613,7 +613,7 @@
   });
 
   document.getElementById('unhide').addEventListener('click', function () {
-    rebuildAndWait(function () { return postJson('Me/Unhide', {}, session); }, 'Bringing hidden titles back\u2026');
+    rebuildAndWait(function () { return postJson('Me/Unhide', {}, session); }, 'Bringing ignored titles back\u2026');
   });
 
   document.getElementById('dub-only').addEventListener('change', function () {
