@@ -5,6 +5,33 @@ All notable changes to Jellyfin Medic are recorded here. The newest version is a
 This project uses [semantic versioning](https://semver.org): given a version X.Y.Z,
 Z changes for fixes, Y for new features, X for changes that break compatibility.
 
+## [1.0.12] – 2026-10-06
+
+### Fixed
+- **The IPTV clean-up could delete your whole IPTV library.** The Dashboard's "Clear IPTV stream files" removed every stream file in your Xtream Library folder, not just the left-over ones. It now only removes stream files Jellyfin no longer has an item for, never touches files less than 2 days old (a new sync may not be scanned yet), and offers nothing if it can't tell which are left over. If you used it before, a re-sync in Xtream Library brings your channels back.
+- **Track cleanup could remove a language you keep.** French, German, Dutch and Chinese each have two 3-letter codes (for example "fre" and "fra"). Keeping one now keeps tracks tagged with either.
+- **Stop now really stops track cleanup.** FFmpeg used to carry on in the background until it finished the file.
+- **A film can no longer go missing during track cleanup.** If putting the cleaned file in place fails, the original is put back.
+- **Styled subtitles keep their fonts.** Track cleanup now keeps the fonts stored inside MKV files, which styled subtitles (common in anime) need.
+- **Tasks run in a sensible order.** Each night now runs the library scan first, then the tasks that use it (such as the guide, chapter images and trickplay), then upkeep, with monthly jobs last. Before, a task such as Refresh People could land before the scan. The schedule list also reads in the order the night runs. Press Preview, then Apply on the Schedule tab to use it.
+- **Fewer tasks running at once.** Each task gets enough time for its longest recent run, with more room for long tasks, and runs that failed early no longer make a task look quick. This stops tasks running into each other.
+- **The memory guard stops the right task.** When memory runs high, it now keeps the task that started first, as intended, instead of sometimes stopping a library scan that was nearly done.
+- **Failed sign-in warnings work again.** On Jellyfin 10.9 and later, the warnings about many failed sign-ins and accounts signing in from several places never appeared.
+- **Webhook links are hidden in the settings export.** Discord, Slack and similar webhook links carry their secret inside the link, and are now shown as ****.
+- **Medic's saved data survives a crash.** Schedules, run history, monthly tasks, your viewing pattern and other saved data are now written safely, so a crash or power cut mid-save can't wipe them. Losing the monthly task list used to mean those tasks quietly stopped running.
+
+## [1.0.11] – 2026-10-05
+
+Includes everything in 1.0.10, which wasn't released on its own.
+
+### Fixed
+- **Languages you set by hand stay on the right track.** After stripping tracks, a language you'd set could be applied to a different track the next time, because the track numbers change. Medic now forgets them once they're written into the file, and won't let you set languages from a scan that's out of date.
+- Renaming a separate subtitle file keeps flags such as "forced" or "sdh" in its name, so "Film.forced.srt" becomes "Film.eng.forced.srt".
+- Languages are checked when set one track at a time, and 2-letter codes are saved in the 3-letter form files use ("en" becomes "eng").
+- **"This week" counts freed space correctly.** With kept originals, space from track cleanup is counted when the originals are deleted, not twice.
+- Repeated-error counts no longer include yesterday's errors from a log file that started before midnight.
+- Hand-set languages and the "This week" history are saved safely, so a crash can't wipe them.
+
 ## [1.0.10] – 2026-10-05
 
 ### Added
