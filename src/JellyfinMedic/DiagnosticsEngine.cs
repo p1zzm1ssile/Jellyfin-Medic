@@ -979,7 +979,7 @@ public sealed class DiagnosticsEngine
         {
             var busy = BusyProfile.Create(usage, Plugin.Instance?.Configuration);
             plan = SchedulePlanner.Build(_tasks.ScheduledTasks.Where(IsVisibleTask).ToList(),
-                ScheduleStorage.LoadProfile(_paths), ScheduleStorage.LoadManaged(_paths), busy);
+                ScheduleStorage.LoadProfile(_paths), ScheduleStorage.LoadManaged(_paths), busy, ScheduleStorage.LoadChoices(_paths));
         }
         catch
         {
