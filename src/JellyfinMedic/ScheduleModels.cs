@@ -128,3 +128,11 @@ public class CalendarRun
 
     public string? Note { get; set; }
 }
+
+/// <summary>The owner's choice for one task in Preview (see ScheduleStorage.ChoiceMedic and friends).</summary>
+public class TaskChoice
+{
+    public string TaskId { get; set; } = string.Empty;
+
+    public string Choice { get; set; } = string.Empty;
+}

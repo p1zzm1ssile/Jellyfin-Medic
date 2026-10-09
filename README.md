@@ -22,7 +22,7 @@ A single screen of tiles: how many things need fixing, what changed this week (i
 
 ### Schedule
 
-A week-at-a-glance timeline. Each task is a coloured block on its day, with shading behind it showing how busy that hour usually is and a red line marking "now". Click any task for its details. Medic works out the quietest times from your own viewing pattern and can run a task at different times on different days; **Preview** shows the plan before you **Apply** it, and every change is backed up so it can be undone. Jellyfin has no monthly trigger, so Medic runs monthly tasks itself. A **Restart Jellyfin for waiting updates** task (04:00 by default) finishes installing plugin updates for you, and an optional **Scheduled restart** task restarts Jellyfin at times you choose. Both only restart when nobody's watching and nothing else is running.
+A week-at-a-glance timeline. Each task is a coloured block on its day, with shading behind it showing how busy that hour usually is and a red line marking "now". Click any task for its details. Medic works out the quietest times from your own viewing pattern and can run a task at different times on different days; **Preview** shows the plan before you **Apply** it, with a choice for each task (let Medic schedule it, keep its schedule, or leave it unscheduled; tasks with no schedule are never given one unless you say so), and every change is backed up so it can be undone. Jellyfin has no monthly trigger, so Medic runs monthly tasks itself. A **Restart Jellyfin for waiting updates** task (04:00 by default) finishes installing plugin updates for you, and an optional **Scheduled restart** task restarts Jellyfin at times you choose. Both only restart when nobody's watching and nothing else is running.
 
 ### Checks
 

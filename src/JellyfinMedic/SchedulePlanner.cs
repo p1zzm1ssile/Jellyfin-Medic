@@ -13,7 +13,8 @@ public enum Cadence
     EveryOtherDay,
     TwiceWeekly,
     Weekly,
-    Monthly
+    Monthly,
+    Off
 }
 
 /// <summary>
@@ -43,6 +44,12 @@ public sealed class PlannedTask
     public ManagedRun? Managed { get; set; }
 
     public int StartMinutes { get; set; } = int.MaxValue;
+
+    /// <summary>The owner's choice for this task: medic, keep or off.</summary>
+    public string Choice { get; set; } = ScheduleStorage.ChoiceMedic;
+
+    /// <summary>False for tasks Medic doesn't know how to plan, which can only be kept or turned off.</summary>
+    public bool CanPlan { get; set; } = true;
 
     public bool Changes => Cadence != Cadence.LeaveAlone && CurrentSchedule != ProposedSchedule;
 }
@@ -149,7 +156,8 @@ public static class SchedulePlanner
         IReadOnlyList<IScheduledTaskWorker> workers,
         IReadOnlyDictionary<string, ReliabilityRecord> profile,
         IReadOnlyDictionary<string, ManagedRun> managed,
-        BusyProfile busy)
+        BusyProfile busy,
+        IReadOnlyDictionary<string, string>? choices = null)
     {
         var grid = new bool[7, CellsPerDay];
         busy.BlockAvoidedTimes(grid, CellMinutes);
@@ -169,15 +177,39 @@ public static class SchedulePlanner
             var (minutes, evidence) = MeasureCost(worker, rec);
             string current = ScheduleStorage.FormatSchedule(worker.Triggers, managedRun);
 
-            if (rule is null)
+            // A task with no schedule is never given one unless the owner asks for it.
+            bool unscheduled = managedRun is null && (worker.Triggers is null || !worker.Triggers.Any());
+            string choice = choices is not null && choices.TryGetValue(id, out var chosen)
+                ? chosen
+                : unscheduled ? ScheduleStorage.ChoiceKeep : ScheduleStorage.ChoiceMedic;
+            if (rule is null && choice == ScheduleStorage.ChoiceMedic)
             {
-                // Unknown task: keep its times, but block them out so planned tasks avoid them.
-                ReserveExisting(grid, worker.Triggers, minutes ?? LeftAloneDefaultMinutes);
-                leftAlone.Add(LeaveAlone(worker, current, "Medic doesn't know what this task needs, so it's left as it is."));
+                choice = ScheduleStorage.ChoiceKeep;
+            }
+
+            if (choice == ScheduleStorage.ChoiceOff)
+            {
+                leftAlone.Add(TurnOff(worker, current, rule is not null));
                 continue;
             }
 
-            candidates.Add(new Candidate(worker, rule, rec, managedRun, current, minutes, evidence));
+            if (choice == ScheduleStorage.ChoiceKeep)
+            {
+                // Keep its times, but block them out so planned tasks avoid them.
+                ReserveExisting(grid, worker.Triggers, minutes ?? LeftAloneDefaultMinutes);
+                string why = rule is null
+                    ? "Medic doesn't know what this task needs, so it's left as it is."
+                    : unscheduled && (choices is null || !choices.ContainsKey(id))
+                        ? "It has no schedule now, so Medic leaves it that way. Choose \"Let Medic schedule it\" to give it one."
+                        : "You chose to keep its current schedule.";
+                var kept = LeaveAlone(worker, current, why);
+                kept.CanPlan = rule is not null;
+                leftAlone.Add(kept);
+                continue;
+            }
+
+            // Unknown tasks were kept or turned off above, so there is a rule here.
+            candidates.Add(new Candidate(worker, rule!, rec, managedRun, current, minutes, evidence));
         }
 
         // Library scan first, then the tasks that build on it; within a stage, the tasks that
@@ -318,6 +350,19 @@ public static class SchedulePlanner
         return result;
     }
 
+    private static PlannedTask TurnOff(IScheduledTaskWorker worker, string current, bool canPlan) => new()
+    {
+        Worker = worker,
+        Cadence = Cadence.Off,
+        CadenceLabel = CadenceLabel(Cadence.Off),
+        CurrentSchedule = current,
+        ProposedSchedule = ScheduleStorage.FormatTriggers(null),
+        Reason = "You chose to leave it unscheduled. It only runs when you start it.",
+        Triggers = Array.Empty<TaskTriggerInfo>(),
+        Choice = ScheduleStorage.ChoiceOff,
+        CanPlan = canPlan
+    };
+
     private static PlannedTask LeaveAlone(IScheduledTaskWorker worker, string current, string reason)
     {
         string? warning = null;
@@ -340,7 +385,8 @@ public static class SchedulePlanner
             CurrentSchedule = current,
             ProposedSchedule = current,
             Reason = reason,
-            Warning = warning
+            Warning = warning,
+            Choice = ScheduleStorage.ChoiceKeep
         };
     }
 
@@ -423,6 +469,7 @@ public static class SchedulePlanner
         Cadence.TwiceWeekly => "Every 3–4 days",
         Cadence.Weekly => "Once a week",
         Cadence.Monthly => "Once a month",
+        Cadence.Off => "Not scheduled",
         _ => "Unchanged"
     };
 

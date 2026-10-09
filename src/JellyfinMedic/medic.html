@@ -1951,11 +1951,16 @@
                     } catch (e) { /* leave the table as it is */ }
                 }
 
-                $('md-preview').addEventListener('click', async function () {
+                $('md-preview').addEventListener('click', function () { showPreview(); });
+
+                async function showPreview(keepScroll) {
                     const box = $('md-preview-box');
+                    const scroll = keepScroll ? window.scrollY : null;
                     box.hidden = false;
-                    box.innerHTML = '';
-                    box.appendChild(el('p', 'so-muted', 'Working out the quietest times…'));
+                    if (!keepScroll) {
+                        box.innerHTML = '';
+                        box.appendChild(el('p', 'so-muted', 'Working out the quietest times…'));
+                    }
                     try {
                         const plan = await getJson('/JellyfinMedic/Schedule/PreviewScheduleDiff');
                         box.innerHTML = '';
@@ -1972,7 +1977,7 @@
                         const table = el('table', 'so-table');
                         const thead = el('thead');
                         const hr = el('tr');
-                        ['Task', 'Now', 'Recommended', 'How often', 'Why'].forEach(function (h) { hr.appendChild(el('th', null, h)); });
+                        ['Task', 'Your choice', 'Now', 'Recommended', 'How often', 'Why'].forEach(function (h) { hr.appendChild(el('th', null, h)); });
                         thead.appendChild(hr);
                         table.appendChild(thead);
                         const body = el('tbody');
@@ -1980,6 +1985,29 @@
                             const tr = el('tr');
                             if (!pick(p, 'Changes')) tr.style.opacity = '0.6';
                             tr.appendChild(el('td', null, pick(p, 'TaskName')));
+                            // Per task: let Medic schedule it, keep what it has, or leave it unscheduled.
+                            const choiceCell = el('td');
+                            const choice = el('select', 'so-input');
+                            choice.setAttribute('aria-label', 'Your choice for ' + pick(p, 'TaskName'));
+                            [['medic', 'Let Medic schedule it'], ['keep', 'Keep its schedule'], ['off', 'Leave unscheduled']].forEach(function (o) {
+                                if (o[0] === 'medic' && pick(p, 'CanPlan') === false) return;
+                                const opt = el('option', null, o[1]);
+                                opt.value = o[0];
+                                choice.appendChild(opt);
+                            });
+                            choice.value = pick(p, 'Choice') || 'medic';
+                            choice.addEventListener('change', async function () {
+                                choice.disabled = true;
+                                try {
+                                    await postJson('/JellyfinMedic/Schedule/SetChoice', { taskId: pick(p, 'TaskId'), choice: choice.value });
+                                    await showPreview(true);
+                                } catch (e) {
+                                    choice.disabled = false;
+                                    showStatus('Couldn\'t save that choice.', 'error');
+                                }
+                            });
+                            choiceCell.appendChild(choice);
+                            tr.appendChild(choiceCell);
                             tr.appendChild(el('td', null, fmtTimes(pick(p, 'CurrentSchedule'))));
                             tr.appendChild(el('td', pick(p, 'Changes') ? 'md-ok-text' : null, fmtTimes(pick(p, 'ProposedSchedule'))));
                             tr.appendChild(el('td', null, pick(p, 'Cadence')));
@@ -1993,12 +2021,13 @@
                         table.appendChild(body);
                         wrap.appendChild(table);
                         box.appendChild(wrap);
+                        if (scroll !== null) window.scrollTo(0, scroll);
                     } catch (err) {
                         console.error('Jellyfin Medic: preview failed', err);
                         box.innerHTML = '';
                         box.appendChild(el('p', 'md-bad-text', 'Couldn\'t work out a schedule. Check the Jellyfin log for Jellyfin Medic errors.'));
                     }
-                });
+                }
 
                 async function applyPlan() {
                     if (!window.confirm('Apply the recommended schedule? Your current schedule is backed up first, so you can restore it.')) return;

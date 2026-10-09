@@ -119,6 +119,30 @@ await check('schedule plan uses quarter-hour slots', async () => {
     expect(cal.Days[0].Busy.length === 96, 'expected 96 busy slots');
 });
 
+await check('schedule: unscheduled tasks stay off unless chosen, and per-task choices apply', async () => {
+    const tasks = await ok('/ScheduledTasks');
+    const restart = tasks.find((t) => t.Name === 'Scheduled restart');
+    expect(restart && restart.Triggers.length === 0, 'Scheduled restart should start with no schedule');
+    const row = (plan, id) => plan.SchedulePlan.find((p) => p.TaskId.replace(/-/g, '') === id.replace(/-/g, ''));
+    let plan = await ok('/JellyfinMedic/Schedule/PreviewScheduleDiff');
+    let r = row(plan, restart.Id);
+    expect(r.Choice === 'keep' && !r.Changes, 'unscheduled task would be given a schedule: ' + JSON.stringify(r));
+
+    const scan = tasks.find((t) => t.Key === 'RefreshLibrary');
+    expect(scan, 'no library scan task');
+    expect(row(plan, scan.Id).Choice === 'medic', 'library scan should default to Medic');
+    const set = await api('POST', `/JellyfinMedic/Schedule/SetChoice?taskId=${scan.Id}&choice=off`);
+    expect(set.status === 200, 'SetChoice ' + set.status);
+    plan = await ok('/JellyfinMedic/Schedule/PreviewScheduleDiff');
+    r = row(plan, scan.Id);
+    expect(r.Choice === 'off' && r.ProposedSchedule === 'Manual only' && r.Changes, 'off not planned: ' + JSON.stringify(r));
+    await api('POST', `/JellyfinMedic/Schedule/SetChoice?taskId=${scan.Id}&choice=keep`);
+    plan = await ok('/JellyfinMedic/Schedule/PreviewScheduleDiff');
+    r = row(plan, scan.Id);
+    expect(r.Choice === 'keep' && !r.Changes, 'keep not honoured: ' + JSON.stringify(r));
+    await api('POST', `/JellyfinMedic/Schedule/SetChoice?taskId=${scan.Id}&choice=medic`);
+});
+
 await check('avoid window saves in 15-minute steps', async () => {
     const s = await ok('/JellyfinMedic/MedicSettings');
     const saved = await api('POST', '/JellyfinMedic/MedicSettings', { ...s, AvoidEnabled: true, AvoidStartMinute: 18 * 60 + 45, AvoidEndMinute: 22 * 60 + 15 });
@@ -233,6 +257,28 @@ await check('My picks page opens signed in', async () => {
     await page.waitForLoadState('networkidle');
     await sleep(2000);
     expect(errors.length === 0, errors.join(' | '));
+});
+
+await check('schedule Preview: choosing per task updates the plan', async () => {
+    errors.length = 0;
+    await page.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
+    await page.waitForSelector('#JellyfinMedicPage .so-tab', { timeout: 30000 });
+    const gotIt = page.locator('#md-whatsnew-close');
+    if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
+    await page.click('#JellyfinMedicPage .so-tab[data-tab="schedule"]');
+    await page.click('#md-preview');
+    await page.locator('#md-preview-box select').first().waitFor({ timeout: 30000 });
+    const name = await page.locator('#md-preview-box tbody tr td').first().textContent();
+    const rowSelect = () => page.locator('#md-preview-box tbody tr', { hasText: name }).locator('select');
+    const was = await rowSelect().inputValue();
+    const to = was === 'keep' ? 'off' : 'keep';
+    await rowSelect().selectOption(to);
+    await page.waitForFunction(([n, v]) => Array.from(document.querySelectorAll('#md-preview-box tbody tr'))
+        .some((tr) => tr.cells[0].textContent === n && tr.querySelector('select').value === v && !tr.querySelector('select').disabled), [name, to], { timeout: 30000 });
+    await rowSelect().selectOption(was);
+    await sleep(1500);
+    const ours = errors.filter((e) => !/ResizeObserver|^CancelledError/i.test(e));
+    expect(ours.length === 0, ours.join(' | '));
 });
 
 await check('Picks: 30 + a genre explains a short list, and "Show me different ones" moves on', async () => {

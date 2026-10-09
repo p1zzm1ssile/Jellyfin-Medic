@@ -38,6 +38,37 @@ public static class ScheduleStorage
 
     public static string RunHistoryPath(IApplicationPaths paths) => Path.Combine(DataDir(paths), "run_history.json");
 
+    public static string ChoicesPath(IApplicationPaths paths) => Path.Combine(DataDir(paths), "task_choices.json");
+
+    // ---------- Per-task choices ----------
+
+    /// <summary>What the owner chose for a task in Preview: let Medic schedule it, keep its schedule, or leave it off.</summary>
+    public const string ChoiceMedic = "medic";
+    public const string ChoiceKeep = "keep";
+    public const string ChoiceOff = "off";
+
+    public static Dictionary<string, string> LoadChoices(IApplicationPaths paths)
+    {
+        lock (SyncRoot)
+        {
+            return ReadList<TaskChoice>(ChoicesPath(paths))
+                .Where(c => c.Choice is ChoiceMedic or ChoiceKeep or ChoiceOff)
+                .GroupBy(c => c.TaskId, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Last().Choice, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    public static void SaveChoice(IApplicationPaths paths, string taskId, string choice)
+    {
+        lock (SyncRoot)
+        {
+            var list = ReadList<TaskChoice>(ChoicesPath(paths));
+            list.RemoveAll(c => SameId(c.TaskId, taskId));
+            list.Add(new TaskChoice { TaskId = taskId, Choice = choice });
+            WriteJson(ChoicesPath(paths), list);
+        }
+    }
+
     // ---------- Reading and writing ----------
 
     public static List<T> ReadList<T>(string path)
