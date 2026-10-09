@@ -137,6 +137,19 @@ await check('GPU/CPU advice: a slow software preset and full-frame trickplay are
     expect(titles.includes('Trickplay reads every frame'), 'no trickplay finding');
 });
 
+await check('theme checks: late @import, raw GitHub address and unbalanced braces', async () => {
+    const branding = await ok('/System/Configuration/branding');
+    const css = '.tweak { color: red; }\n@import url("https://raw.githubusercontent.com/example/theme/main/theme.css");\n.broken { color: blue;';
+    const saved = await api('POST', '/System/Configuration/branding', { ...branding, CustomCss: css });
+    expect(saved.status < 300, 'saving branding ' + saved.status);
+    const titles = ((await ok('/JellyfinMedic/Report')).Findings || []).filter((f) => f.Area === 'Themes').map((f) => f.Title);
+    await api('POST', '/System/Configuration/branding', branding);
+    for (const want of ['A theme import in your custom CSS is ignored', 'A theme is loaded from raw.githubusercontent.com', 'Your custom CSS has unbalanced braces']) {
+        expect(titles.includes(want), `missing "${want}": ${titles.join(' | ')}`);
+    }
+    return titles.length + ' theme findings';
+});
+
 await check('schedule plan uses quarter-hour slots', async () => {
     const cal = await ok('/JellyfinMedic/Schedule/GetCalendar');
     expect(cal.AvoidedSlots?.length === 96, 'expected 96 avoided slots, got ' + cal.AvoidedSlots?.length);

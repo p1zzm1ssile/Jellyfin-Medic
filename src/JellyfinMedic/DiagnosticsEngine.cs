@@ -53,6 +53,8 @@ public sealed class DiagnosticsEngine
 
     private const string WhereTranscoding = "Dashboard → Playback → Transcoding";
     private const string WhereTrickplay = "Dashboard → Playback → Trickplay";
+    private const string WhereCustomCss = "Dashboard → General → Custom CSS";
+    private const string AreaTheme = "Themes";
     // Where to change how Jellyfin is run (devices, storage, memory), worded for this platform.
     private static string WhereDocker => HostPlatform.WhereRunSettings;
 
@@ -151,6 +153,15 @@ public sealed class DiagnosticsEngine
             // Unreadable JavaScript Injector settings: skip the script checks.
         }
 
+        // Themes loaded by the custom CSS (Dashboard → General → Custom CSS).
+        foreach (var (url, _) in ThemeImports(CustomCss()))
+        {
+            if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                links.Add(new LinkTarget { Kind = "theme", Name = url, Url = url });
+            }
+        }
+
         return links;
     }
 
@@ -171,6 +182,7 @@ public sealed class DiagnosticsEngine
         Guard(AreaStorage, () => CheckStorage(libraries, encoding));
         Guard(AreaServer, () => CheckServer(server, hw, libraries));
         Guard(AreaServer, () => CheckPerformance(server, hw, pluginReports.Count));
+        Guard(AreaTheme, CheckTheme);
         Guard(AreaLibraries, () => CheckLibraries(libraries));
         Guard(AreaLiveTv, () => CheckLiveTv(liveTv));
         Guard(AreaNetwork, () => CheckNetwork(network));
@@ -203,7 +215,7 @@ public sealed class DiagnosticsEngine
         Guard("Storage", () => _report.Findings.AddRange(DiskHealth.Check()));
 
         // One "all good" line for any area with nothing to report.
-        foreach (var area in new[] { AreaHardware, AreaStorage, AreaServer, AreaLibraries, AreaLiveTv, AreaNetwork, AreaTasks, "Plugins", "Users and access", "Security", "Logs" })
+        foreach (var area in new[] { AreaHardware, AreaStorage, AreaServer, AreaLibraries, AreaLiveTv, AreaNetwork, AreaTasks, "Plugins", AreaTheme, "Users and access", "Security", "Logs" })
         {
             if (!_report.Findings.Any(f => f.Area == area))
             {
@@ -677,6 +689,85 @@ public sealed class DiagnosticsEngine
             Add(AreaStorage, Sev.Improve, "Debug logging is on", level, "Information",
                 "Debug logging writes far more and slows the server slightly. Only turn it on while troubleshooting.",
                 "logging.json in your Jellyfin config folder");
+        }
+    }
+
+    // ---------- Themes (custom CSS) ----------
+
+    private string CustomCss() => SettingsReader.Text(TryConfig("branding"), "CustomCss") ?? string.Empty;
+
+    private static readonly System.Text.RegularExpressions.Regex ImportRule = new(
+        @"@import\s+(?:url\(\s*)?[""']?([^""')\s;]+)[""']?\s*\)?[^;]*;?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static readonly System.Text.RegularExpressions.Regex Comments = new(@"/\*.*?\*/", System.Text.RegularExpressions.RegexOptions.Singleline);
+
+    /// <summary>Each @import in the CSS, with whether it comes after other rules (browsers ignore those).</summary>
+    public static List<(string Url, bool Late)> ThemeImports(string css)
+    {
+        string text = Comments.Replace(css ?? string.Empty, string.Empty);
+        var found = new List<(string, bool)>();
+        foreach (System.Text.RegularExpressions.Match m in ImportRule.Matches(text))
+        {
+            // Only @charset and other @imports may come before an @import.
+            string before = ImportRule.Replace(text[..m.Index], string.Empty);
+            before = System.Text.RegularExpressions.Regex.Replace(before, @"@charset[^;]*;", string.Empty, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            found.Add((m.Groups[1].Value.Trim(), before.Trim().Length > 0));
+        }
+
+        return found;
+    }
+
+    private void CheckTheme()
+    {
+        string css = CustomCss();
+        if (string.IsNullOrWhiteSpace(css))
+        {
+            return;
+        }
+
+        var imports = ThemeImports(css);
+        foreach (var (url, late) in imports)
+        {
+            if (late)
+            {
+                Add(AreaTheme, Sev.Improve, "A theme import in your custom CSS is ignored", url,
+                    "Move every @import line to the very top of the custom CSS",
+                    "Browsers skip an @import that comes after any other rule, so this theme never loads. It's the most common reason a theme \"stops working\" after adding a tweak above it.",
+                    WhereCustomCss);
+            }
+
+            if (url.Contains("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            {
+                Add(AreaTheme, Sev.Improve, "A theme is loaded from raw.githubusercontent.com", url,
+                    "Use the theme's jsDelivr or GitHub Pages address from its install page instead",
+                    "GitHub serves these files as plain text and tells browsers not to guess, so browsers refuse to use them as a stylesheet and the theme doesn't apply.",
+                    WhereCustomCss);
+            }
+            else if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                Add(AreaTheme, Sev.Tip, "A theme is loaded over plain http", url, "The https:// address",
+                    "When you open Jellyfin over https (for example through a reverse proxy), browsers block http stylesheets, so the theme only works on some devices.",
+                    WhereCustomCss);
+            }
+        }
+
+        string code = Comments.Replace(css, string.Empty);
+        int open = code.Count(c => c == '{');
+        int close = code.Count(c => c == '}');
+        if (open != close)
+        {
+            Add(AreaTheme, Sev.Improve, "Your custom CSS has unbalanced braces", $"{open} opening {{ and {close} closing }}",
+                "Find the rule missing a brace (usually the last one you added)",
+                "Browsers drop everything from the broken rule onwards, so parts of your theme or tweaks silently stop applying, and pages can draw oddly.",
+                WhereCustomCss);
+        }
+
+        if (css.Contains("/*", StringComparison.Ordinal) && System.Text.RegularExpressions.Regex.Matches(css, @"/\*").Count > System.Text.RegularExpressions.Regex.Matches(css, @"\*/").Count)
+        {
+            Add(AreaTheme, Sev.Improve, "A comment in your custom CSS is never closed", "/* without */",
+                "Close the comment with */",
+                "Everything after an unclosed comment is ignored, including any theme or tweaks below it.",
+                WhereCustomCss);
         }
     }
 
@@ -1438,6 +1529,13 @@ public sealed class DiagnosticsEngine
                     paradox ? "The address is missing /plugins/ — use https://www.iamparadox.dev/jellyfin/plugins/manifest.json" : "If this keeps happening, check the address on the plugin's install page, or whether your server can reach the site",
                     "This may just be a temporary outage, so it's only worth acting on if it keeps happening. While it's down, plugins from this repository won't get updates. Fixing or removing a repository doesn't uninstall anything.",
                     "Dashboard → Plugins → Repositories");
+            }
+            else if (link.Kind == "theme")
+            {
+                Add(AreaTheme, Sev.Improve, "A theme in your custom CSS can't be loaded", $"{link.Url} ({result})",
+                    "Check the theme's install page for its current address, or remove the line",
+                    "The browser can't fetch it, so the theme doesn't apply and pages can look half-styled while it keeps trying.",
+                    WhereCustomCss);
             }
             else
             {

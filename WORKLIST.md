@@ -15,7 +15,7 @@ Anything not ticked has not been done.
 | 8 | Disk space: every library drive, fill rate, metadata/trickplay/cache sizes | Done: Medic 1.0.13 |
 | 9 | GPU advice: more precise settings so the GPU does the heavy work | Done: Medic 1.0.13 (GPU-only checks not run end to end: the test server has no GPU; the CPU-only ones are tested) |
 | 10 | Better general performance recommendations | Done: Medic 1.0.13 |
-| 11 | Theme checks: custom CSS and theme imports | Not done |
+| 11 | Theme checks: custom CSS and theme imports | Done: Medic 1.0.13 (checks the CSS and its addresses; can't see how pages actually draw) |
 | 12 | Resource monitoring: Jellyfin's own CPU, RAM, disk, GPU with spike warnings | Not done |
 | 13 | Medic Profiles: indexer status (Sonarr/Radarr, Prowlarr optional) | Not done |
 | 14 | Medic Profiles: block .exe and similar downloads (.rar/.zip optional) | Not done |
