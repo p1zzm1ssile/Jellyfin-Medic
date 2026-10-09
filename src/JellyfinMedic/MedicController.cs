@@ -142,6 +142,11 @@ public class MedicController : ControllerBase
     [HttpGet("Now")]
     public ActionResult<NowSnapshot> GetNow() => Ok(ServerNow.Snapshot(_sessions, _tasks, _paths));
 
+    /// <summary>Banners for admins on the home page: serious errors, and a restart waiting. Empty when turned off.</summary>
+    [HttpGet("Alerts")]
+    public ActionResult<List<AdminAlert>> GetAlerts() =>
+        Ok(AdminAlerts.Current(_paths.LogDirectoryPath, _host, Plugin.Instance?.Configuration ?? new PluginConfiguration()));
+
     /// <summary>Recent times the load guard stopped or restarted a task under memory pressure.</summary>
     [HttpGet("LoadGuard")]
     public ActionResult<List<LoadGuardEvent>> GetLoadGuard() => Ok(LoadGuardLog.Load(_paths));
@@ -441,7 +446,9 @@ public class MedicController : ControllerBase
             TracksPauseWhileWatching = c.TracksPauseWhileWatching,
             TracksReplaceInPlace = c.TracksReplaceInPlace, TracksConcurrentFiles = c.TracksConcurrentFiles,
             TracksFfmpegThreads = c.TracksFfmpegThreads,
-            TracksExclude = c.TracksExclude ?? string.Empty
+            TracksExclude = c.TracksExclude ?? string.Empty,
+            AlertCriticalErrors = c.AlertCriticalErrors,
+            AlertRestartNeeded = c.AlertRestartNeeded
         });
     }
 
@@ -483,6 +490,8 @@ public class MedicController : ControllerBase
         c.TracksConcurrentFiles = Math.Clamp(settings.TracksConcurrentFiles, 1, 4);
         c.TracksFfmpegThreads = Math.Clamp(settings.TracksFfmpegThreads, 0, 16);
         c.TracksExclude = string.Join('\n', TrackCleaner.ExcludeList(settings.TracksExclude));
+        c.AlertCriticalErrors = settings.AlertCriticalErrors;
+        c.AlertRestartNeeded = settings.AlertRestartNeeded;
         Plugin.Instance.SaveConfiguration();
         TrackCleaner.ClearScan(); // the last track scan was made with the old settings
         return GetMedicSettings();

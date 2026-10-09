@@ -75,6 +75,11 @@ public class PluginConfiguration : BasePluginConfiguration
     // Track cleanup skips files whose path contains any of these lines: a folder, or part of a
     // show's, film's or file's name.
     public string TracksExclude { get; set; } = string.Empty;
+
+    // Banners for admins on the Jellyfin home page.
+    public bool AlertCriticalErrors { get; set; } = true;
+
+    public bool AlertRestartNeeded { get; set; } = true;
 }
 
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages

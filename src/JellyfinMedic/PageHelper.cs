@@ -23,10 +23,10 @@ public sealed class PageHelperStartupFilter : IStartupFilter
 }
 
 /// <summary>
-/// Adds Medic's small helper script (assist.js) to the web client's page as it's served, so that when
-/// you follow a Medic link to a Jellyfin settings page, the issue you're fixing is shown in a box you
-/// can move. The file on disk is never changed. The script does nothing unless you've just clicked a
-/// Medic link in this browser.
+/// Adds Medic's small helper scripts to the web client's page as it's served. assist.js: when you follow
+/// a Medic link to a Jellyfin settings page, the issue you're fixing is shown in a box you can move (it
+/// does nothing unless you've just clicked a Medic link in this browser). banner.js: on the home page,
+/// admins see a banner for serious problems and for a restart that's waiting. The file on disk is never changed.
 /// </summary>
 public sealed class PageHelperMiddleware
 {
@@ -107,14 +107,20 @@ public sealed class PageHelperMiddleware
 
         try
         {
-            using var stream = typeof(PageHelperMiddleware).Assembly.GetManifestResourceStream("JellyfinMedic.assist.js");
-            if (stream is null)
+            var scripts = new StringBuilder();
+            foreach (string name in new[] { "JellyfinMedic.assist.js", "JellyfinMedic.banner.js" })
             {
-                return null;
+                using var stream = typeof(PageHelperMiddleware).Assembly.GetManifestResourceStream(name);
+                if (stream is null)
+                {
+                    return null;
+                }
+
+                using var reader = new StreamReader(stream);
+                scripts.Append(reader.ReadToEnd()).Append('\n');
             }
 
-            using var reader = new StreamReader(stream);
-            _tag = "<script id=\"jellyfin-medic-assist-script\">" + reader.ReadToEnd() + "</script>";
+            _tag = "<script id=\"jellyfin-medic-assist-script\">" + scripts + "</script>";
             return _tag;
         }
         catch

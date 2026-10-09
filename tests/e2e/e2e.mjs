@@ -281,6 +281,34 @@ await check('schedule Preview: choosing per task updates the plan', async () => 
     expect(ours.length === 0, ours.join(' | '));
 });
 
+await check('admin banner on the home page for a serious error, and it can be dismissed', async () => {
+    // Pretend the database reported damage, by adding the line to the newest log file.
+    const fs = await import('node:fs');
+    const dir = `${process.env.WORK}/config/log`;
+    const newest = fs.readdirSync(dir).filter((f) => f.endsWith('.log')).sort().pop();
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    fs.appendFileSync(`${dir}/${newest}`, `[${now}.000 +00:00] [ERR] [42] Microsoft.EntityFrameworkCore: SQLite Error 11: 'database disk image is malformed'.\n`);
+    let alerts = [];
+    for (let i = 0; i < 70 && !alerts.some((a) => a.Kind === 'critical'); i++) {
+        alerts = (await api('GET', '/JellyfinMedic/Alerts')).json || [];
+        if (!alerts.some((a) => a.Kind === 'critical')) await sleep(2000); // cached for 2 minutes
+    }
+    expect(alerts.some((a) => a.Id.startsWith('critical:database')), 'no database alert: ' + JSON.stringify(alerts));
+
+    errors.length = 0;
+    await page.goto(JF + '/web/index.html#/home');
+    await page.reload(); // the banner checks at most every 5 minutes within one page load
+    const banner = page.locator('#jellyfin-medic-banners');
+    await banner.waitFor({ timeout: 30000 });
+    expect(/database looks damaged/i.test(await banner.textContent()), 'wrong banner text');
+    await banner.locator('button[aria-label="Dismiss"]').first().click();
+    await page.reload();
+    await sleep(5000);
+    expect(!(await banner.isVisible().catch(() => false)), 'banner came back after dismissing');
+    const ours = errors.filter((e) => !/ResizeObserver|^CancelledError/i.test(e));
+    expect(ours.length === 0, ours.join(' | '));
+});
+
 await check('Picks: 30 + a genre explains a short list, and "Show me different ones" moves on', async () => {
     await page.goto(JF + '/MedicPicks/Page');
     await page.waitForSelector('#prefs:not([hidden])', { timeout: 30000 });

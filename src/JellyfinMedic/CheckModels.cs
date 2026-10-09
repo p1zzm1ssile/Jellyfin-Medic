@@ -145,6 +145,10 @@ public class MedicSettingsDto
     public int TracksFfmpegThreads { get; set; } = 1;
 
     public string TracksExclude { get; set; } = string.Empty;
+
+    public bool AlertCriticalErrors { get; set; } = true;
+
+    public bool AlertRestartNeeded { get; set; } = true;
 }
 
 /// <summary>Playback seen in one hour of the week (server local time).</summary>
