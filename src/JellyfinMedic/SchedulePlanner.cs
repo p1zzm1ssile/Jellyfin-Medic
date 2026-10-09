@@ -64,9 +64,9 @@ public static class SchedulePlanner
 {
     private const int CellMinutes = 15;
     private const int CellsPerDay = 24 * 60 / CellMinutes;
-    private const double BufferMinutes = 15;
+    private const double BufferMinutes = 5;
     private const double MaxBlockMinutes = 720;
-    private const double BufferShare = 0.25;          // runs vary, so leave a quarter of the run time spare (at least 15 minutes)
+    private const double BufferShare = 0.25;          // runs vary, so leave a quarter of the run time spare (at least 5 minutes)
     private const double CheapMinutes = 5;
     private const double HeavyMinutes = 45;
     private const double LeftAloneDefaultMinutes = 15;
@@ -435,7 +435,7 @@ public static class SchedulePlanner
     {
         double run = Math.Min(Math.Max(minutes, 0), MaxBlockMinutes);
         double total = run + Math.Max(BufferMinutes, run * BufferShare);
-        return Math.Max(2, (int)Math.Ceiling(total / CellMinutes));
+        return Math.Max(1, (int)Math.Ceiling(total / CellMinutes)); // a quick task takes one 15-minute slot
     }
 
     /// <summary>
