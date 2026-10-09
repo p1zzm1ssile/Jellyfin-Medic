@@ -65,6 +65,7 @@ public class PicksController : ControllerBase
         var body = new
         {
             generatedUtc = picks?.GeneratedUtc,
+            rebuilding = IsRebuilding(userId),
             note = picks is null
                 ? "Your picks haven't been built yet. They're made overnight, so check back tomorrow."
                 : picks.Note,
@@ -107,6 +108,33 @@ public class PicksController : ControllerBase
         var saved = _store.LoadPreferences(userId);
         prefs.HiddenItems = saved.HiddenItems;
         prefs.HiddenTmdb = saved.HiddenTmdb;
+        // New choices start from the best matches again.
+        prefs.SeenItems = new();
+        prefs.SeenTmdb = new();
+        _store.SavePreferences(userId, prefs.Normalise());
+        StartRebuild(userId);
+        return NoContent();
+    }
+
+    /// <summary>"Show me different ones": skips the picks shown now and rebuilds with the next best.</summary>
+    [HttpPost("Me/More")]
+    [Authorize]
+    public async Task<ActionResult> ShowDifferent()
+    {
+        var userId = await GetUserIdAsync().ConfigureAwait(false);
+        if (userId == Guid.Empty)
+        {
+            return Unauthorized();
+        }
+
+        var prefs = _store.LoadPreferences(userId);
+        var picks = _store.Load(userId);
+        if (picks is not null)
+        {
+            prefs.SeenItems.AddRange(picks.InLibrary.Concat(picks.Linked).Select(p => p.ItemId));
+            prefs.SeenTmdb.AddRange(picks.Discover.Select(p => (p.MediaType == "tv" ? "tv:" : "movie:") + p.TmdbId.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
         _store.SavePreferences(userId, prefs.Normalise());
         StartRebuild(userId);
         return NoContent();
@@ -170,6 +198,14 @@ public class PicksController : ControllerBase
         _store.SavePreferences(userId, prefs);
         StartRebuild(userId);
         return NoContent();
+    }
+
+    private static bool IsRebuilding(Guid userId)
+    {
+        lock (Rebuilding)
+        {
+            return Rebuilding.ContainsKey(userId);
+        }
     }
 
     private void StartRebuild(Guid userId)

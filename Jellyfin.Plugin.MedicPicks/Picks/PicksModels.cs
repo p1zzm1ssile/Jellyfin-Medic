@@ -115,6 +115,12 @@ public class UserPreferences
     /// <summary>Titles not on the server they're not interested in, as "movie:123" or "tv:456".</summary>
     public List<string> HiddenTmdb { get; set; } = new();
 
+    /// <summary>Picks already shown, skipped by "Show me different ones" until the choices change or they run out.</summary>
+    public List<Guid> SeenItems { get; set; } = new();
+
+    /// <summary>Discover picks already shown, as "movie:123" or "tv:456".</summary>
+    public List<string> SeenTmdb { get; set; } = new();
+
     /// <summary>Older setting ("Anime: English dubs only"), read once and turned into <see cref="DubbedOnly"/>.</summary>
     public bool? EnglishDubAnime { get; set; }
 
@@ -138,6 +144,8 @@ public class UserPreferences
         Count = Count <= 0 ? 0 : CountChoices.OrderBy(c => Math.Abs(c - Count)).First();
         HiddenItems = (HiddenItems ?? new List<Guid>()).Distinct().TakeLast(1000).ToList();
         HiddenTmdb = (HiddenTmdb ?? new List<string>()).Distinct(StringComparer.Ordinal).TakeLast(1000).ToList();
+        SeenItems = (SeenItems ?? new List<Guid>()).Distinct().TakeLast(2000).ToList();
+        SeenTmdb = (SeenTmdb ?? new List<string>()).Distinct(StringComparer.Ordinal).TakeLast(2000).ToList();
         return this;
     }
 }

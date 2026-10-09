@@ -6,7 +6,7 @@ Anything not ticked has not been done.
 | # | Item | Status |
 |---|---|---|
 | 1 | Test setup: real Jellyfin in Docker with the three plugins, run by `tests/e2e/run.sh` | Done: 32 checks (API, schedule, Picks build, every plugin page and tab in a real browser); also runs on pull requests |
-| 2 | Picks: "Update my picks" responds with 30 picks and a genre; "Show me different ones" | Not done |
+| 2 | Picks: "Update my picks" responds with 30 picks and a genre; "Show me different ones" | Done: Medic Picks 1.2.1 |
 | 3 | Admin banners on the home page (serious errors on first sight; restart needed), each with an off switch | Not done |
 | 4 | Scheduling: per task, keep current / let Medic schedule / leave unscheduled | Not done |
 | 5 | Scheduling: estimated time left for running tasks | Not done |
