@@ -517,6 +517,11 @@
                         </div>
 
                         <div class="md-setting">
+                            <label class="md-check"><input type="checkbox" id="md-alert-critical"> Show admins a banner on the home page for serious problems (a damaged database, a full disk, a plugin that couldn't load)</label>
+                            <label class="md-check"><input type="checkbox" id="md-alert-restart"> Show admins a banner when Jellyfin needs a restart to finish updates</label>
+                        </div>
+
+                        <div class="md-setting">
                             <div class="md-row md-wrap">
                                 <label class="md-check"><input type="checkbox" id="md-avoid"> Never schedule tasks between</label>
                                 <select id="md-avoid-from" class="so-input" aria-label="From"></select>
@@ -2731,6 +2736,8 @@
                         $('md-tracks-conc').value = String(pick(s, 'TracksConcurrentFiles') || 1);
                         $('md-tracks-threads').value = String(pick(s, 'TracksFfmpegThreads') || 1);
                         $('md-tracks-exclude-in').value = pick(s, 'TracksExclude') || '';
+                        $('md-alert-critical').checked = pick(s, 'AlertCriticalErrors') !== false;
+                        $('md-alert-restart').checked = pick(s, 'AlertRestartNeeded') !== false;
                         medicSettingsLoaded = true;
                         $('md-tracks-save').disabled = false;
                     } catch (e) { /* defaults stay; saving stays off so nothing is overwritten with defaults */ }
@@ -2774,7 +2781,9 @@
                         TracksReplaceInPlace: $('md-tracks-inplace-in').checked,
                         TracksConcurrentFiles: parseInt($('md-tracks-conc').value, 10) || 1,
                         TracksFfmpegThreads: parseInt($('md-tracks-threads').value, 10),
-                        TracksExclude: $('md-tracks-exclude-in').value
+                        TracksExclude: $('md-tracks-exclude-in').value,
+                        AlertCriticalErrors: $('md-alert-critical').checked,
+                        AlertRestartNeeded: $('md-alert-restart').checked
                     };
                     try {
                         await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JellyfinMedic/MedicSettings'), data: JSON.stringify(body), contentType: 'application/json', dataType: 'json' });
