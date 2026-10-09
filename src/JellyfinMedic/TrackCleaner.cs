@@ -280,6 +280,7 @@ public static class TrackCleaner
     {
         var result = new TrackScanResult();
         var keep = KeepLanguages(cfg);
+        var exclude = ExcludeList(cfg.TracksExclude);
         var undetermined = new Dictionary<string, UndeterminedGroup>(StringComparer.Ordinal);
 
         // Gather first, so progress can say "x of y".
@@ -312,7 +313,7 @@ public static class TrackCleaner
 
             {
                 string path = item.Path ?? string.Empty;
-                if (string.IsNullOrEmpty(path) || path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase) || !LooksLocal(path) || IsMedicFile(path))
+                if (string.IsNullOrEmpty(path) || path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase) || !LooksLocal(path) || IsMedicFile(path) || IsExcluded(path, exclude))
                 {
                     continue;
                 }
@@ -927,6 +928,7 @@ public static class TrackCleaner
 
         var ct = _cancel!.Token;
         var keep = KeepLanguages(cfg);
+        var exclude = ExcludeList(cfg.TracksExclude);
 
         try
         {
@@ -942,7 +944,7 @@ public static class TrackCleaner
                 foreach (var item in items)
                 {
                     string path = item.Path ?? string.Empty;
-                    if (string.IsNullOrEmpty(path) || path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase) || !LooksLocal(path) || IsMedicFile(path) || !File.Exists(path))
+                    if (string.IsNullOrEmpty(path) || path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase) || !LooksLocal(path) || IsMedicFile(path) || IsExcluded(path, exclude) || !File.Exists(path))
                     {
                         continue;
                     }
@@ -1582,6 +1584,27 @@ public static class TrackCleaner
         }
 
         return folder;
+    }
+
+    /// <summary>The exclusion lines: trimmed, no blanks or repeats, at most 200.</summary>
+    public static List<string> ExcludeList(string? text) =>
+        (text ?? string.Empty).Split('\n', '\r')
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(200)
+            .ToList();
+
+    // A folder ("/media/anime") or part of a name ("The Office"); slashes match either way round.
+    private static bool IsExcluded(string path, List<string> exclude)
+    {
+        if (exclude.Count == 0)
+        {
+            return false;
+        }
+
+        string p = path.Replace('\\', '/');
+        return exclude.Any(e => p.Contains(e.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool LooksLocal(string path) =>

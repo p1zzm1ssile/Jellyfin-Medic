@@ -143,6 +143,8 @@ public class MedicSettingsDto
     public int TracksConcurrentFiles { get; set; } = 1;
 
     public int TracksFfmpegThreads { get; set; } = 1;
+
+    public string TracksExclude { get; set; } = string.Empty;
 }
 
 /// <summary>Playback seen in one hour of the week (server local time).</summary>

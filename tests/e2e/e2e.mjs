@@ -147,6 +147,18 @@ await check('IPTV lists each duplicate channel and its copies', async () => {
     return `${dups.length} channels with copies`;
 });
 
+await check('track cleanup leaves excluded films alone', async () => {
+    const s = await ok('/JellyfinMedic/MedicSettings');
+    const before = await ok('/JellyfinMedic/Tracks/Scan');
+    const paths = (r) => (r.Changing?.length ? r.Changing : r.Sample || []).map((p) => p.Path || '').join('|');
+    expect(/Two Tracks/.test(paths(before)) && /Keep Me Too/.test(paths(before)), 'both French-track films should be planned: ' + paths(before));
+    await api('POST', '/JellyfinMedic/MedicSettings', { ...s, TracksExclude: 'Keep Me Too\n/media/elsewhere' });
+    const after = await ok('/JellyfinMedic/Tracks/Scan');
+    expect(/Two Tracks/.test(paths(after)) && !/Keep Me Too/.test(paths(after)), 'exclusion ignored: ' + paths(after));
+    expect((await ok('/JellyfinMedic/MedicSettings')).TracksExclude === 'Keep Me Too\n/media/elsewhere', 'exclusions not saved');
+    await api('POST', '/JellyfinMedic/MedicSettings', { ...s, TracksExclude: '' });
+});
+
 await check('Medic Picks builds picks from watch history', async () => {
     const items = (await ok(`/Items?Recursive=true&IncludeItemTypes=Movie&SortBy=SortName&UserId=${ctx.userId}`)).Items;
     for (const item of items.slice(0, 4)) await api('POST', `/UserPlayedItems/${item.Id}?userId=${ctx.userId}`);

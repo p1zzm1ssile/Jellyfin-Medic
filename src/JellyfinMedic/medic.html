@@ -257,6 +257,11 @@
                                 <label for="md-tracks-langs-in">Keep languages</label>
                                 <input type="text" id="md-tracks-langs-in" class="so-input" style="width:160px" placeholder="eng">
                             </div>
+                            <div class="md-row md-wrap" style="align-items:flex-start">
+                                <label for="md-tracks-exclude-in">Leave these alone</label>
+                                <textarea id="md-tracks-exclude-in" class="so-input" rows="3" style="width:320px" placeholder="/media/anime&#10;The Office&#10;Spirited Away"></textarea>
+                                <span class="so-small so-muted" style="flex-basis:100%">One per line: a folder, or part of a show&rsquo;s, film&rsquo;s or file&rsquo;s name. Anything matching is never scanned or changed.</span>
+                            </div>
                             <label class="md-check"><input type="checkbox" id="md-tracks-untagsubs-in"> Remove untagged subtitles (untagged audio is always kept)</label>
                             <div style="margin-left:26px; display:flex; flex-direction:column; gap:8px">
                                 <label class="md-check"><input type="checkbox" id="md-tracks-keepfirst-in"> Keep the first untagged subtitle in films with no subtitle in your languages</label>
@@ -2696,6 +2701,7 @@
                         $('md-tracks-inplace-in').checked = !!pick(s, 'TracksReplaceInPlace');
                         $('md-tracks-conc').value = String(pick(s, 'TracksConcurrentFiles') || 1);
                         $('md-tracks-threads').value = String(pick(s, 'TracksFfmpegThreads') || 1);
+                        $('md-tracks-exclude-in').value = pick(s, 'TracksExclude') || '';
                         medicSettingsLoaded = true;
                         $('md-tracks-save').disabled = false;
                     } catch (e) { /* defaults stay; saving stays off so nothing is overwritten with defaults */ }
@@ -2738,7 +2744,8 @@
                         TracksPauseWhileWatching: $('md-tracks-watching-in').checked,
                         TracksReplaceInPlace: $('md-tracks-inplace-in').checked,
                         TracksConcurrentFiles: parseInt($('md-tracks-conc').value, 10) || 1,
-                        TracksFfmpegThreads: parseInt($('md-tracks-threads').value, 10)
+                        TracksFfmpegThreads: parseInt($('md-tracks-threads').value, 10),
+                        TracksExclude: $('md-tracks-exclude-in').value
                     };
                     try {
                         await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JellyfinMedic/MedicSettings'), data: JSON.stringify(body), contentType: 'application/json', dataType: 'json' });
@@ -3149,7 +3156,7 @@
 
                 function loadTracks() {
                     getJson('/JellyfinMedic/MedicSettings').then(function (s) {
-                        $('md-tracks-langs').textContent = 'Keeping: ' + (pick(s, 'TracksKeepLanguages') || 'eng') + (pick(s, 'TracksReplaceInPlace') ? ' · replacing files in place' : ' · keeping originals in .medic-originals') + (pick(s, 'TracksRemoveUndetermined') ? ' · removing all untagged tracks' : pick(s, 'TracksRemoveUntaggedSubtitles') ? ' · removing untagged subtitles' + (pick(s, 'TracksKeepFirstUntaggedSubtitle') !== false ? ' (keeping the first where needed)' : '') + (pick(s, 'TracksAllowRemovingOnlySubtitle') ? ', including a lone one' : '') : ' · keeping untagged tracks');
+                        $('md-tracks-langs').textContent = 'Keeping: ' + (pick(s, 'TracksKeepLanguages') || 'eng') + (pick(s, 'TracksReplaceInPlace') ? ' · replacing files in place' : ' · keeping originals in .medic-originals') + (pick(s, 'TracksRemoveUndetermined') ? ' · removing all untagged tracks' : pick(s, 'TracksRemoveUntaggedSubtitles') ? ' · removing untagged subtitles' + (pick(s, 'TracksKeepFirstUntaggedSubtitle') !== false ? ' (keeping the first where needed)' : '') + (pick(s, 'TracksAllowRemovingOnlySubtitle') ? ', including a lone one' : '') : ' · keeping untagged tracks') + (pick(s, 'TracksExclude') ? ' · leaving ' + String(pick(s, 'TracksExclude')).split('\n').filter(Boolean).length + ' excluded' : '');
                     }).catch(function () {});
                     pollTracks();
                     pollScan();
