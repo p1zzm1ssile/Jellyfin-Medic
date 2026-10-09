@@ -649,6 +649,11 @@
         #JellyfinMedicPage .sev-Good .so-badge { background: #1f642a; }
         #JellyfinMedicPage .so-area { font-size: 0.8em; color: #aaa; }
         #JellyfinMedicPage .so-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 8px; font-size: 0.92em; }
+        #JellyfinMedicPage .md-dups { margin: 8px 0; }
+        #JellyfinMedicPage .md-dups summary { cursor: pointer; }
+        #JellyfinMedicPage .md-dups .so-input { margin: 8px 0; max-width: 320px; }
+        #JellyfinMedicPage .md-dup-list { list-style: none; padding: 0; margin: 0; max-height: 420px; overflow-y: auto; }
+        #JellyfinMedicPage .md-dup-list li { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
         #JellyfinMedicPage .so-kv dt { color: #aaa; }
         #JellyfinMedicPage .so-kv dd { margin: 0; word-break: break-word; }
         #JellyfinMedicPage .so-suggest { color: #52b788; }
@@ -2574,8 +2579,31 @@
                         panel.appendChild(dl);
                         const ex = pick(ch, 'Examples') || [];
                         if (ex.length) panel.appendChild(el('p', 'so-small so-muted', 'For example: ' + ex.join(', ')));
-                        if ((pick(ch, 'ExtraCopies') || 0) >= 30) {
-                            panel.appendChild(el('p', 'md-note', 'Dispatcharr can merge these into one channel each, with the best quality first and the others as backups, and lets you keep just the regional versions you want. Xtream Library already supports it.'));
+                        const dups = pick(ch, 'Duplicates') || [];
+                        if (dups.length) {
+                            // Every channel with copies, and the name of each copy, so you can pick which to keep.
+                            const details = el('details', 'md-dups');
+                            details.appendChild(el('summary', null, 'Show all ' + dups.length.toLocaleString('en-GB') + ' channels with copies'));
+                            const filter = el('input', 'so-input');
+                            filter.type = 'search';
+                            filter.placeholder = 'Filter channels';
+                            filter.setAttribute('aria-label', 'Filter channels');
+                            details.appendChild(filter);
+                            const list = el('ul', 'md-dup-list');
+                            dups.forEach(function (d) {
+                                const li = el('li');
+                                li.appendChild(el('strong', null, pick(d, 'Name') + ' (' + (pick(d, 'Versions') || []).length + ')'));
+                                li.appendChild(el('span', 'so-small so-muted', (pick(d, 'Versions') || []).join(' · ')));
+                                li.dataset.text = (pick(d, 'Name') + ' ' + (pick(d, 'Versions') || []).join(' ')).toLowerCase();
+                                list.appendChild(li);
+                            });
+                            details.appendChild(list);
+                            filter.addEventListener('input', function () {
+                                const q = filter.value.trim().toLowerCase();
+                                list.querySelectorAll('li').forEach(function (li) { li.hidden = q !== '' && li.dataset.text.indexOf(q) < 0; });
+                            });
+                            panel.appendChild(details);
+                            panel.appendChild(el('p', 'md-note', 'Keep one version of each (usually the best quality your TVs can play) and hide or remove the rest in your IPTV plugin or provider.'));
                         }
                     }
                     box.appendChild(panel);

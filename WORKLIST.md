@@ -11,7 +11,7 @@ Anything not ticked has not been done.
 | 4 | Scheduling: per task, keep current / let Medic schedule / leave unscheduled | Not done |
 | 5 | Scheduling: estimated time left for running tasks | Not done |
 | 6 | Track cleanup: exclude folders, shows or films | Not done |
-| 7 | IPTV: list the duplicate channels; drop the Dispatcharr advice | Not done |
+| 7 | IPTV: list the duplicate channels; drop the Dispatcharr advice | Done: Medic 1.0.13 |
 | 8 | Disk space: every library drive, fill rate, metadata/trickplay/cache sizes | Not done |
 | 9 | GPU advice: more precise settings so the GPU does the heavy work | Not done |
 | 10 | Better general performance recommendations | Not done |

@@ -255,7 +255,7 @@ LOG
   - Shows how much of each actually gets watched, so you can trim what nobody
     uses ("big genres nobody watches").
   - Finds live channels that appear several times in different qualities
-    (with advice on merging them in Dispatcharr).
+    (listing every channel with copies and the name of each copy).
   - Safe clean-up of left-over IPTV stream files (see Dashboard).
   - Medic never edits Jellyfin's database.
 
