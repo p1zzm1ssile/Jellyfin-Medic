@@ -113,6 +113,18 @@ for (const path of medicGets) {
     await check(`GET ${path}`, async () => { await ok(path); });
 }
 
+await check('storage: library drives and growing folders are listed', async () => {
+    let specs = (await ok('/JellyfinMedic/Report')).Specs || [];
+    const drive = specs.find((x) => /^Drive for .*Movies/.test(x.Label));
+    expect(drive, 'no library drive line: ' + specs.filter((x) => x.Group === 'Storage').map((x) => x.Label).join(', '));
+    expect(/free of/.test(drive.Value), drive.Value);
+    await sleep(3000); // folder sizes are measured in the background
+    specs = (await ok('/JellyfinMedic/Report')).Specs || [];
+    const meta = specs.find((x) => x.Label === 'Metadata folder');
+    expect(meta && !/measuring/.test(meta.Value), 'metadata size: ' + JSON.stringify(meta));
+    return drive.Value;
+});
+
 await check('schedule plan uses quarter-hour slots', async () => {
     const cal = await ok('/JellyfinMedic/Schedule/GetCalendar');
     expect(cal.AvoidedSlots?.length === 96, 'expected 96 avoided slots, got ' + cal.AvoidedSlots?.length);

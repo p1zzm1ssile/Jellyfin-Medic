@@ -64,6 +64,7 @@ public sealed class UsageSampler : IHostedService, IDisposable
             UsageStore.Record(_paths, DateTime.Now, streams, transcodes);
             TranscodeLog.Record(_paths, playing);
             ServerNow.Record();
+            StorageWatch.RecordKnown(_paths.PluginConfigurationsPath);
         }
         catch (Exception ex)
         {
