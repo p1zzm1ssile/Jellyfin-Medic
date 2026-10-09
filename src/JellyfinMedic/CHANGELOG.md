@@ -10,6 +10,7 @@ Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 ## [1.0.13] – 2026-10-09
 
 ### Added
+- **Time left for running tasks.** Running tasks on the Dashboard now show roughly how long they have left, for example "Scan Media Library (42%, about 12 min left)". It works from the task's progress so far and, early on, from how long it usually takes.
 - **Leave chosen folders, shows or films out of track cleanup.** Under Track settings, "Leave these alone" takes one entry per line: a folder (such as /media/anime) or part of a show's, film's or file's name. Anything matching is never scanned or changed. IPTV and other streamed files were already skipped.
 
 ### Changed

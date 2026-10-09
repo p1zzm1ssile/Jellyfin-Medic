@@ -140,7 +140,7 @@ public class MedicController : ControllerBase
 
     /// <summary>What Jellyfin is doing right now. Cheap enough to refresh every few seconds.</summary>
     [HttpGet("Now")]
-    public ActionResult<NowSnapshot> GetNow() => Ok(ServerNow.Snapshot(_sessions, _tasks));
+    public ActionResult<NowSnapshot> GetNow() => Ok(ServerNow.Snapshot(_sessions, _tasks, _paths));
 
     /// <summary>Recent times the load guard stopped or restarted a task under memory pressure.</summary>
     [HttpGet("LoadGuard")]
