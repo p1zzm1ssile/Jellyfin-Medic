@@ -939,14 +939,15 @@ public sealed class DiagnosticsEngine
                     continue;
                 }
 
-                int hour = TimeSpan.FromTicks(trigger.TimeOfDayTicks.GetValueOrDefault()).Hours;
+                var at = TimeSpan.FromTicks(trigger.TimeOfDayTicks.GetValueOrDefault());
+                int hour = at.Hours;
                 IEnumerable<int> days = trigger.Type == TaskTriggerInfoType.WeeklyTrigger && trigger.DayOfWeek.HasValue
                     ? new[] { ((int)trigger.DayOfWeek.GetValueOrDefault() + 6) % 7 }
                     : Enumerable.Range(0, 7);
 
                 if (days.Any(d => usage.AverageStreams.ElementAtOrDefault(d * 24 + hour) >= 1.0))
                 {
-                    clashes.Add($"{worker.Name} ({hour:00}:00)");
+                    clashes.Add($"{worker.Name} ({ScheduleStorage.Hhmm(at)})");
                     break;
                 }
             }

@@ -1682,11 +1682,15 @@
 
                 function runKey(di, r) { return di + '|' + pick(r, 'TaskId') + '|' + pick(r, 'StartMinutes'); }
 
+                // Busy shading comes in slots (15 minutes; older servers sent one value per hour).
+                function slotMinutes(busy) { return busy.length > 0 ? 1440 / busy.length : 60; }
+
                 function busyDuring(day, start, minutes) {
                     const busy = pick(day, 'Busy') || [];
+                    const size = slotMinutes(busy);
                     let peak = 0;
                     for (let m = start; m < start + Math.max(1, minutes); m += 15) {
-                        peak = Math.max(peak, busy[Math.floor(m / 60) % 24] || 0);
+                        peak = Math.max(peak, busy[Math.floor(m / size) % busy.length] || 0);
                     }
                     return peak;
                 }
@@ -1701,7 +1705,8 @@
                     const span = end - start;
                     const pct = function (m) { return ((m - start) / span * 100) + '%'; };
                     const fromViewing = !!pick(cal, 'FromViewing');
-                    const avoided = pick(cal, 'AvoidedHours') || [];
+                    const avoided = pick(cal, 'AvoidedSlots') || pick(cal, 'AvoidedHours') || [];
+                    const avoidSize = avoided.length > 0 ? 1440 / avoided.length : 60;
 
                     $('md-range').textContent = pick(cal, 'RangeLabel');
                     $('md-prev').disabled = calWeek <= 0;
@@ -1709,7 +1714,7 @@
                     $('md-busy-note').textContent = pick(cal, 'BusySummary') || '';
                     $('md-range-note').textContent = range === 'night'
                         ? 'Showing 00:00 to 08:00. Switch to Full day to see the rest.'
-                        : 'Shading shows how busy each hour usually is. Click a task for its details.';
+                        : 'Shading shows how busy each quarter hour usually is. Click a task for its details.';
 
                     // Hour labels
                     const head = el('div', 'md-tl-head');
@@ -1736,23 +1741,27 @@
 
                         const track = el('div', 'md-tl-track');
 
-                        // Busy shading, one band per hour
+                        // Avoided times and busy shading, one band per slot
+                        for (let i = 0; i < avoided.length; i++) {
+                            const as = i * avoidSize;
+                            if (as >= end) break;
+                            if (!avoided[i]) continue;
+                            const a = el('div', 'md-tl-avoid');
+                            a.style.left = pct(as);
+                            a.style.width = (avoidSize / span * 100) + '%';
+                            a.title = 'You asked Medic never to schedule tasks at this time';
+                            track.appendChild(a);
+                        }
                         const busy = pick(day, 'Busy') || [];
-                        for (let h = 0; h < 24; h++) {
-                            const hs = h * 60;
-                            if (hs >= end) break;
-                            if (avoided[h]) {
-                                const a = el('div', 'md-tl-avoid');
-                                a.style.left = pct(hs);
-                                a.style.width = (60 / span * 100) + '%';
-                                a.title = 'You asked Medic never to schedule tasks at this time';
-                                track.appendChild(a);
-                            }
-                            const v = busy[h] || 0;
+                        const busySize = slotMinutes(busy);
+                        for (let i = 0; i < busy.length; i++) {
+                            const bs = i * busySize;
+                            if (bs >= end) break;
+                            const v = busy[i] || 0;
                             if (v > 0.05) {
                                 const b = el('div', 'md-tl-busy');
-                                b.style.left = pct(hs);
-                                b.style.width = (60 / span * 100) + '%';
+                                b.style.left = pct(bs);
+                                b.style.width = (busySize / span * 100) + '%';
                                 b.style.opacity = (0.06 + v * 0.3).toFixed(2);
                                 track.appendChild(b);
                             }
@@ -2592,11 +2601,11 @@
 
                 // ---------- Medic settings ----------
 
-                function fillHours(select) {
+                function fillQuarters(select) {
                     select.innerHTML = '';
-                    for (let h = 0; h < 24; h++) {
-                        const o = el('option', null, hm(h * 60));
-                        o.value = String(h);
+                    for (let m = 0; m < 1440; m += 15) {
+                        const o = el('option', null, hm(m));
+                        o.value = String(m);
                         select.appendChild(o);
                     }
                 }
@@ -2632,13 +2641,15 @@
                 });
 
                 async function loadMedicSettings() {
-                    fillHours($('md-avoid-from'));
-                    fillHours($('md-avoid-to'));
+                    fillQuarters($('md-avoid-from'));
+                    fillQuarters($('md-avoid-to'));
                     try {
                         const s = await getJson('/JellyfinMedic/MedicSettings');
                         $('md-avoid').checked = !!pick(s, 'AvoidEnabled');
-                        $('md-avoid-from').value = String(pick(s, 'AvoidStartHour'));
-                        $('md-avoid-to').value = String((pick(s, 'AvoidEndHour') || 0) % 24);
+                        const avoidFrom = pick(s, 'AvoidStartMinute');
+                        const avoidTo = pick(s, 'AvoidEndMinute');
+                        $('md-avoid-from').value = String(avoidFrom ?? (pick(s, 'AvoidStartHour') || 0) * 60);
+                        $('md-avoid-to').value = String((avoidTo ?? (pick(s, 'AvoidEndHour') || 0) * 60) % 1440);
                         $('md-inactive').value = String(pick(s, 'InactiveUserDays'));
                         $('md-guard-enabled').checked = pick(s, 'LoadGuardEnabled') !== false;
                         $('md-ceiling').value = String(pick(s, 'MemoryCeilingPercent') || 85);
@@ -2680,8 +2691,10 @@
                     }
                     const body = {
                         AvoidEnabled: $('md-avoid').checked,
-                        AvoidStartHour: parseInt($('md-avoid-from').value, 10),
-                        AvoidEndHour: parseInt($('md-avoid-to').value, 10),
+                        AvoidStartMinute: parseInt($('md-avoid-from').value, 10),
+                        AvoidEndMinute: parseInt($('md-avoid-to').value, 10),
+                        AvoidStartHour: Math.floor(parseInt($('md-avoid-from').value, 10) / 60),
+                        AvoidEndHour: Math.floor(parseInt($('md-avoid-to').value, 10) / 60),
                         InactiveUserDays: parseInt($('md-inactive').value, 10) || 90,
                         LoadGuardEnabled: $('md-guard-enabled').checked,
                         MemoryCeilingPercent: parseInt($('md-ceiling').value, 10) || 85,

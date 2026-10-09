@@ -15,8 +15,8 @@ namespace JellyfinMedic.Services;
 
 /// <summary>
 /// Every 5 minutes, counts how many people are watching and how many of those streams are
-/// being transcoded, and adds it to an hour-of-the-week profile. After a few days this shows
-/// your busy and quiet times.
+/// being transcoded, and adds it to an hour-of-the-week profile (and a quarter-hour one for the
+/// planner). After a few days this shows your busy and quiet times.
 /// </summary>
 public sealed class UsageSampler : IHostedService, IDisposable
 {
@@ -102,6 +102,10 @@ public static class UsageStore
             bucket.MaxStreams = Math.Max(bucket.MaxStreams, streams);
             bucket.MaxTranscodes = Math.Max(bucket.MaxTranscodes, transcodes);
 
+            int quarter = (((int)localNow.DayOfWeek + 6) % 7) * 96 + localNow.Hour * 4 + localNow.Minute / 15;
+            profile.QuarterSamples[quarter]++;
+            profile.QuarterStreamSums[quarter] += streams;
+
             profile.TotalSamples++;
             profile.FirstSampleUtc ??= DateTime.UtcNow;
             profile.LastSampleUtc = DateTime.UtcNow;
@@ -134,6 +138,16 @@ public static class UsageStore
             profile.Buckets.Add(new UsageBucket());
         }
 
+        while (profile.QuarterSamples.Count < 672)
+        {
+            profile.QuarterSamples.Add(0);
+        }
+
+        while (profile.QuarterStreamSums.Count < 672)
+        {
+            profile.QuarterStreamSums.Add(0);
+        }
+
         return profile;
     }
 }
@@ -155,6 +169,10 @@ public static class UsageAnalyzer
             .Select(b => b.Samples == 0 ? 0 : Math.Round(b.StreamSum / (double)b.Samples, 2))
             .ToList();
         summary.SampleCounts = profile.Buckets.Select(b => b.Samples).ToList();
+        summary.QuarterSampleCounts = profile.QuarterSamples.ToList();
+        summary.QuarterAverageStreams = profile.QuarterSamples
+            .Select((n, i) => n == 0 ? 0 : profile.QuarterStreamSums[i] / (double)n)
+            .ToList();
         summary.MaxStreams = profile.Buckets.Max(b => b.MaxStreams);
         summary.MaxTranscodes = profile.Buckets.Max(b => b.MaxTranscodes);
 
