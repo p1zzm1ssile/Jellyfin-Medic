@@ -126,6 +126,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService<ManagedScheduleRunner>();
         serviceCollection.AddHostedService<UsageSampler>();
         serviceCollection.AddHostedService<LoadGuard>();
+        serviceCollection.AddHostedService<ResourceMonitor>();
 
         // Shows the issue you're fixing on the Jellyfin page a Medic link sends you to (see PageHelper.cs).
         serviceCollection.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, PageHelperStartupFilter>();

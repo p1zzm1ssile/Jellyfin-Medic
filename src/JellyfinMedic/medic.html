@@ -64,6 +64,10 @@
                         </div>
                         <dl id="md-now" class="so-kv"></dl>
                         <p id="md-guard" class="so-small" role="status"></p>
+                        <details id="md-spikes" class="md-spikes" hidden>
+                            <summary id="md-spikes-summary"></summary>
+                            <ul id="md-spikes-list" class="md-spike-list"></ul>
+                        </details>
                     </section>
                     <section class="md-tile md-wide" aria-labelledby="md-t-issues">
                         <div class="md-row md-space">
@@ -660,6 +664,10 @@
         #JellyfinMedicPage .so-area { font-size: 0.8em; color: #aaa; }
         #JellyfinMedicPage .so-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 8px; font-size: 0.92em; }
         #JellyfinMedicPage .md-dups { margin: 8px 0; }
+        #JellyfinMedicPage .md-spikes { margin-top: 8px; }
+        #JellyfinMedicPage .md-spikes summary { cursor: pointer; }
+        #JellyfinMedicPage .md-spike-list { list-style: none; padding: 0; margin: 6px 0 0; max-height: 260px; overflow-y: auto; }
+        #JellyfinMedicPage .md-spike-list li { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
         #JellyfinMedicPage .md-dups summary { cursor: pointer; }
         #JellyfinMedicPage .md-dups .so-input { margin: 8px 0; max-width: 320px; }
         #JellyfinMedicPage .md-dup-list { list-style: none; padding: 0; margin: 0; max-height: 420px; overflow-y: auto; }
@@ -1594,6 +1602,15 @@
                     row('Watching', watching === 0 ? 'Nobody' : watching + (watching === 1 ? ' person' : ' people') + (transcoding ? ', ' + transcoding + ' transcoding' : ''));
                     const tasks = pick(nowData, 'RunningTasks') || [];
                     row('Running tasks', tasks.length ? tasks.join(', ') : 'None');
+                    // Jellyfin plus the FFmpeg processes it started (not the rest of the machine).
+                    const res = pick(nowData, 'Resources');
+                    if (res) {
+                        const parts = ['CPU ' + pick(res, 'CpuPercent') + '%', pick(res, 'MemoryGb') + ' GB'];
+                        if (pick(res, 'DiskMBps') !== null && pick(res, 'DiskMBps') !== undefined) parts.push('disk ' + pick(res, 'DiskMBps') + ' MB/s');
+                        if (pick(res, 'GpuPercent') !== null && pick(res, 'GpuPercent') !== undefined) parts.push('GPU ' + pick(res, 'GpuPercent') + '%');
+                        const ff = pick(res, 'FfmpegProcesses') || 0;
+                        row('With FFmpeg', parts.join(' · ') + (ff ? ' (' + ff + ' FFmpeg process' + (ff === 1 ? '' : 'es') + ')' : ''));
+                    }
                     row('Active devices', String(pick(nowData, 'ActiveDevices') || 0));
                     const running = pick(nowData, 'RunningTasks') || [];
                     const rt = $('md-running-text');
@@ -1605,6 +1622,22 @@
                         nowData = await getJson('/JellyfinMedic/Now');
                         renderNow();
                     } catch (e) { /* the tile just stays as it was */ }
+                    try {
+                        // Spells of heavy use this week, and what was running at the time.
+                        const spikes = (await getJson('/JellyfinMedic/ResourceEvents') || []).filter(function (e) {
+                            return Date.now() - new Date(pick(e, 'TimeUtc')).getTime() < 7 * 86400000;
+                        });
+                        $('md-spikes').hidden = spikes.length === 0;
+                        $('md-spikes-summary').textContent = spikes.length + (spikes.length === 1 ? ' spell' : ' spells') + ' of heavy use this week';
+                        const list = $('md-spikes-list');
+                        list.innerHTML = '';
+                        spikes.slice(0, 20).forEach(function (e) {
+                            const li = el('li');
+                            li.appendChild(el('strong', null, fmtShort(pick(e, 'TimeUtc')) + ' · ' + pick(e, 'Resource') + ': ' + pick(e, 'Level')));
+                            li.appendChild(el('span', 'so-small so-muted', (pick(e, 'Causes') || []).join('; ')));
+                            list.appendChild(li);
+                        });
+                    } catch (e) { /* older server: no list */ }
                     try {
                         const events = await getJson('/JellyfinMedic/LoadGuard');
                         const g = $('md-guard');
