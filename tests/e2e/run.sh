@@ -39,6 +39,12 @@ for i in $(seq 1 12); do
 <movie><title>Sample $i</title><year>$year</year><genre>$g1</genre><genre>$g2</genre><lockdata>true</lockdata></movie>
 NFO
 done
+# Two films with a French audio track that track cleanup would remove.
+for t in "Two Tracks (2015)" "Keep Me Too (2016)"; do
+  mkdir -p "$WORK/media/movies/$t"
+  ffmpeg -loglevel error -f lavfi -i "testsrc=size=320x180:rate=10:duration=4" -f lavfi -i "sine=frequency=300:duration=4" -f lavfi -i "sine=frequency=500:duration=4" \
+    -map 0 -map 1 -map 2 -c:v libx264 -preset ultrafast -c:a aac -metadata:s:a:0 language=eng -metadata:s:a:1 language=fre "$WORK/media/movies/$t/$t.mkv"
+done
 # One IPTV-style .strm entry, which track cleanup must never touch.
 mkdir -p "$WORK/media/movies/Stream Film (2020)"
 echo "http://127.0.0.1:9/stream.ts" > "$WORK/media/movies/Stream Film (2020)/Stream Film (2020).strm"

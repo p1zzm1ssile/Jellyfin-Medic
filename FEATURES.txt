@@ -265,7 +265,8 @@ LOG
 -------------------------------------------------------------------------------
 
 Removes unwanted audio and subtitle tracks from local files by remuxing:
-no re-encode and no quality loss. IPTV is skipped.
+no re-encode and no quality loss. IPTV is skipped, and you can list folders, shows or
+films for it to leave alone.
 
 What it keeps:
   - Your chosen languages (default: eng). Codes with two forms (fre/fra,

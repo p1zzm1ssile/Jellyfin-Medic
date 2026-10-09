@@ -71,6 +71,10 @@ public class PluginConfiguration : BasePluginConfiguration
     public int TracksConcurrentFiles { get; set; } = 1;
 
     public int TracksFfmpegThreads { get; set; } = 1;
+
+    // Track cleanup skips files whose path contains any of these lines: a folder, or part of a
+    // show's, film's or file's name.
+    public string TracksExclude { get; set; } = string.Empty;
 }
 
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages

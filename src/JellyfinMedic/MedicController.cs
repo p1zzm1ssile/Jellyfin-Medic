@@ -440,7 +440,8 @@ public class MedicController : ControllerBase
             TracksWindowEndHour = c.TracksWindowEndHour,
             TracksPauseWhileWatching = c.TracksPauseWhileWatching,
             TracksReplaceInPlace = c.TracksReplaceInPlace, TracksConcurrentFiles = c.TracksConcurrentFiles,
-            TracksFfmpegThreads = c.TracksFfmpegThreads
+            TracksFfmpegThreads = c.TracksFfmpegThreads,
+            TracksExclude = c.TracksExclude ?? string.Empty
         });
     }
 
@@ -481,6 +482,7 @@ public class MedicController : ControllerBase
         c.TracksReplaceInPlace = settings.TracksReplaceInPlace;
         c.TracksConcurrentFiles = Math.Clamp(settings.TracksConcurrentFiles, 1, 4);
         c.TracksFfmpegThreads = Math.Clamp(settings.TracksFfmpegThreads, 0, 16);
+        c.TracksExclude = string.Join('\n', TrackCleaner.ExcludeList(settings.TracksExclude));
         Plugin.Instance.SaveConfiguration();
         TrackCleaner.ClearScan(); // the last track scan was made with the old settings
         return GetMedicSettings();
