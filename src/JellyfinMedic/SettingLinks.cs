@@ -16,6 +16,7 @@ public static class SettingLinks
     private static readonly (string Title, string Section, string Name)[] Map =
     {
         ("Hardware encoding is off", "Transcoding", "EnableHardwareEncoding"),
+        ("Image resizing can use every CPU thread", "General", "ParallelImageEncodingLimit"),
         ("aren't decoded on the GPU", "Transcoding", "HardwareDecodingCodecs"),
         ("10-bit HEVC is decoded on the CPU", "Transcoding", "EnableDecodingColorDepth10Hevc"),
         ("Transcodes are only made as H264", "Transcoding", "AllowHevcEncoding"),

@@ -161,6 +161,54 @@ public static class SystemProbe
     /// The mount a path lives on and its filesystem type, from /proc/mounts.
     /// "tmpfs" means RAM; "fuse.shfs" means an Unraid user share (/mnt/user).
     /// </summary>
+    /// <summary>
+    /// Whether the disk behind a path spins (a hard drive), from /sys/block. Null when it can't be
+    /// told, for example on Windows, for network shares, or for pooled and virtual devices.
+    /// </summary>
+    public static bool? Spinning(string? path)
+    {
+        string? device = MountDevice(path);
+        if (device is null || !device.StartsWith("/dev/", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string name = Path.GetFileName(device);
+        foreach (string candidate in new[] { name, System.Text.RegularExpressions.Regex.Replace(name, @"(?<=\D)\d+$|(?<=nvme\d+n\d+)p\d+$|(?<=mmcblk\d+)p\d+$", string.Empty) })
+        {
+            // Virtual disks (virtio, Xen, QEMU, VMware, Hyper-V) say they spin even when the host has an SSD.
+            string model = string.Join(' ', ReadLines($"/sys/block/{candidate}/device/vendor").Concat(ReadLines($"/sys/block/{candidate}/device/model")));
+            if (candidate.StartsWith("vd", StringComparison.Ordinal) || candidate.StartsWith("xvd", StringComparison.Ordinal)
+                || System.Text.RegularExpressions.Regex.IsMatch(model, "QEMU|VMware|Virtual|VBOX|Msft", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                return null;
+            }
+
+            string file = $"/sys/block/{candidate}/queue/rotational";
+            var text = ReadLines(file).FirstOrDefault()?.Trim();
+            if (text is "0" or "1")
+            {
+                return text == "1";
+            }
+        }
+
+        return null;
+    }
+
+    private static string? MountDevice(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || Mount(path) is not { } mount)
+        {
+            return null;
+        }
+
+        return ReadLines("/proc/mounts")
+            .Select(l => l.Split(' '))
+            .Where(p => p.Length >= 3 && p[1].Replace("\\040", " ", StringComparison.Ordinal) == mount.MountPoint)
+            .Select(p => p[0])
+            .LastOrDefault();
+    }
+
     public static (string MountPoint, string FsType)? Mount(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))

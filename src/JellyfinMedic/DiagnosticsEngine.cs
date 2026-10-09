@@ -170,6 +170,7 @@ public sealed class DiagnosticsEngine
         Guard(AreaHardware, () => CheckTranscoding(hw, encoding, usage));
         Guard(AreaStorage, () => CheckStorage(libraries, encoding));
         Guard(AreaServer, () => CheckServer(server, hw, libraries));
+        Guard(AreaServer, () => CheckPerformance(server, hw, pluginReports.Count));
         Guard(AreaLibraries, () => CheckLibraries(libraries));
         Guard(AreaLiveTv, () => CheckLiveTv(liveTv));
         Guard(AreaNetwork, () => CheckNetwork(network));
@@ -676,6 +677,51 @@ public sealed class DiagnosticsEngine
             Add(AreaStorage, Sev.Improve, "Debug logging is on", level, "Information",
                 "Debug logging writes far more and slows the server slightly. Only turn it on while troubleshooting.",
                 "logging.json in your Jellyfin config folder");
+        }
+    }
+
+    // ---------- General performance ----------
+
+    private void CheckPerformance(object server, HardwareInfo hw, int pluginCount)
+    {
+        if (SystemProbe.Spinning(_paths.DataPath) == true)
+        {
+            Add(AreaServer, Sev.Improve, "Jellyfin's database is on a spinning hard drive", HostPlatform.DataFolder + " is on a hard drive",
+                "Move it to an SSD (on Unraid, the cache pool)",
+                "The database does thousands of small reads and writes. On a hard drive every page of the web UI, every scan and every \"continue watching\" waits for the disk. An SSD makes Jellyfin feel several times quicker.",
+                WhereDocker);
+        }
+
+        long db = SystemProbe.FileSize(Path.Combine(_paths.DataPath, "jellyfin.db"));
+        if (db > 4L * 1024 * 1024 * 1024)
+        {
+            Add(AreaServer, Sev.Tip, "The database is very large", SystemProbe.Size(db),
+                "Keep the activity log for 30–90 days, remove libraries you no longer use, and let \"Optimize database\" run weekly",
+                "A big database makes scans, searches and the home screen slower. Old activity entries and libraries of channels nobody watches are the usual causes.",
+                WhereTasks);
+        }
+
+        if (StorageWatch.FolderSize(_paths.ImageCachePath) is { } images && images.Bytes > 30L * 1024 * 1024 * 1024)
+        {
+            Add(AreaServer, Sev.Tip, "The image cache is very large", SystemProbe.Size(images.Bytes) + (images.Complete ? string.Empty : " or more"),
+                "Run \"Clean Cache Directory\", and keep the cache on an SSD",
+                "Resized artwork piles up here. It's rebuilt as needed, so clearing it is safe, and on a slow disk a huge cache makes artwork load slowly.",
+                WhereTasks);
+        }
+
+        long? imageLimit = SettingsReader.Number(server, "ParallelImageEncodingLimit");
+        if (imageLimit is 0 && hw.CpuThreads is > 0 and <= 4)
+        {
+            Add(AreaServer, Sev.Tip, "Image resizing can use every CPU thread", "Unlimited", "2",
+                $"With {hw.CpuThreads} CPU threads, a page full of new artwork can make playback stutter while images are resized. A limit of 2 keeps a thread free.",
+                WhereGeneral);
+        }
+
+        if (pluginCount >= 30)
+        {
+            Add(AreaServer, Sev.Tip, "Lots of plugins are installed", pluginCount.ToString(CultureInfo.InvariantCulture), "Only the ones you use",
+                "Each plugin loads at start-up and many run their own background work and scheduled tasks. Medic → Plugin directory lists ones you probably don't need any more.",
+                "Dashboard → Plugins");
         }
     }
 
