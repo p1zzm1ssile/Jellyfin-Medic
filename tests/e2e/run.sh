@@ -45,6 +45,10 @@ for t in "Two Tracks (2015)" "Keep Me Too (2016)"; do
   ffmpeg -loglevel error -f lavfi -i "testsrc=size=320x180:rate=10:duration=4" -f lavfi -i "sine=frequency=300:duration=4" -f lavfi -i "sine=frequency=500:duration=4" \
     -map 0 -map 1 -map 2 -c:v libx264 -preset ultrafast -c:a aac -metadata:s:a:0 language=eng -metadata:s:a:1 language=fre "$WORK/media/movies/$t/$t.mkv"
 done
+# A longer film, so a transcode runs long enough to be seen.
+mkdir -p "$WORK/media/movies/Long Film (2019)"
+ffmpeg -loglevel error -f lavfi -i "testsrc2=size=1280x720:rate=25:duration=900" -f lavfi -i "sine=duration=900" \
+  -c:v libx264 -preset ultrafast -c:a aac "$WORK/media/movies/Long Film (2019)/Long Film (2019).mkv"
 # One IPTV-style .strm entry, which track cleanup must never touch.
 mkdir -p "$WORK/media/movies/Stream Film (2020)"
 echo "http://127.0.0.1:9/stream.ts" > "$WORK/media/movies/Stream Film (2020)/Stream Film (2020).strm"

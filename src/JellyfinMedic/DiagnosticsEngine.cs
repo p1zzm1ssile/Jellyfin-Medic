@@ -183,6 +183,7 @@ public sealed class DiagnosticsEngine
         Guard(AreaServer, () => CheckServer(server, hw, libraries));
         Guard(AreaServer, () => CheckPerformance(server, hw, pluginReports.Count));
         Guard(AreaTheme, CheckTheme);
+        Guard(AreaServer, CheckResourceSpikes);
         Guard(AreaLibraries, () => CheckLibraries(libraries));
         Guard(AreaLiveTv, () => CheckLiveTv(liveTv));
         Guard(AreaNetwork, () => CheckNetwork(network));
@@ -769,6 +770,31 @@ public sealed class DiagnosticsEngine
                 "Everything after an unclosed comment is ignored, including any theme or tweaks below it.",
                 WhereCustomCss);
         }
+    }
+
+    // ---------- Resource spikes ----------
+
+    private void CheckResourceSpikes()
+    {
+        var recent = ResourceLog.Load(_paths).Where(e => e.TimeUtc > DateTime.UtcNow.AddDays(-7)).ToList();
+        if (recent.Count == 0)
+        {
+            return;
+        }
+
+        // The causes seen most often, without their percentages, so the same task counts once.
+        var top = recent.SelectMany(e => e.Causes)
+            .Select(c => System.Text.RegularExpressions.Regex.Replace(c, @" \(\d+%\)$", string.Empty))
+            .GroupBy(c => c)
+            .OrderByDescending(g => g.Count())
+            .Take(3)
+            .Select(g => $"{g.Key} ({g.Count()}×)");
+        var kinds = recent.GroupBy(e => e.Resource).Select(g => $"{g.Key} {g.Count()}×");
+        Add(AreaServer, recent.Count >= 10 ? Sev.Improve : Sev.Tip, $"Jellyfin ran flat out {recent.Count} time{(recent.Count == 1 ? string.Empty : "s")} this week",
+            string.Join(", ", kinds) + ". Most often running: " + string.Join("; ", top),
+            "Move the tasks named here to quieter times (Schedule), or let the GPU take the transcodes",
+            "Each time, Jellyfin and its FFmpeg processes used nearly all of a resource for at least 45 seconds, which is when playback buffers and pages load slowly. Medic → Dashboard lists each one and what was running.",
+            "Medic → Dashboard");
     }
 
     // ---------- General performance ----------

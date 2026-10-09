@@ -28,6 +28,9 @@ public class NowSnapshot
     public int ActiveDevices { get; set; }
 
     public List<string> RunningTasks { get; set; } = new();
+
+    // Jellyfin plus the FFmpeg processes it started, from the resource monitor. Null until its first reading.
+    public ResourceSample? Resources { get; set; }
 }
 
 /// <summary>What Jellyfin is doing right now, for the Dashboard. Cheap: no database queries.</summary>
@@ -109,7 +112,7 @@ public static class ServerNow
 
     public static NowSnapshot Snapshot(ISessionManager sessions, ITaskManager tasks, IApplicationPaths? paths = null)
     {
-        var snap = new NowSnapshot { CpuPercent = CpuPercent() };
+        var snap = new NowSnapshot { CpuPercent = CpuPercent(), Resources = ResourceMonitor.Latest };
         lock (Sync)
         {
             snap.CpuHistory = History.ToList();

@@ -147,6 +147,10 @@ public class MedicController : ControllerBase
     public ActionResult<List<AdminAlert>> GetAlerts() =>
         Ok(AdminAlerts.Current(_paths.LogDirectoryPath, _host, Plugin.Instance?.Configuration ?? new PluginConfiguration()));
 
+    /// <summary>Spells of heavy CPU, memory, disk or GPU use in the last 14 days, and what was running.</summary>
+    [HttpGet("ResourceEvents")]
+    public ActionResult<List<ResourceEvent>> GetResourceEvents() => Ok(ResourceLog.Load(_paths));
+
     /// <summary>Recent times the load guard stopped or restarted a task under memory pressure.</summary>
     [HttpGet("LoadGuard")]
     public ActionResult<List<LoadGuardEvent>> GetLoadGuard() => Ok(LoadGuardLog.Load(_paths));

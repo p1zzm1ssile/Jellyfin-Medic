@@ -150,6 +150,39 @@ await check('theme checks: late @import, raw GitHub address and unbalanced brace
     return titles.length + ' theme findings';
 });
 
+await check('resource monitor measures Jellyfin and its FFmpeg processes', async () => {
+    let res = null;
+    for (let i = 0; i < 25 && !res; i++) {
+        res = (await ok('/JellyfinMedic/Now')).Resources;
+        if (!res) await sleep(2000);
+    }
+    expect(res, 'no resource reading after 50 seconds');
+    expect(res.MemoryGb > 0.05 && res.MemoryGb < 64, 'odd memory ' + res.MemoryGb);
+    expect(res.CpuPercent >= 0 && res.CpuPercent <= 100, 'odd CPU ' + res.CpuPercent);
+    expect(Array.isArray(await ok('/JellyfinMedic/ResourceEvents')), 'events list');
+
+    // Start a transcode, and the FFmpeg process Jellyfin starts for it should be counted.
+    let film = null;
+    for (let i = 0; i < 30 && !film; i++) {
+        film = (await ok('/Items?Recursive=true&IncludeItemTypes=Movie&searchTerm=Long')).Items[0];
+        if (!film) await sleep(2000);
+    }
+    expect(film, 'Long Film not scanned');
+    const url = `/Videos/${film.Id}/main.m3u8?MediaSourceId=${film.Id}&VideoCodec=h264&AudioCodec=aac&VideoBitrate=4000000&MaxWidth=1280&PlaySessionId=e2e-tx`;
+    const playlist = await api('GET', url);
+    expect(playlist.status === 200, 'transcode playlist ' + playlist.status);
+    const segment = playlist.text.split('\n').find((l) => l && !l.startsWith('#'));
+    api('GET', `/Videos/${film.Id}/${segment}`).catch(() => {});
+    let seen = 0;
+    for (let i = 0; i < 20 && !seen; i++) {
+        await sleep(3000);
+        seen = (await ok('/JellyfinMedic/Now')).Resources?.FfmpegProcesses || 0;
+    }
+    await api('DELETE', '/Videos/ActiveEncodings?deviceId=medic-e2e&playSessionId=e2e-tx');
+    expect(seen > 0, 'the transcode\'s FFmpeg process was not counted');
+    return `CPU ${res.CpuPercent}%, ${res.MemoryGb} GB, disk ${res.DiskMBps} MB/s, GPU ${res.GpuPercent ?? 'n/a'}`;
+});
+
 await check('schedule plan uses quarter-hour slots', async () => {
     const cal = await ok('/JellyfinMedic/Schedule/GetCalendar');
     expect(cal.AvoidedSlots?.length === 96, 'expected 96 avoided slots, got ' + cal.AvoidedSlots?.length);
