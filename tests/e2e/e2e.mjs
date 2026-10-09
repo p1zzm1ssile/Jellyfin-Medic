@@ -206,6 +206,32 @@ await check('My picks page opens signed in', async () => {
     expect(errors.length === 0, errors.join(' | '));
 });
 
+await check('Picks: 30 + a genre explains a short list, and "Show me different ones" moves on', async () => {
+    await page.goto(JF + '/MedicPicks/Page');
+    await page.waitForSelector('#prefs:not([hidden])', { timeout: 30000 });
+    const names = () => page.evaluate(() => Array.from(document.querySelectorAll('#library li')).map((li) => li.querySelector('h3, strong, .title')?.textContent || li.textContent).join('|'));
+    await page.selectOption('#count', '30');
+    await page.click('#genres-summary');
+    await page.locator('#genre-list input').first().check();
+    await page.click('#apply');
+    await page.waitForFunction(() => /Updated just now/.test(document.getElementById('prefs-note').textContent), null, { timeout: 60000 });
+    expect(!(await page.locator('#apply').isDisabled()), 'Update button still disabled');
+    expect(await page.locator('#few-note').isVisible(), 'no note explaining the short list');
+
+    // Back to any genre, 5 at a time, then cycle.
+    await page.click('#genres-clear');
+    await page.selectOption('#count', '5');
+    await page.click('#apply');
+    await page.waitForFunction(() => /Updated just now/.test(document.getElementById('prefs-note').textContent), null, { timeout: 60000 });
+    const first = await names();
+    await page.evaluate(() => { document.getElementById('prefs-note').textContent = ''; });
+    await page.click('#more');
+    await page.waitForFunction(() => /Updated just now/.test(document.getElementById('prefs-note').textContent), null, { timeout: 60000 });
+    const second = await names();
+    expect(first && second && first !== second, `same picks after "Show me different ones": ${first}`);
+    return 'picks changed';
+});
+
 await browser.close();
 console.log(`${passed}/${passed + failed} passed`);
 process.exit(failed ? 1 : 0);

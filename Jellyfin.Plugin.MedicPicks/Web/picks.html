@@ -234,8 +234,10 @@
     </details>
     <div class="prefs-row">
       <button type="submit" class="action" id="apply">Update my picks</button>
+      <button type="button" class="link-btn" id="more">Show me different ones</button>
       <span class="prefs-note" id="prefs-note" aria-live="polite"></span>
     </div>
+    <p class="prefs-note" id="few-note" hidden></p>
     <p class="prefs-note" id="hidden-note" hidden>
       <span id="hidden-count"></span>
       <button type="button" class="link-btn" id="unhide">Show them again</button>
@@ -704,6 +706,14 @@
     var disc = data.discover || [];
     var linked = data.linked || [];
 
+    // Say so when fewer titles match than were asked for, so it doesn't look as if nothing happened.
+    var wanted = prefs.count || data.defaultCount || 0;
+    var fewNote = document.getElementById('few-note');
+    fewNote.hidden = !(lib.length && wanted && lib.length < wanted);
+    fewNote.textContent = lib.length === 1
+      ? 'Only 1 title on the server matches these choices. Choose more genres, or films and series, to see more.'
+      : 'Only ' + lib.length + ' titles on the server match these choices. Choose more genres, or films and series, to see more.';
+
     if (lib.length) {
       if (data.playlistName) {
         document.getElementById('library-note').textContent =
@@ -817,30 +827,41 @@
     genreSummary();
   });
 
-  // Saving the choices rebuilds this person's picks straight away; poll until the new ones are ready.
+  // Saving the choices rebuilds this person's picks straight away. Poll until the server says the rebuild
+  // has finished (it saves part-way through, so a new timestamp alone isn't enough), for up to 3 minutes.
   function rebuildAndWait(send, busyText) {
     var note = document.getElementById('prefs-note');
-    var apply = document.getElementById('apply');
-    apply.disabled = true;
+    var buttons = [document.getElementById('apply'), document.getElementById('more')];
+    var setBusy = function (busy) { buttons.forEach(function (b) { b.disabled = busy; }); };
+    setBusy(true);
     note.textContent = busyText;
     var before = lastGenerated;
+    var started = Date.now();
     send()
       .then(function () {
-        var tries = 0;
         (function poll() {
-          tries++;
+          var secs = Math.round((Date.now() - started) / 1000);
           getJson('Me', session).then(function (data) {
-            if (data.generatedUtc !== before || tries >= 20) {
+            var done = !data.rebuilding && (data.generatedUtc !== before || secs >= 10);
+            if (done || secs >= 180) {
               render(data);
-              apply.disabled = false;
+              setBusy(false);
+              var n = (data.inLibrary || []).length + (data.linked || []).length + (data.discover || []).length;
+              note.textContent = done
+                ? 'Updated just now: ' + n + (n === 1 ? ' pick.' : ' picks.')
+                : 'Still working on your picks. They\u2019ll appear when you reload this page.';
             } else {
-              setTimeout(poll, 2000);
+              note.textContent = busyText + (secs >= 5 ? ' (' + secs + 's)' : '');
+              setTimeout(poll, 1500);
             }
-          }).catch(function () { apply.disabled = false; });
+          }).catch(function () {
+            setBusy(false);
+            note.textContent = 'Couldn\u2019t check on your picks just now. Reload the page to see them.';
+          });
         })();
       })
       .catch(function () {
-        apply.disabled = false;
+        setBusy(false);
         note.textContent = 'Couldn\u2019t save that just now. Try again.';
       });
   }
@@ -854,6 +875,10 @@
       genres: chosenGenres()
     };
     rebuildAndWait(function () { return postJson('Me/Preferences', body, session); }, 'Updating your picks\u2026');
+  });
+
+  document.getElementById('more').addEventListener('click', function () {
+    rebuildAndWait(function () { return postJson('Me/More', {}, session); }, 'Finding different ones\u2026');
   });
 
   document.getElementById('unhide').addEventListener('click', function () {

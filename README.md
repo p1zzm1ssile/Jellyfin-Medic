@@ -109,7 +109,7 @@ Personal picks for everyone on your server, built from what each person actually
 - **My requests.** Everyone sees what they've asked for in Seerr and where it's got to: waiting for approval, looking for a download, downloading (how far, and roughly when it'll be ready), or ready to watch with a Play button. Progress comes from Sonarr and Radarr through Seerr, so they need to be connected in Seerr. Each person only sees their own; admins also see everyone's requests waiting for approval, and can approve or decline them on the same page.
 - **Ignore.** "Ignore – don't recommend again" on any pick removes it straight away, and it's never suggested again. "Show them again" brings ignored titles back.
 
-Choices are made in the settings box at the top of the My picks page, and **Update my picks** rebuilds that person's picks straight away. What's new in each version is in [Medic Picks' changelog](Jellyfin.Plugin.MedicPicks/CHANGELOG.md).
+Choices are made in the settings box at the top of the My picks page, and **Update my picks** rebuilds that person's picks straight away. **Show me different ones** swaps them for the next best, so people can cycle through suggestions. What's new in each version is in [Medic Picks' changelog](Jellyfin.Plugin.MedicPicks/CHANGELOG.md).
 
 Picks are rebuilt every night by the **Build personal picks** scheduled task. Picks from your library follow each user's library access and parental controls.
 
