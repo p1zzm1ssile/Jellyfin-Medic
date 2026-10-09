@@ -11,6 +11,7 @@ Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 
 ### Fixed
 - **The schedule uses 15-minute slots properly.** Medic planned in 15-minute blocks, but judged how busy each one was by the hour, so a block at 02:00 looked no better than one at 02:15 and tasks kept landing on the hour. It now knows how busy each quarter hour is: straight away from a smooth curve through your hourly viewing, then more exactly as it records each quarter hour (it starts doing this now). Press Preview, then Apply on the Schedule tab to use it.
+- **Quick tasks take one 15-minute slot.** Every task used to hold at least 30 minutes, even one that finishes in a minute, so tasks stepped along every half hour or hour. A quick task now takes a single slot with at least 5 minutes spare (longer tasks still get a quarter of their run time spare), so the night's tasks run back to back and finish sooner.
 - **The "Never schedule tasks between" window goes in 15-minute steps**, for example 18:30 to 22:45. Your existing hours carry over.
 - **The Schedule shading is drawn per quarter hour**, to match what the planner uses.
 - **"Tasks run while people are usually watching" shows each task's real time**, such as 04:15, instead of rounding it down to 04:00.
