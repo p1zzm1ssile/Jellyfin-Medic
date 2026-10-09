@@ -43,6 +43,16 @@ done
 mkdir -p "$WORK/media/movies/Stream Film (2020)"
 echo "http://127.0.0.1:9/stream.ts" > "$WORK/media/movies/Stream Film (2020)/Stream Film (2020).strm"
 
+# Live TV channels for the IPTV checks, some shown in several qualities.
+mkdir -p "$WORK/media/livetv"
+{
+  echo "#EXTM3U"
+  n=0
+  for ch in "BBC One" "BBC One HD" "UK: BBC One FHD" "Sky News" "Sky News HD" "Channel 4" "Film4" "Film4 +1" "Dave"; do
+    n=$((n + 1)); echo "#EXTINF:-1 tvg-id=\"c$n\" tvg-name=\"$ch\",$ch"; echo "http://127.0.0.1:9/$n.ts"
+  done
+} > "$WORK/media/livetv/channels.m3u"
+
 echo "== Starting Jellyfin ($IMAGE)"
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" -p "$PORT:8096" \

@@ -130,6 +130,23 @@ await check('avoid window saves in 15-minute steps', async () => {
     await api('POST', '/JellyfinMedic/MedicSettings', { ...s, AvoidEnabled: false });
 });
 
+await check('IPTV lists each duplicate channel and its copies', async () => {
+    const added = await api('POST', '/LiveTv/TunerHosts', { Type: 'm3u', Url: '/media/livetv/channels.m3u', FriendlyName: 'e2e', TunerCount: 1 });
+    expect(added.status === 200, 'adding the M3U tuner failed ' + added.status);
+    let channels = 0;
+    for (let i = 0; i < 30 && channels < 9; i++) {
+        await sleep(2000);
+        channels = (await api('GET', '/LiveTv/Channels')).json?.TotalRecordCount || 0;
+    }
+    expect(channels >= 9, `only ${channels} channels`);
+    const r = await api('POST', '/JellyfinMedic/Iptv');
+    expect(r.status === 200, 'IPTV analysis ' + r.status);
+    const dups = r.json.Channels.Duplicates || [];
+    const bbc = dups.find((d) => /bbc one/i.test(d.Name));
+    expect(bbc && bbc.Versions.length === 3, 'BBC One copies: ' + JSON.stringify(dups));
+    return `${dups.length} channels with copies`;
+});
+
 await check('Medic Picks builds picks from watch history', async () => {
     const items = (await ok(`/Items?Recursive=true&IncludeItemTypes=Movie&SortBy=SortName&UserId=${ctx.userId}`)).Items;
     for (const item of items.slice(0, 4)) await api('POST', `/UserPlayedItems/${item.Id}?userId=${ctx.userId}`);
