@@ -17,6 +17,7 @@ Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 - **Leave chosen folders, shows or films out of track cleanup.** Under Track settings, "Leave these alone" takes one entry per line: a folder (such as /media/anime) or part of a show's, film's or file's name. Anything matching is never scanned or changed. IPTV and other streamed files were already skipped.
 
 ### Changed
+- **More precise GPU advice.** With a GPU in use, Medic now also checks that H264 and HEVC are both decoded on it, that 10-bit HEVC (most HDR) is decoded on it, whether transcodes can be made in HEVC for apps that play it (about half the bitrate for remote viewers), Intel's low-power encoders on QuickSync and VAAPI, and hardware encoding for trickplay. Without a GPU, it flags slow software presets and suggests key-frame-only trickplay, which is many times faster. Medic can't switch the GPU on for you; each finding says which setting to change.
 - **IPTV lists every duplicate channel.** Instead of just saying some live channels appear several times, the IPTV tab now lists each channel with copies and the name of every copy (for example "BBC One · BBC One HD · UK: BBC One FHD"), with a filter box, so you can see which to keep. The Dispatcharr advice is gone.
 
 ### Fixed

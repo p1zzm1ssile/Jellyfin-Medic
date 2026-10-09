@@ -52,6 +52,7 @@ public sealed class DiagnosticsEngine
     private const string AreaUsage = "Usage & peak times";
 
     private const string WhereTranscoding = "Dashboard → Playback → Transcoding";
+    private const string WhereTrickplay = "Dashboard → Playback → Trickplay";
     // Where to change how Jellyfin is run (devices, storage, memory), worded for this platform.
     private static string WhereDocker => HostPlatform.WhereRunSettings;
 
@@ -430,6 +431,59 @@ public sealed class DiagnosticsEngine
                     "Tick H264 and HEVC, plus VP9 and AV1 if your GPU supports them",
                     "With nothing ticked, the CPU decodes every video even though the GPU could.", WhereTranscoding);
             }
+            else if (codecs is not null && deviceThere)
+            {
+                var missing = new[] { "h264", "hevc" }.Where(c => !codecs.Contains(c, StringComparer.OrdinalIgnoreCase)).ToList();
+                if (missing.Count > 0)
+                {
+                    Add(AreaHardware, Sev.Improve, $"{string.Join(" and ", missing.Select(c => c.ToUpperInvariant()))} aren't decoded on the GPU",
+                        "Ticked: " + string.Join(", ", codecs.Select(c => c.ToUpperInvariant())), "Tick H264 and HEVC",
+                        "Nearly all films and series are H264 or HEVC. Unticked, the CPU decodes them before the GPU encodes, which is the slow half of a transcode.", WhereTranscoding);
+                }
+            }
+
+            if (deviceThere && SettingsReader.Bool(enc, "EnableDecodingColorDepth10Hevc") == false)
+            {
+                Add(AreaHardware, Sev.Improve, "10-bit HEVC is decoded on the CPU", "Off", "Enable 10-bit hardware decoding for HEVC: on",
+                    "Most HDR and many recent films are 10-bit HEVC. Decoding them on the CPU is heavy, and 4K HDR can stutter. Every GPU Jellyfin supports from the last several years can do it.", WhereTranscoding);
+            }
+
+            if (deviceThere && SettingsReader.Bool(enc, "AllowHevcEncoding") == false && SettingsReader.Bool(enc, "EnableHardwareEncoding") != false)
+            {
+                Add(AreaHardware, Sev.Tip, "Transcodes are only made as H264", "HEVC encoding off", "Allow encoding in HEVC format: on",
+                    "Apps that can play HEVC get the same picture at about half the bitrate, which helps remote viewers on slow connections. Apps that can't still get H264.", WhereTranscoding);
+            }
+
+            if (deviceThere && hw.GpuVendor == "intel" && hwType is "qsv" or "vaapi"
+                && SettingsReader.Bool(enc, "EnableIntelLowPowerH264HwEncoder") == false
+                && SettingsReader.Bool(enc, "EnableIntelLowPowerHevcHwEncoder") == false)
+            {
+                Add(AreaHardware, Sev.Tip, "Intel low-power encoding is off", "Off", "Enable Intel Low-Power H.264 and HEVC encoders: on",
+                    "On 8th-generation Intel and later, the low-power encoder is faster and leaves the rest of the GPU free for tone mapping and more streams. It needs the GuC/HuC firmware on the host, which most modern Linux systems load by default.", WhereTranscoding);
+            }
+
+            // Trickplay images are made with the same FFmpeg, and can use the GPU too.
+            var server = (object)_config.Configuration;
+            // (Trickplay on the CPU altogether is checked under Server.)
+            if (SettingsReader.Bool(server, "TrickplayOptions.EnableHwAcceleration") != false
+                && SettingsReader.Bool(server, "TrickplayOptions.EnableHwEncoding") == false)
+            {
+                Add(AreaHardware, Sev.Tip, "Trickplay images are encoded on the CPU", "Hardware encoding for trickplay: off", "On (if your GPU supports MJPEG encoding)",
+                    "Intel and recent AMD GPUs can also encode the thumbnails, which takes the last part of the work off the CPU.", WhereTrickplay);
+            }
+        }
+
+        string preset = (SettingsReader.Text(enc, "EncoderPreset") ?? string.Empty).Trim().ToLowerInvariant();
+        if (!hwOn && preset is "slow" or "slower" or "veryslow")
+        {
+            Add(AreaHardware, Sev.Improve, "Software transcodes use a slow preset", preset, "Auto, or veryfast",
+                "With no GPU doing the work, a slow preset makes each transcode use far more CPU for a small gain in quality, so fewer people can watch at once.", WhereTranscoding);
+        }
+
+        if (!hwOn && SettingsReader.Bool((object)_config.Configuration, "TrickplayOptions.EnableKeyFrameOnlyExtraction") == false)
+        {
+            Add(AreaHardware, Sev.Tip, "Trickplay reads every frame", "Key frames only: off", "On",
+                "Without a GPU, making trickplay images from key frames only is many times faster. The thumbnails are a little less exact.", WhereTrickplay);
         }
 
         bool? toneMapping = SettingsReader.Bool(enc, "EnableTonemapping");

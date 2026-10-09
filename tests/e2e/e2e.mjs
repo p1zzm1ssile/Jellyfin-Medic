@@ -125,6 +125,18 @@ await check('storage: library drives and growing folders are listed', async () =
     return drive.Value;
 });
 
+await check('GPU/CPU advice: a slow software preset and full-frame trickplay are flagged', async () => {
+    const enc = await ok('/System/Configuration/encoding');
+    const cfg = await ok('/System/Configuration');
+    await api('POST', '/System/Configuration/encoding', { ...enc, EncoderPreset: 'slower' });
+    await api('POST', '/System/Configuration', { ...cfg, TrickplayOptions: { ...cfg.TrickplayOptions, EnableKeyFrameOnlyExtraction: false } });
+    const titles = ((await ok('/JellyfinMedic/Report')).Findings || []).map((f) => f.Title);
+    await api('POST', '/System/Configuration/encoding', enc);
+    await api('POST', '/System/Configuration', cfg);
+    expect(titles.includes('Software transcodes use a slow preset'), 'no preset finding: ' + titles.join(' | '));
+    expect(titles.includes('Trickplay reads every frame'), 'no trickplay finding');
+});
+
 await check('schedule plan uses quarter-hour slots', async () => {
     const cal = await ok('/JellyfinMedic/Schedule/GetCalendar');
     expect(cal.AvoidedSlots?.length === 96, 'expected 96 avoided slots, got ' + cal.AvoidedSlots?.length);
