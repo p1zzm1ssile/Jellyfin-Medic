@@ -167,7 +167,7 @@ public sealed class DiagnosticsEngine
         AddSpecs(hw, encoding, libraries, pluginReports.Count);
 
         Guard(AreaHardware, () => CheckTranscoding(hw, encoding, usage));
-        Guard(AreaStorage, () => CheckStorage());
+        Guard(AreaStorage, () => CheckStorage(libraries, encoding));
         Guard(AreaServer, () => CheckServer(server, hw, libraries));
         Guard(AreaLibraries, () => CheckLibraries(libraries));
         Guard(AreaLiveTv, () => CheckLiveTv(liveTv));
@@ -296,6 +296,38 @@ public sealed class DiagnosticsEngine
         }
 
         Spec("Storage", "Log folder size", SystemProbe.Size(SystemProbe.DirectorySize(_paths.LogDirectoryPath)));
+
+        // Every library drive, and how fast each drive is filling.
+        foreach (var d in WatchedDrives(libraries, encoding))
+        {
+            string rate = d.GbPerDay switch
+            {
+                null => "fill rate known after 3 days",
+                <= 0.05 => "not filling up",
+                { } r => $"using about {SystemProbe.Gb(r)} a day" + (d.DaysToFull is { } days ? $", full in {Weeks(days)}" : string.Empty)
+            };
+            Spec("Storage", $"Drive for {d.Holds}", $"{SystemProbe.Gb(d.FreeGb)} free of {SystemProbe.Gb(d.TotalGb)} ({rate})");
+        }
+
+        // Folders that quietly grow. Measured in the background, as they can hold millions of files.
+        var serverPaths = _paths as IServerApplicationPaths;
+        foreach (var (label, path) in new[]
+                 {
+                     ("Metadata folder", serverPaths?.InternalMetadataPath),
+                     ("Trickplay images", _paths.TrickplayPath),
+                     ("Image cache", _paths.ImageCachePath),
+                     ("Cache folder (all)", _paths.CachePath)
+                 })
+        {
+            if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+            {
+                continue;
+            }
+
+            Spec("Storage", label, StorageWatch.FolderSize(path) is { } size
+                ? SystemProbe.Size(size.Bytes) + (size.Complete ? string.Empty : " or more")
+                : "measuring, check back in a few minutes");
+        }
 
         Spec("Libraries", "Libraries", libraries.Count.ToString(CultureInfo.InvariantCulture));
         long total = libraries.Sum(l => l.ItemCount ?? 0);
@@ -488,8 +520,57 @@ public sealed class DiagnosticsEngine
 
     // ---------- Storage ----------
 
-    private void CheckStorage()
+    private List<DriveStatus>? _drives;
+
+    /// <summary>Config, cache, transcode and library drives, each once, with today's reading saved.</summary>
+    private List<DriveStatus> WatchedDrives(List<LibraryFacts> libraries, object? encoding)
     {
+        if (_drives is not null)
+        {
+            return _drives;
+        }
+
+        var folders = new List<(string, string)>
+        {
+            ("config & database", _paths.DataPath),
+            ("cache", _paths.CachePath),
+            ("transcodes", TranscodePath(encoding))
+        };
+        folders.AddRange(libraries.Where(l => !l.IsStreamed).SelectMany(l => l.Locations.Select(loc => (l.Name, loc))));
+        _drives = StorageWatch.Drives(folders);
+        StorageWatch.Record(_paths.PluginConfigurationsPath, _drives);
+        return _drives;
+    }
+
+    private static string Weeks(double days) =>
+        days < 14 ? $"about {Math.Max(1, Math.Round(days)):0} days" : days < 120 ? $"about {Math.Round(days / 7):0} weeks" : $"about {Math.Round(days / 30):0} months";
+
+    private void CheckStorage(List<LibraryFacts> libraries, object? encoding)
+    {
+        foreach (var d in WatchedDrives(libraries, encoding))
+        {
+            bool holdsConfig = d.Holds.Contains("config & database", StringComparison.Ordinal) || d.Holds.Contains("cache", StringComparison.Ordinal);
+            double freePct = d.TotalGb > 0 ? d.FreeGb / d.TotalGb * 100 : 100;
+            if (!holdsConfig && (freePct < 1 || d.FreeGb < 5))
+            {
+                Add(AreaStorage, Sev.Problem, $"The drive for {d.Holds} is full", $"{SystemProbe.Gb(d.FreeGb)} free of {SystemProbe.Gb(d.TotalGb)}",
+                    "Free some space or add a drive", "New downloads and track cleanup will fail, and Jellyfin can't save images or subtitles next to your files.", d.ExamplePath);
+            }
+            else if (!holdsConfig && (freePct < 3 || d.FreeGb < 25))
+            {
+                Add(AreaStorage, Sev.Improve, $"The drive for {d.Holds} is nearly full", $"{SystemProbe.Gb(d.FreeGb)} free of {SystemProbe.Gb(d.TotalGb)}",
+                    "Keep at least 3% or 25 GB free", "A full drive stops new files arriving and can stop Jellyfin saving artwork and subtitles.", d.ExamplePath);
+            }
+
+            if (d.DaysToFull is { } days && days < 30)
+            {
+                Add(AreaStorage, days < 7 ? Sev.Problem : Sev.Improve, $"The drive for {d.Holds} will be full in {Weeks(days)}",
+                    $"{SystemProbe.Gb(d.FreeGb)} free, using about {SystemProbe.Gb(d.GbPerDay!.Value)} a day",
+                    "Free some space, add a drive, or find what's filling it (for example trickplay images or old downloads)",
+                    "At this rate the drive runs out soon, and Jellyfin, downloads and track cleanup all need room to write.", d.ExamplePath);
+            }
+        }
+
         if (SystemProbe.Space(_paths.DataPath) is { } data)
         {
             if (data.FreeGb < 5)
