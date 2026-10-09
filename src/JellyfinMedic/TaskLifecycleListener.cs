@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
+using Jellyfin.Data.Events;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -37,6 +38,7 @@ public sealed class TaskLifecycleListener : IHostedService
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _taskManager.TaskCompleted += OnTaskCompleted;
+        _taskManager.TaskExecuting += OnTaskExecuting;
         _logger.LogInformation("Jellyfin Medic: listening for scheduled task results.");
         return Task.CompletedTask;
     }
@@ -44,12 +46,17 @@ public sealed class TaskLifecycleListener : IHostedService
     public Task StopAsync(CancellationToken cancellationToken)
     {
         _taskManager.TaskCompleted -= OnTaskCompleted;
+        _taskManager.TaskExecuting -= OnTaskExecuting;
         return Task.CompletedTask;
     }
+
+    private void OnTaskExecuting(object? sender, GenericEventArgs<IScheduledTaskWorker> e) =>
+        ServerNow.TaskStarted(e.Argument.Id.ToString());
 
     private void OnTaskCompleted(object? sender, TaskCompletionEventArgs e)
     {
         // Never let an error in here bubble back into Jellyfin's task engine.
+        ServerNow.TaskFinished(e.Task.Id.ToString());
         try
         {
             HandleCompletion(e);
