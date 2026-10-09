@@ -6,13 +6,24 @@ using JellyfinMedic.Api;
 namespace JellyfinMedic.Services;
 
 /// <summary>
-/// How busy each hour of the week usually is (average number of people watching), used by the
-/// planner to put heavy tasks in quiet spells. Comes from Medic's own viewing records once there
-/// are a few days of them; until then a typical household pattern is used (quiet overnight,
-/// busy in the evenings). Hours the admin has told Medic to avoid are never used.
+/// How busy each quarter hour of the week usually is (average number of people watching), used by
+/// the planner to put heavy tasks in quiet spells. Comes from Medic's own viewing records once there
+/// are a few days of them; until then a typical household pattern is used (quiet overnight, busy in
+/// the evenings). Times the admin has told Medic to avoid are never used.
+///
+/// Viewing is recorded per hour and per quarter hour. Each quarter hour starts from a smooth curve
+/// through the hourly averages, and leans on its own samples as they build up. Without that the
+/// cost is flat within each hour, so the quietest start always lands on the hour.
 /// </summary>
 public sealed class BusyProfile
 {
+    public const int SlotMinutes = 15;
+    public const int SlotsPerDay = 24 * 60 / SlotMinutes;
+    private const int SlotsPerWeek = 7 * SlotsPerDay;
+
+    // Samples of one quarter hour before its own average is trusted fully (about three weeks).
+    private const double QuarterTrustSamples = 9;
+
     // Typical household, by hour of day, in "people watching". Only the shape matters.
     private static readonly double[] Typical =
     {
@@ -20,18 +31,26 @@ public sealed class BusyProfile
         0.35, 0.35, 0.35, 0.4, 0.5, 0.8, 1, 1, 1, 1, 0.9, 0.8
     };
 
-    private readonly double[] _load = new double[168]; // index = Monday-first day * 24 + hour
-    private readonly bool[] _avoid = new bool[24];
+    private readonly double[] _load = new double[SlotsPerWeek]; // index = Monday-first day * 96 + quarter hour
+    private readonly bool[] _avoid = new bool[SlotsPerDay];
 
     public bool FromViewing { get; private set; }
 
     public string Summary { get; private set; } = string.Empty;
 
-    public bool HasAvoidedHours => _avoid.Any(a => a);
+    public bool HasAvoidedTimes => _avoid.Any(a => a);
 
     public string PlacementNote => FromViewing
         ? "Timed for a quiet spell in your viewing pattern."
         : "Timed for the usual quiet hours until Medic has learned when people watch.";
+
+    /// <summary>Start of the avoided window, in minutes after midnight.</summary>
+    public static int AvoidStartMinute(PluginConfiguration settings) =>
+        Math.Clamp(settings.AvoidStartMinute ?? settings.AvoidStartHour * 60, 0, 1439) / SlotMinutes * SlotMinutes;
+
+    /// <summary>End of the avoided window, in minutes after midnight (24:00 is 00:00).</summary>
+    public static int AvoidEndMinute(PluginConfiguration settings) =>
+        (Math.Clamp(settings.AvoidEndMinute ?? settings.AvoidEndHour * 60, 0, 1440) % 1440) / SlotMinutes * SlotMinutes;
 
     public static BusyProfile Create(UsageSummary usage, PluginConfiguration? settings)
     {
@@ -39,21 +58,22 @@ public sealed class BusyProfile
 
         if (settings is { AvoidEnabled: true })
         {
-            int from = Math.Clamp(settings.AvoidStartHour, 0, 23);
-            int to = ((settings.AvoidEndHour % 24) + 24) % 24;
+            int from = AvoidStartMinute(settings) / SlotMinutes;
+            int to = AvoidEndMinute(settings) / SlotMinutes;
             if (from != to)
             {
                 // Wraps past midnight if needed, e.g. 22:00 to 02:00.
-                int h = from;
+                int slot = from;
                 do
                 {
-                    profile._avoid[h] = true;
-                    h = (h + 1) % 24;
+                    profile._avoid[slot] = true;
+                    slot = (slot + 1) % SlotsPerDay;
                 }
-                while (h != to);
+                while (slot != to);
             }
         }
 
+        var hourly = new double[168];
         bool haveData = usage.Ready && usage.AverageStreams.Count == 168;
         if (haveData)
         {
@@ -69,7 +89,7 @@ public sealed class BusyProfile
 
             for (int i = 0; i < 168; i++)
             {
-                profile._load[i] = samples[i] > 0 ? usage.AverageStreams[i] : hourAverage[i % 24];
+                hourly[i] = samples[i] > 0 ? usage.AverageStreams[i] : hourAverage[i % 24];
             }
 
             profile.FromViewing = true;
@@ -79,21 +99,43 @@ public sealed class BusyProfile
         {
             for (int i = 0; i < 168; i++)
             {
-                profile._load[i] = Typical[i % 24];
+                hourly[i] = Typical[i % 24];
             }
 
             profile.Summary = $"Still learning when people watch ({(int)usage.HoursCollected} hours recorded). Until then Medic assumes a typical household: quiet overnight, busy in the evenings.";
         }
 
-        if (profile.HasAvoidedHours)
+        bool haveQuarters = haveData && usage.QuarterAverageStreams.Count == SlotsPerWeek && usage.QuarterSampleCounts.Count == SlotsPerWeek;
+        for (int i = 0; i < SlotsPerWeek; i++)
         {
-            profile.Summary += $" Never schedules tasks between {settings!.AvoidStartHour:00}:00 and {settings.AvoidEndHour % 24:00}:00.";
+            // Straight line between the middles of the hours either side, wrapping round the week.
+            double hourPos = (i + 0.5) * SlotMinutes / 60.0 - 0.5;
+            int before = (int)Math.Floor(hourPos);
+            double t = hourPos - before;
+            double smooth = (hourly[(before + 168) % 168] * (1 - t)) + (hourly[(before + 1) % 168] * t);
+
+            double trust = haveQuarters ? Math.Min(1, usage.QuarterSampleCounts[i] / QuarterTrustSamples) : 0;
+            profile._load[i] = trust > 0
+                ? (usage.QuarterAverageStreams[i] * trust) + (smooth * (1 - trust))
+                : smooth;
+        }
+
+        if (profile.HasAvoidedTimes)
+        {
+            profile.Summary += $" Never schedules tasks between {Clock(AvoidStartMinute(settings!))} and {Clock(AvoidEndMinute(settings!))}.";
         }
 
         return profile;
     }
 
-    public double At(DayOfWeek day, int hour) => _load[ScheduleStorage.MondayFirst(day) * 24 + (((hour % 24) + 24) % 24)];
+    private static string Clock(int minute) => ScheduleStorage.Hhmm(TimeSpan.FromMinutes(minute));
+
+    /// <summary>People usually watching at a time of day; minutes past midnight run on into the next day.</summary>
+    public double At(DayOfWeek day, int minute)
+    {
+        int index = (ScheduleStorage.MondayFirst(day) * SlotsPerDay) + (int)Math.Floor(minute / (double)SlotMinutes);
+        return _load[((index % SlotsPerWeek) + SlotsPerWeek) % SlotsPerWeek];
+    }
 
     /// <summary>Expected people watching x hours over a run starting at a cell.</summary>
     public double CostOver(DayOfWeek day, int startCell, int cells, int cellMinutes)
@@ -101,40 +143,39 @@ public sealed class BusyProfile
         double sum = 0;
         for (int c = startCell; c < startCell + cells; c++)
         {
-            sum += At(day, c * cellMinutes / 60) * cellMinutes / 60.0;
+            sum += At(day, c * cellMinutes) * cellMinutes / 60.0;
         }
 
         return sum;
     }
 
-    /// <summary>The busiest hour a run would overlap, and how busy it is.</summary>
-    public (double Peak, int Hour) PeakOver(DayOfWeek day, int startMinute, int minutes)
+    /// <summary>The busiest quarter hour a run would overlap (minutes past midnight), and how busy it is.</summary>
+    public (double Peak, int Minute) PeakOver(DayOfWeek day, int startMinute, int minutes)
     {
         double peak = 0;
-        int peakHour = startMinute / 60;
-        for (int m = startMinute; m < startMinute + Math.Max(1, minutes); m += 15)
+        int peakMinute = startMinute / SlotMinutes * SlotMinutes;
+        for (int m = startMinute; m < startMinute + Math.Max(1, minutes); m += SlotMinutes)
         {
-            int hour = m / 60 % 24;
-            double value = At(day, hour);
+            double value = At(day, m);
             if (value > peak)
             {
                 peak = value;
-                peakHour = hour;
+                peakMinute = m / SlotMinutes * SlotMinutes % 1440;
             }
         }
 
-        return (peak, peakHour);
+        return (peak, peakMinute);
     }
 
-    /// <summary>Marks the avoided hours as taken on every day, so nothing is placed there.</summary>
-    public void BlockAvoidedHours(bool[,] grid, int cellMinutes)
+    /// <summary>Marks the avoided times as taken on every day, so nothing is placed there.</summary>
+    public void BlockAvoidedTimes(bool[,] grid, int cellMinutes)
     {
         int cellsPerDay = grid.GetLength(1);
         for (int d = 0; d < 7; d++)
         {
             for (int cell = 0; cell < cellsPerDay; cell++)
             {
-                if (_avoid[cell * cellMinutes / 60 % 24])
+                if (_avoid[cell * cellMinutes / SlotMinutes % SlotsPerDay])
                 {
                     grid[d, cell] = true;
                 }
@@ -142,12 +183,12 @@ public sealed class BusyProfile
         }
     }
 
-    /// <summary>The 24 hourly values for one day, scaled 0 to 1 for shading the timeline.</summary>
+    /// <summary>The 96 quarter-hour values for one day, scaled 0 to 1 for shading the timeline.</summary>
     public List<double> Shading(DayOfWeek day)
     {
         double max = Math.Max(0.5, _load.Max());
-        return Enumerable.Range(0, 24).Select(h => Math.Round(Math.Min(1, At(day, h) / max), 2)).ToList();
+        return Enumerable.Range(0, SlotsPerDay).Select(s => Math.Round(Math.Min(1, At(day, s * SlotMinutes) / max), 2)).ToList();
     }
 
-    public List<bool> AvoidedHours() => _avoid.ToList();
+    public List<bool> AvoidedSlots() => _avoid.ToList();
 }

@@ -74,15 +74,18 @@ A single screen of tiles:
 -------------------------------------------------------------------------------
 
   - Week-at-a-glance timeline. Each task is a coloured block on its day.
-  - Shading behind each hour shows how busy that hour usually is, and a red
+  - Shading behind each quarter hour shows how busy it usually is, and a red
     line marks "now". Click any task for its details.
   - Learns your quiet hours from your own viewing pattern (sampled every
     5 minutes, anonymously: only how many people are watching).
+  - Plans in 15-minute slots, using how busy each quarter hour is, so tasks
+    can start at :15, :30 or :45 as well as on the hour.
   - Can run a task at different times on different days.
   - Preview shows the proposed plan before you Apply it.
   - Every change is backed up first and can be restored (undo).
-  - Avoid window: never schedule tasks between hours you choose (for
-    example 18:00 to 23:00), wrapping past midnight if needed.
+  - Avoid window: never schedule tasks between times you choose, in
+    15-minute steps (for example 18:30 to 22:45), wrapping past midnight
+    if needed.
   - Stage order: each night runs the library scan first, then tasks that
     depend on it (guide, chapter images, trickplay), then upkeep, with
     monthly jobs last. The schedule list reads in the order the night runs.
@@ -358,7 +361,7 @@ Running it:
 -------------------------------------------------------------------------------
 
   - Medic's own options, each with a "?" button explaining what it does:
-      * Avoid window (on/off, start and end hour).
+      * Avoid window (on/off, start and end time in 15-minute steps).
       * Inactive account threshold (days).
       * Load guard (on/off) and memory ceiling (%).
       * Scheduling help mode (Off or Suggest).

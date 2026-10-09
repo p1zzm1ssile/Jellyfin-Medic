@@ -428,6 +428,7 @@ public class MedicController : ControllerBase
         return Ok(new MedicSettingsDto
         {
             AvoidEnabled = c.AvoidEnabled, AvoidStartHour = c.AvoidStartHour, AvoidEndHour = c.AvoidEndHour,
+            AvoidStartMinute = BusyProfile.AvoidStartMinute(c), AvoidEndMinute = BusyProfile.AvoidEndMinute(c),
             InactiveUserDays = c.InactiveUserDays, LoadGuardEnabled = c.LoadGuardEnabled,
             MemoryCeilingPercent = c.MemoryCeilingPercent, ScheduleMode = c.ScheduleMode,
             TracksKeepLanguages = c.TracksKeepLanguages, TracksRemoveUndetermined = c.TracksRemoveUndetermined,
@@ -458,8 +459,12 @@ public class MedicController : ControllerBase
 
         var c = Plugin.Instance.Configuration;
         c.AvoidEnabled = settings.AvoidEnabled;
-        c.AvoidStartHour = Math.Clamp(settings.AvoidStartHour, 0, 23);
-        c.AvoidEndHour = Math.Clamp(settings.AvoidEndHour, 0, 24);
+        int avoidStart = Math.Clamp(settings.AvoidStartMinute ?? settings.AvoidStartHour * 60, 0, 1439) / 15 * 15;
+        int avoidEnd = (Math.Clamp(settings.AvoidEndMinute ?? settings.AvoidEndHour * 60, 0, 1440) % 1440) / 15 * 15;
+        c.AvoidStartMinute = avoidStart;
+        c.AvoidEndMinute = avoidEnd;
+        c.AvoidStartHour = avoidStart / 60;
+        c.AvoidEndHour = avoidEnd / 60;
         c.InactiveUserDays = Math.Clamp(settings.InactiveUserDays, 7, 3650);
         c.LoadGuardEnabled = settings.LoadGuardEnabled;
         c.MemoryCeilingPercent = Math.Clamp(settings.MemoryCeilingPercent, 60, 95);

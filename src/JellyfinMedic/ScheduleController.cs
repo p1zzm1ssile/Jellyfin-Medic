@@ -91,7 +91,8 @@ public class ScheduleController : ControllerBase
             TodayIndex = weekOffset == 0 ? ScheduleStorage.MondayFirst(today.DayOfWeek) : -1,
             BusySummary = busy.Summary,
             FromViewing = busy.FromViewing,
-            AvoidedHours = busy.AvoidedHours(),
+            SlotMinutes = BusyProfile.SlotMinutes,
+            AvoidedSlots = busy.AvoidedSlots(),
             Days = days
         });
     }

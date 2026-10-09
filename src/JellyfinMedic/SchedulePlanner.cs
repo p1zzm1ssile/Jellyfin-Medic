@@ -152,7 +152,7 @@ public static class SchedulePlanner
         BusyProfile busy)
     {
         var grid = new bool[7, CellsPerDay];
-        busy.BlockAvoidedHours(grid, CellMinutes);
+        busy.BlockAvoidedTimes(grid, CellMinutes);
 
         var planned = new List<PlannedTask>();
         var leftAlone = new List<PlannedTask>();
@@ -267,13 +267,13 @@ public static class SchedulePlanner
         var warnings = CommonWarnings(c);
         if (busy.FromViewing)
         {
-            var (peak, peakHour) = slots
+            var (peak, peakMinute) = slots
                 .Select(sl => busy.PeakOver(sl.Day, sl.Start * CellMinutes, (int)Math.Ceiling(estimate)))
                 .OrderByDescending(x => x.Peak)
                 .First();
             if (peak >= BusyThreshold)
             {
-                warnings.Insert(0, $"Runs when people often watch (about {peak:0.#} watching around {peakHour:00}:00). There was no quieter free time for it.");
+                warnings.Insert(0, $"Runs when people often watch (about {peak:0.#} watching around {ScheduleStorage.Hhmm(TimeSpan.FromMinutes(peakMinute))}). There was no quieter free time for it.");
             }
         }
 
