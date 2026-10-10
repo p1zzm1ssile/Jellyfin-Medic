@@ -521,6 +521,13 @@
                         </div>
 
                         <div class="md-setting">
+                            <div class="md-row md-wrap">
+                                <button type="button" id="md-changelog-all" class="so-btn so-btn-plain">What's new in each version</button>
+                                <span class="so-muted so-small">Every change in every version of Jellyfin Medic.</span>
+                            </div>
+                        </div>
+
+                        <div class="md-setting">
                             <label class="md-check"><input type="checkbox" id="md-alert-critical"> Show admins a banner on the home page for serious problems (a damaged database, a full disk, a plugin that couldn't load)</label>
                             <label class="md-check"><input type="checkbox" id="md-alert-restart"> Show admins a banner when Jellyfin needs a restart to finish updates</label>
                         </div>
@@ -3194,40 +3201,57 @@
 
                 // ---------- What's new (after an update) ----------
 
+                // Shows changelog entries in the "What's new" box.
+                function showChangelog(title, entries) {
+                    const body = $('md-whatsnew-body');
+                    body.innerHTML = '';
+                    $('md-whatsnew-title').textContent = title;
+                    entries.forEach(function (entry) {
+                        if (entries.length > 1) body.appendChild(el('h3', null, 'Version ' + pick(entry, 'Version')));
+                        let list = null;
+                        (pick(entry, 'Lines') || []).forEach(function (line) {
+                            const t = line.replace(/^###\s*/, '').trim();
+                            if (/^###/.test(line) || /^[A-Z][a-z]+$/.test(t.replace(':', ''))) {
+                                body.appendChild(el('h4', null, t.replace(/[:#]/g, '').trim()));
+                                list = null;
+                            } else if (/^[-*]/.test(t)) {
+                                if (!list) { list = el('ul'); body.appendChild(list); }
+                                list.appendChild(el('li', null, t.replace(/^[-*]\s*/, '').replace(/\*\*/g, '')));
+                            } else if (t) {
+                                body.appendChild(el('p', 'so-muted', t.replace(/\*\*/g, '')));
+                            }
+                        });
+                    });
+                    body.appendChild(el('p', 'so-muted so-small', 'Every version\'s changes are under Settings \u2192 What\'s new in each version.'));
+                    $('md-whatsnew').hidden = false;
+                }
+
+                // Once per person per version, on whichever device they open Medic first: the server remembers.
                 async function maybeShowWhatsNew() {
                     let info;
                     try { info = await getJson('/JellyfinMedic/Version'); } catch (e) { return; }
                     const version = pick(info, 'Version');
                     if (!version) return;
-                    let seen = null;
-                    try { seen = window.localStorage.getItem('jellyfinMedicSeenVersion'); } catch (e) { /* ignore */ }
-                    if (seen === version) return; // already shown for this version
-
+                    let local = null;
+                    try { local = window.localStorage.getItem('jellyfinMedicSeenVersion'); } catch (e) { /* ignore */ }
+                    const markSeen = function () { postJson('/JellyfinMedic/Version/Seen', { version: version }).catch(function () {}); };
+                    if (pick(info, 'SeenVersion') === version) return;
+                    if (local === version) { markSeen(); return; } // seen here before the server kept track
                     const log = pick(info, 'Changelog') || [];
                     const entry = log.find(function (e) { return pick(e, 'Version') === version; }) || log[0];
-                    const body = $('md-whatsnew-body');
-                    body.innerHTML = '';
-                    if (!entry) { try { window.localStorage.setItem('jellyfinMedicSeenVersion', version); } catch (e) {} return; }
-
-                    $('md-whatsnew-title').textContent = "What's new in " + pick(entry, 'Version');
-                    let list = null;
-                    (pick(entry, 'Lines') || []).forEach(function (line) {
-                        const t = line.replace(/^###\s*/, '').trim();
-                        if (/^###/.test(line) || /^[A-Z][a-z]+$/.test(t.replace(':', ''))) {
-                            body.appendChild(el('h4', null, t.replace(/[:#]/g, '').trim()));
-                            list = null;
-                        } else if (/^[-*]/.test(t)) {
-                            if (!list) { list = el('ul'); body.appendChild(list); }
-                            list.appendChild(el('li', null, t.replace(/^[-*]\s*/, '').replace(/\*\*/g, '')));
-                        } else if (t) {
-                            body.appendChild(el('p', 'so-muted', t.replace(/\*\*/g, '')));
-                        }
-                    });
-                    const foot = el('p', 'so-muted so-small', 'Full history is on the Plugin directory source and the project\'s GitHub.');
-                    body.appendChild(foot);
-                    $('md-whatsnew').hidden = false;
-                    try { window.localStorage.setItem('jellyfinMedicSeenVersion', version); } catch (e) {}
+                    markSeen();
+                    if (!entry) return;
+                    showChangelog("What's new in " + pick(entry, 'Version'), [entry]);
                 }
+
+                $('md-changelog-all').addEventListener('click', async function () {
+                    try {
+                        const info = await getJson('/JellyfinMedic/Version?all=true');
+                        showChangelog("What's new in each version", pick(info, 'Changelog') || []);
+                    } catch (e) {
+                        showStatus('Couldn\'t load the changelog.', 'error');
+                    }
+                });
                 $('md-whatsnew-close').addEventListener('click', function () { $('md-whatsnew').hidden = true; });
                 $('md-whatsnew').addEventListener('click', function (e) { if (e.target === $('md-whatsnew')) $('md-whatsnew').hidden = true; });
 

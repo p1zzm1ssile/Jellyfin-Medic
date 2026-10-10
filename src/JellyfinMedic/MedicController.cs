@@ -136,8 +136,26 @@ public class MedicController : ControllerBase
 
     /// <summary>Banners for admins on the home page: serious errors, and a restart waiting. Empty when turned off.</summary>
     [HttpGet("Alerts")]
-    public ActionResult<List<AdminAlert>> GetAlerts() =>
-        Ok(AdminAlerts.Current(_paths.LogDirectoryPath, _host, Plugin.Instance?.Configuration ?? new PluginConfiguration()));
+    public ActionResult<List<AdminAlert>> GetAlerts()
+    {
+        var alerts = AdminAlerts.Current(_paths.LogDirectoryPath, _host, Plugin.Instance?.Configuration ?? new PluginConfiguration());
+        // Leave out the ones this person has already dismissed, on any device.
+        var dismissed = CurrentUserId() is { } id ? SeenStore.Get(_paths.PluginConfigurationsPath, id).DismissedAlerts : new List<string>();
+        return Ok(alerts.Where(a => !dismissed.Contains(a.Id, StringComparer.Ordinal)).ToList());
+    }
+
+    /// <summary>Dismisses a banner for this person on every device. A new occurrence (another day) brings it back.</summary>
+    [HttpPost("Alerts/Dismiss")]
+    public ActionResult<object> DismissAlert([FromQuery] string id)
+    {
+        if (CurrentUserId() is not { } user || string.IsNullOrWhiteSpace(id) || id.Length > 200)
+        {
+            return BadRequest();
+        }
+
+        SeenStore.Update(_paths.PluginConfigurationsPath, user, s => s.DismissedAlerts.Add(id));
+        return Ok(new { Success = true });
+    }
 
     /// <summary>Spells of heavy CPU, memory, disk or GPU use in the last 14 days, and what was running.</summary>
     [HttpGet("ResourceEvents")]
@@ -323,13 +341,32 @@ public class MedicController : ControllerBase
     public async Task<ActionResult<PluginAdvice>> GetPluginSuggestions(CancellationToken cancellationToken) =>
         Ok(await PluginAdvisor.BuildAsync(_library, _users, _pluginManager, _installs, cancellationToken).ConfigureAwait(false));
 
-    /// <summary>Medic's current version and its changelog, for the "what's new" panel after an update.</summary>
+    /// <summary>
+    /// Medic's current version and its changelog, for the "what's new" panel after an update, with the
+    /// last version this person has seen it for (on any device). all=true returns every version.
+    /// </summary>
     [HttpGet("Version")]
-    public ActionResult<object> GetVersion()
+    public ActionResult<object> GetVersion([FromQuery] bool all = false)
     {
         string version = typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
-        return Ok(new { Version = version, Changelog = ChangelogReader.Read() });
+        string? seen = CurrentUserId() is { } id ? SeenStore.Get(_paths.PluginConfigurationsPath, id).SeenVersion : null;
+        return Ok(new { Version = version, SeenVersion = seen, Changelog = ChangelogReader.Read(all ? int.MaxValue : 5) });
     }
+
+    /// <summary>Records that this person has seen "What's new" for a version, so no other device shows it again.</summary>
+    [HttpPost("Version/Seen")]
+    public ActionResult<object> SetVersionSeen([FromQuery] string version)
+    {
+        if (CurrentUserId() is not { } id || string.IsNullOrWhiteSpace(version) || version.Length > 20)
+        {
+            return BadRequest();
+        }
+
+        SeenStore.Update(_paths.PluginConfigurationsPath, id, s => s.SeenVersion = version.Trim());
+        return Ok(new { Success = true });
+    }
+
+    private string? CurrentUserId() => User.Claims.FirstOrDefault(c => c.Type == "Jellyfin-UserId")?.Value;
 
     /// <summary>The last IPTV analysis, if one has been run since Jellyfin started.</summary>
     [HttpGet("Iptv")]

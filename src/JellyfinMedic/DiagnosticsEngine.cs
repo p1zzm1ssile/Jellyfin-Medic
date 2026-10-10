@@ -179,6 +179,7 @@ public sealed class DiagnosticsEngine
         Guard(AreaServer, () => CheckServer(server, hw, libraries));
         Guard(AreaServer, () => CheckPerformance(server, hw, pluginReports.Count));
         Guard(AreaTheme, CheckTheme);
+        Guard("Logs", CheckCriticalErrors);
         Guard(AreaServer, CheckResourceSpikes);
         Guard(AreaLibraries, () => CheckLibraries(libraries));
         Guard(AreaLiveTv, () => CheckLiveTv(liveTv));
@@ -766,6 +767,21 @@ public sealed class DiagnosticsEngine
                 "Close the comment with */",
                 "Everything after an unclosed comment is ignored, including any theme or tweaks below it.",
                 WhereCustomCss);
+        }
+    }
+
+    // ---------- Serious errors (also shown as home-page banners) ----------
+
+    private void CheckCriticalErrors()
+    {
+        foreach (var alert in AdminAlerts.CriticalFromLogs(_paths.LogDirectoryPath))
+        {
+            int split = alert.Detail.IndexOf(" Last seen: ", StringComparison.Ordinal);
+            string advice = split > 0 ? alert.Detail[..split] : alert.Detail;
+            string seen = split > 0 ? alert.Detail[(split + 12)..] : string.Empty;
+            Add("Logs", Sev.Problem, alert.Title, seen, advice,
+                "Jellyfin logged this as an error. It's shown however rarely it happens, as it can mean data loss or a server that stops working.",
+                "Dashboard → Logs");
         }
     }
 

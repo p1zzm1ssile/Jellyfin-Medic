@@ -1,6 +1,7 @@
 /* Jellyfin Medic: banners for admins on the home page, for serious problems (a damaged database, a
    full disk, a plugin that couldn't load) and for a restart that's waiting to finish updates.
-   Only admins see them. Each can be dismissed, and both kinds can be turned off in Medic's settings. */
+   Only admins see them. Dismissing one hides it on every device (it's kept on the server, per person),
+   and both kinds can be turned off in Medic's settings. */
 (function () {
     'use strict';
     var ID = 'jellyfin-medic-banners';
@@ -57,7 +58,15 @@
             var close = el('button', '×', 'background:none;border:0;color:inherit;font-size:20px;line-height:1;cursor:pointer;padding:0 2px;');
             close.type = 'button';
             close.setAttribute('aria-label', 'Dismiss');
-            close.addEventListener('click', function () { dismiss(a.Id); card.remove(); if (!box.children.length) box.remove(); });
+            close.addEventListener('click', function () {
+                dismiss(a.Id);
+                cached = cached.filter(function (x) { return x.Id !== a.Id; });
+                card.remove();
+                if (!box.children.length) box.remove();
+                // Remembered on the server too, so other devices don't show it again.
+                var api = window.ApiClient;
+                if (api) api.ajax({ type: 'POST', url: api.getUrl('JellyfinMedic/Alerts/Dismiss', { id: a.Id }) }).catch(function () { /* this browser still remembers */ });
+            });
             card.appendChild(text);
             card.appendChild(close);
             box.appendChild(card);
