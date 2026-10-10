@@ -331,7 +331,8 @@ await check('Medic Profiles blocks program files in qBittorrent, keeping the own
 // ---------- Pages in a real browser ----------
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
-const page = await browser.newPage();
+// A fixed language: GitHub's runner otherwise hands the browser "en-us@posix", which Jellyfin's web app can't format numbers with.
+const page = await browser.newPage({ locale: 'en-GB' });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message + ' @ ' + String(e.stack || '').split('\n').slice(1, 3).join(' ').trim()));
 // Sign in through the real login form; Jellyfin ties tokens to the browser's device ID.
