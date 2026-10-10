@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
-using System.Linq;
 using System.Text.Json;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -178,7 +174,7 @@ public sealed class DiagnosticsEngine
 
         AddSpecs(hw, encoding, libraries, pluginReports.Count);
 
-        Guard(AreaHardware, () => CheckTranscoding(hw, encoding, usage));
+        Guard(AreaHardware, () => CheckTranscoding(hw, encoding));
         Guard(AreaStorage, () => CheckStorage(libraries, encoding));
         Guard(AreaServer, () => CheckServer(server, hw, libraries));
         Guard(AreaServer, () => CheckPerformance(server, hw, pluginReports.Count));
@@ -188,6 +184,7 @@ public sealed class DiagnosticsEngine
         Guard(AreaLiveTv, () => CheckLiveTv(liveTv));
         Guard(AreaNetwork, () => CheckNetwork(network));
         Guard(AreaTasks, () => CheckTasks(usage));
+        Guard(AreaTasks, () => SuggestSchedule(usage));
         Guard(AreaUsage, () => CheckUsage(usage, encoding, hw));
         Guard("Plugins", () => CheckLinks(links, linkResults));
 
@@ -359,7 +356,7 @@ public sealed class DiagnosticsEngine
 
     // ---------- Hardware & transcoding ----------
 
-    private void CheckTranscoding(HardwareInfo hw, object? enc, UsageSummary usage)
+    private void CheckTranscoding(HardwareInfo hw, object? enc)
     {
         if (enc is null)
         {

@@ -1,7 +1,3 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
 using Jellyfin.Data.Events;
 using MediaBrowser.Model.Tasks;

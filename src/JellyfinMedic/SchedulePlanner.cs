@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using MediaBrowser.Model.Tasks;
 using JellyfinMedic.Api;
 
@@ -316,7 +313,7 @@ public static class SchedulePlanner
             Cadence = cadence,
             CadenceLabel = CadenceLabel(cadence),
             CurrentSchedule = c.Current,
-            Reason = BuildReason(c, cadence) + " " + busy.PlacementNote,
+            Reason = BuildReason(c) + " " + busy.PlacementNote,
             Warning = JoinWarnings(warnings),
             StartMinutes = firstStart * CellMinutes
         };
@@ -425,7 +422,7 @@ public static class SchedulePlanner
         _ => rule.Moderate
     };
 
-    private static string BuildReason(Candidate c, Cadence cadence)
+    private static string BuildReason(Candidate c)
     {
         bool costDecides = c.Rule.Cheap != c.Rule.Moderate || c.Rule.Moderate != c.Rule.Heavy;
         if (!costDecides)

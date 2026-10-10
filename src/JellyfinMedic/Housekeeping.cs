@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using MediaBrowser.Common.Configuration;
 
 namespace JellyfinMedic.Services;
@@ -39,10 +35,6 @@ public class CleanupReport
 /// </summary>
 public static class Housekeeping
 {
-    // Folders whose names look like a Jellyfin item ID: 32 hex characters.
-    private static bool LooksLikeItemId(string name) =>
-        name.Length == 32 && name.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
-
     // A .strm file this new may just not have been scanned in yet, so it's never treated as left over.
     private static readonly TimeSpan StrmMinimumAge = TimeSpan.FromDays(2);
 

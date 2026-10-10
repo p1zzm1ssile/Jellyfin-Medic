@@ -1,11 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Tasks;
@@ -372,25 +366,7 @@ public sealed class ResourceMonitor : IHostedService, IDisposable
         }
     }
 
-    private static double MemoryLimitBytes()
-    {
-        foreach (var file in new[] { "/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes" })
-        {
-            try
-            {
-                if (File.Exists(file) && double.TryParse(File.ReadAllText(file).Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) && v is > 0 and < 1e15)
-                {
-                    return v;
-                }
-            }
-            catch
-            {
-                // Try the next one.
-            }
-        }
-
-        return GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
-    }
+    private static double MemoryLimitBytes() => LoadGuard.CgroupLimit() ?? GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
 
     private static DateTime _nvidiaRetryUtc = DateTime.MinValue;
 

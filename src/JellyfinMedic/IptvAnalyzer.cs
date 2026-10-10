@@ -1,7 +1,3 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.RegularExpressions;
 using JellyfinMedic.Api;
 using MediaBrowser.Controller.Entities;
