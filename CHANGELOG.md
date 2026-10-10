@@ -11,6 +11,8 @@ Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 
 ### Fixed
 - **No more "audio normalisation scanning is on" for films, series and IPTV libraries.** Jellyfin only measures loudness for music and only shows that option on music libraries, so elsewhere it couldn't be switched off and the advice couldn't be followed. Medic now only mentions it for large music libraries.
+- **"What's new" now shows after an update.** It only checked the first time Medic's page was opened after the web app loaded, and Jellyfin's web app doesn't reload after a restart, so going back into Medic after an update never showed it. It now checks every time you open Medic.
+- **A "what's new" banner on the home page** for admins after Medic updates, with the headline of each change. Closing it, or seeing "What's new" in Medic, hides it on every device until the next update.
 
 ## [1.0.15] – 2026-10-10
 
