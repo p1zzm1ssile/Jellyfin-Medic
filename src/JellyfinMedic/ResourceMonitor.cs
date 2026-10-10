@@ -375,7 +375,9 @@ public sealed class ResourceMonitor : IHostedService, IDisposable
     {
         try
         {
-            foreach (var file in Directory.Exists("/sys/class/drm") ? Directory.GetFiles("/sys/class/drm", "gpu_busy_percent", SearchOption.AllDirectories).Take(4) : Array.Empty<string>())
+            // Only card*/device/gpu_busy_percent: sysfs links loop back on themselves, so a recursive search never ends.
+            var cards = Directory.Exists("/sys/class/drm") ? Directory.GetDirectories("/sys/class/drm", "card*", SearchOption.TopDirectoryOnly) : Array.Empty<string>();
+            foreach (var file in cards.Select(c => Path.Combine(c, "device", "gpu_busy_percent")).Where(File.Exists).Take(4))
             {
                 if (double.TryParse(File.ReadAllText(file).Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var amd))
                 {
