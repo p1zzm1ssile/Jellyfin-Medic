@@ -24,3 +24,6 @@ Anything not ticked has not been done.
 Dropped at the owner's request: Unmanic integration.
 
 Already done on this branch (9 October): scheduler uses real 15-minute slots (Medic 1.0.13).
+
+Versions on this branch, none released yet: Jellyfin Medic 1.0.13, Medic Picks 1.2.1, Medic Profiles 1.1.0.
+Tests: `tests/e2e/run.sh` (46 checks, all passing); they also run on every pull request.

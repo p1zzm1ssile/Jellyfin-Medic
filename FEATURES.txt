@@ -44,7 +44,11 @@ A single screen of tiles:
     much disk space Medic freed (track cleanup, clean-ups, duplicates), and
     how often Medic restarted Jellyfin.
   - Tonight's tasks: what is scheduled to run and when.
-  - Right now: live CPU, memory (as a percentage) and who is watching.
+  - Right now: live CPU, memory (as a percentage) and who is watching;
+    running tasks with roughly how long each has left; and what Jellyfin
+    plus the FFmpeg processes it starts are using (CPU, memory, disk and,
+    for NVIDIA and AMD, GPU), with this week's spells of heavy use and what
+    was running at the time (tasks, transcodes, trickplay and so on).
   - Top issues: the most serious findings from Checks.
   - Last 24 hours: what ran, what failed, what happened.
   - Users and access: account summary.
@@ -67,6 +71,11 @@ A single screen of tiles:
     top of every tab shows how far it's got, with a button to the Tracks tab.
   - "What's new" panel: after an update, a short summary of what changed is
     shown once.
+  - Banners on the Jellyfin home page, for admins only: serious problems the
+    moment they appear in the log (a damaged database, a full disk, a failed
+    database upgrade, a plugin that couldn't load, a fatal error), and a
+    restart waiting to finish updates. Each can be dismissed; both can be
+    turned off in Medic's settings.
 
 
 -------------------------------------------------------------------------------
@@ -81,7 +90,10 @@ A single screen of tiles:
   - Plans in 15-minute slots, using how busy each quarter hour is, so tasks
     can start at :15, :30 or :45 as well as on the hour.
   - Can run a task at different times on different days.
-  - Preview shows the proposed plan before you Apply it.
+  - Preview shows the proposed plan before you Apply it, with a choice for
+    each task: let Medic schedule it, keep its schedule, or leave it
+    unscheduled. A task with no schedule is never given one unless you say.
+  - "Suggest" mode: Checks says when a clearly better schedule is available.
   - Every change is backed up first and can be restored (undo).
   - Avoid window: never schedule tasks between times you choose, in
     15-minute steps (for example 18:30 to 22:45), wrapping past midnight
@@ -140,7 +152,12 @@ HARDWARE AND TRANSCODING
   - Your GPU isn't being used / no GPU available to Jellyfin.
   - Hardware acceleration is off, or its type doesn't match your GPU
     (NVIDIA, Intel and AMD covered).
-  - Hardware encoding is off; no formats ticked for hardware decoding.
+  - Hardware encoding is off; no formats ticked for hardware decoding, or
+    H264 or HEVC not ticked; 10-bit HEVC (most HDR) decoded on the CPU.
+  - Transcodes only made as H264 (HEVC halves the bitrate for apps that
+    play it); Intel low-power encoders off; trickplay encoded on the CPU.
+  - Without a GPU: slow software presets, and trickplay reading every frame
+    instead of key frames only.
   - Tone mapping off, or tone mapping on without a GPU.
   - Transcoding or trickplay set to use more threads than your CPU has.
   - Trickplay images made on the CPU.
@@ -151,6 +168,11 @@ HARDWARE AND TRANSCODING
 
 STORAGE
   - Low space for transcodes, on the cache drive, or on the config drive.
+  - Every library drive: nearly full or full, and how fast each drive is
+    filling (one reading a day), with a warning when one will be full
+    within a month.
+  - Specs list each drive and the size of the metadata folder, trickplay
+    images and image cache (measured in the background).
   - Almost no space left for the database.
   - Log files taking a lot of space; debug logging on.
   - The database's write-ahead log is large.
@@ -229,6 +251,19 @@ PLUGIN-SPECIFIC RULES
   - Media Bar: random items from the whole library.
   - Auto Collections: example collections still present.
 
+THEMES (custom CSS)
+  - Theme addresses that don't load; @import lines placed after other rules
+    (browsers ignore them); themes from raw.githubusercontent.com (browsers
+    refuse them); themes over plain http; unbalanced braces and unclosed
+    comments.
+
+PERFORMANCE
+  - Database on a spinning hard drive (virtual disks are recognised and
+    left out); a very large database or image cache; image resizing allowed
+    to use every thread on a small CPU; a very long list of plugins.
+  - Jellyfin running flat out several times this week, with the most common
+    causes.
+
 LOG
   - The same error repeating over and over, with when it last happened.
   - "Fixed it: count again from now" resets a repeated-error count.
@@ -267,6 +302,10 @@ LOG
 Removes unwanted audio and subtitle tracks from local files by remuxing:
 no re-encode and no quality loss. IPTV is skipped, and you can list folders, shows or
 films for it to leave alone.
+
+What it leaves alone:
+  - Folders, shows or films you list under "Leave these alone" (a folder, or
+    part of a name, one per line).
 
 What it keeps:
   - Your chosen languages (default: eng). Codes with two forms (fre/fra,
@@ -468,7 +507,11 @@ A settings box at the top of the My picks page:
     language (set by the TMDb language). Suggestions from outside the
     library first made in another language are marked "audio not confirmed".
     Anime with untagged audio is assumed not to be dubbed.
-  - Update my picks: rebuilds that person's picks straight away.
+  - Update my picks: rebuilds that person's picks straight away, shows how
+    long it's taking and how many picks came back, and says when only a few
+    titles on the server match the choices.
+  - Show me different ones: swaps the picks for the next best, to cycle
+    through suggestions; starts again from the top when they run out.
 
 
 -------------------------------------------------------------------------------
@@ -579,7 +622,13 @@ PART 3: MEDIC PROFILES
 
 One page in the dashboard sidebar, under Plugins > Medic Profiles. Only
 administrators can open it. Nothing changes in Sonarr or Radarr until you
-press a button. Tabs: Downloads, Blocked, Profiles, History, Settings.
+press a button. Tabs: Downloads, Blocked, Indexers, Profiles, History, Settings.
+  - Indexers: each indexer Sonarr and Radarr search and whether it's working,
+    failing (and paused until when) or switched off, plus their own indexer
+    warnings. Prowlarr's indexers show too, as Prowlarr adds them.
+  - Block unsafe files: tells qBittorrent (4.6+) to skip program files (.exe,
+    .bat, .scr and similar) inside torrents, keeping your own entries in its
+    "Excluded file names" list. Archives (.rar, .zip, .7z) optional.
 
 
 -------------------------------------------------------------------------------
