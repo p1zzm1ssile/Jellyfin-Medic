@@ -10,6 +10,11 @@ on:
 permissions:
   contents: write
 
+# Shared with the Picks and Profiles releases, so their manifest.json pushes take turns.
+concurrency:
+  group: manifest-update
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -90,4 +95,7 @@ jobs:
           python3 .github/scripts/update_manifest.py
           git add manifest.json
           git commit -m "chore: add $VERSION to manifest"
-          git push origin main
+          for attempt in 1 2 3; do
+            git push origin main && break
+            git pull --rebase origin main
+          done
