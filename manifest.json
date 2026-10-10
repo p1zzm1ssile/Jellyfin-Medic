@@ -10,6 +10,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/src/JellyfinMedic/thumb.png",
     "versions": [
       {
+        "version": "1.0.16.0",
+        "changelog": "Merge pull request #14 from p1zzm1ssile/claude/awesome-brown-i2l9ej",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/v1.0.16/JellyfinMedic-v1.0.16.zip",
+        "checksum": "3bdec3051eb42e5242c274a3edb5ac5b",
+        "timestamp": "2026-10-10T14:48:05Z"
+      },
+      {
         "version": "1.0.15.0",
         "changelog": "Merge pull request #11 from p1zzm1ssile/claude/laughing-volta-8uxi4n",
         "targetAbi": "12.1.0.0",
