@@ -34,7 +34,7 @@ public static class AdminAlerts
     {
         ("database", "Jellyfin's database looks damaged",
             "Stop Jellyfin and restore jellyfin.db from a backup before it gets worse. Medic → Checks has more.",
-            new Regex(@"database disk image is malformed|SQLite Error 11|file is not a database|database corruption", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            new Regex(@"database disk image is malformed|SQLite Error 11\b|file is not a database", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
         ("disk", "A disk Jellyfin uses is full",
             "Free some space (Medic → Dashboard → Free up space can help), or Jellyfin may stop saving data.",
             new Regex(@"No space left on device|There is not enough space on the disk|disk (is )?full", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
@@ -50,6 +50,9 @@ public static class AdminAlerts
     };
 
     private static readonly Regex Stamp = new(@"^\[(\d{4}-\d{2}-\d{2})?[ T]?(\d{2}:\d{2}:\d{2})", RegexOptions.Compiled);
+
+    // The level of a log entry, e.g. [ERR]. Lines without one (exception text) belong to the entry above.
+    private static readonly Regex Level = new(@"^\[[^\]]+\]\s*\[([A-Z]{3})\]", RegexOptions.Compiled);
 
     public static List<AdminAlert> Current(string logDirectory, IServerApplicationHost host, PluginConfiguration cfg)
     {
@@ -75,7 +78,8 @@ public static class AdminAlerts
         return alerts;
     }
 
-    private static List<AdminAlert> CriticalFromLogs(string logDirectory)
+    /// <summary>Serious errors in the newest logs, for the banners and for Checks.</summary>
+    public static List<AdminAlert> CriticalFromLogs(string logDirectory)
     {
         lock (Sync)
         {
@@ -95,14 +99,33 @@ public static class AdminAlerts
                 .TakeLast(3);
             foreach (var file in files)
             {
+                // Only errors and fatal errors count, with the exception text printed under them. Warnings
+                // often mention these words in passing ("may indicate ... database corruption", a migration
+                // step that "cannot be executed in a transaction") without anything being wrong.
+                bool serious = false;
+                string day = file.LastWriteTime.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
                 foreach (var line in Tail(file.FullName))
                 {
+                    var level = Level.Match(line);
+                    if (level.Success)
+                    {
+                        serious = level.Groups[1].Value is "ERR" or "FTL";
+                        var stamp = Stamp.Match(line);
+                        if (stamp.Success && stamp.Groups[1].Success)
+                        {
+                            day = stamp.Groups[1].Value;
+                        }
+                    }
+
+                    if (!serious)
+                    {
+                        continue;
+                    }
+
                     foreach (var (key, _, _, pattern) in Critical)
                     {
                         if (pattern.IsMatch(line))
                         {
-                            var m = Stamp.Match(line);
-                            string day = m.Success && m.Groups[1].Success ? m.Groups[1].Value : file.LastWriteTime.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
                             found[key] = (line, day);
                         }
                     }

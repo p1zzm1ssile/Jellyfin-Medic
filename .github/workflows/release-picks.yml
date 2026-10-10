@@ -87,9 +87,17 @@ jobs:
         run: |
           PRE=""
           [ "${{ steps.meta.outputs.prerelease }}" = "true" ] && PRE="--prerelease"
-          gh release create "$GITHUB_REF_NAME" "${{ steps.meta.outputs.zip }}" \
-            --title "$NAME ${{ steps.meta.outputs.version }}" \
-            --notes-file notes.txt --latest=false $PRE
+          # The release may already exist if it was made on GitHub's Releases page (which creates
+          # the tag): then add the zip to it and fill in its title and notes instead.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${{ steps.meta.outputs.zip }}" --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "$NAME ${{ steps.meta.outputs.version }}" \
+              --notes-file notes.txt --latest=false $PRE
+          else
+            gh release create "$GITHUB_REF_NAME" "${{ steps.meta.outputs.zip }}" \
+              --title "$NAME ${{ steps.meta.outputs.version }}" \
+              --notes-file notes.txt --latest=false $PRE
+          fi
 
       - name: Add the version to manifest.json on main
         shell: bash
