@@ -15,7 +15,7 @@ public class ChangelogEntry
 /// </summary>
 public static class ChangelogReader
 {
-    public static List<ChangelogEntry> Read()
+    public static List<ChangelogEntry> Read(int max = 5)
     {
         string text = Embedded();
         var entries = new List<ChangelogEntry>();
@@ -39,7 +39,7 @@ public static class ChangelogReader
             }
         }
 
-        return entries.Take(5).ToList();
+        return entries.Take(max).ToList();
     }
 
     private static string Embedded()
