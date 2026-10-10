@@ -1,7 +1,3 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.RegularExpressions;
 using JellyfinMedic.Api;
 using MediaBrowser.Controller.Entities;
@@ -43,6 +39,16 @@ public class ChannelReport
     public int Regional { get; set; }
 
     public List<string> Examples { get; set; } = new();
+
+    // Every channel shown more than once, with the names of each copy (largest groups first, up to 500).
+    public List<DuplicateChannel> Duplicates { get; set; } = new();
+}
+
+public class DuplicateChannel
+{
+    public string Name { get; set; } = string.Empty;
+
+    public List<string> Versions { get; set; } = new();
 }
 
 public class IptvReport
@@ -134,9 +140,9 @@ public static class IptvAnalyzer
                 Severity = Sev.Tip,
                 Title = $"{report.Channels.ExtraCopies:N0} live channels are extra copies of others",
                 Current = $"{report.Channels.DuplicateGroups:N0} channels appear in several qualities or versions, e.g. {string.Join(", ", report.Channels.Examples.Take(3))}",
-                Recommended = "Use Dispatcharr to keep one channel each, with the best quality first and the others as backups",
-                Why = "Duplicates make the guide long and slow to refresh. Dispatcharr can merge them into one channel that falls back to a lower quality if the best stream drops, and lets you pick your regional versions. Xtream Library already supports it.",
-                Where = "Dispatcharr, then Xtream Library's Dispatcharr setting"
+                Recommended = "Keep one version of each channel (usually the best quality you can play) and hide or remove the rest",
+                Why = "Duplicates make the guide long and slow to refresh, and make channels harder to find. Medic → IPTV lists every channel with copies and the name of each one, so you can see which to drop.",
+                Where = "Medic → IPTV → Live channels, then your IPTV plugin's channel or category settings"
             });
         }
 
@@ -183,6 +189,9 @@ public static class IptvAnalyzer
         result.DuplicateGroups = groups.Count;
         result.ExtraCopies = groups.Sum(g => g.Count() - 1);
         result.Examples = groups.Take(5).Select(g => $"{g.First()} ({g.Count()} versions)").ToList();
+        result.Duplicates = groups.Take(500)
+            .Select(g => new DuplicateChannel { Name = g.First(), Versions = g.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList() })
+            .ToList();
         result.Regional = names.Count(n => Regions.Any(r => n.Contains(r, StringComparison.OrdinalIgnoreCase)));
         return result;
     }

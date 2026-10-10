@@ -178,6 +178,13 @@ public class PicksEngine
         {
             int libraryCount = prefs.Count > 0 ? prefs.Count : Math.Clamp(config.LibraryPickCount, 1, 100);
             picks.InLibrary = BuildLibraryPicks(userQuery, ranked, titles, libraryCount, prefs, language);
+            if (picks.InLibrary.Count == 0 && prefs.SeenItems.Count > 0)
+            {
+                // "Show me different ones" has been through them all, so start again from the best.
+                prefs.SeenItems.Clear();
+                ForgetSeen(userId, items: true);
+                picks.InLibrary = BuildLibraryPicks(userQuery, ranked, titles, libraryCount, prefs, language);
+            }
         }
 
         // 2b. Titles from the same world as something watched.
@@ -222,10 +229,16 @@ public class PicksEngine
             && !string.IsNullOrEmpty(context.TmdbKey)
             && !config.DiscoverDisabledUserIds.Any(id => Guid.TryParse(id, out var g) && g == userId);
 
+        int discoverCount = prefs.Count > 0 ? prefs.Count : Math.Clamp(config.DiscoverPickCount, 1, 100);
         picks.Discover = discoverAllowed
-            ? await BuildDiscoverPicksAsync(ranked, context, config.TmdbLanguage, prefs.Count > 0 ? prefs.Count : Math.Clamp(config.DiscoverPickCount, 1, 100), prefs, cancellationToken)
-                .ConfigureAwait(false)
+            ? await BuildDiscoverPicksAsync(ranked, context, config.TmdbLanguage, discoverCount, prefs, cancellationToken).ConfigureAwait(false)
             : new List<DiscoverPick>();
+        if (discoverAllowed && picks.Discover.Count == 0 && prefs.SeenTmdb.Count > 0)
+        {
+            prefs.SeenTmdb.Clear();
+            ForgetSeen(userId, items: false);
+            picks.Discover = await BuildDiscoverPicksAsync(ranked, context, config.TmdbLanguage, discoverCount, prefs, cancellationToken).ConfigureAwait(false);
+        }
 
         _store.Save(userId, picks);
     }
@@ -266,7 +279,7 @@ public class PicksEngine
             pool.AddRange(_libraryManager.GetItemList(series));
         }
 
-        var hidden = new HashSet<Guid>(prefs.HiddenItems);
+        var hidden = new HashSet<Guid>(prefs.HiddenItems.Concat(prefs.SeenItems));
         var poolById = pool
             .Where(c => !titles.ContainsKey(c.Id) && !hidden.Contains(c.Id) && !alreadyPicked.Contains(c.Id))
             .GroupBy(c => c.Id)
@@ -456,6 +469,22 @@ public class PicksEngine
         }
     }
 
+    // Re-read before saving, so a title hidden while this run was going isn't lost.
+    private void ForgetSeen(Guid userId, bool items)
+    {
+        var fresh = _store.LoadPreferences(userId);
+        if (items)
+        {
+            fresh.SeenItems.Clear();
+        }
+        else
+        {
+            fresh.SeenTmdb.Clear();
+        }
+
+        _store.SavePreferences(userId, fresh);
+    }
+
     private List<LibraryPick> BuildLibraryPicks(Func<InternalItemsQuery> userQuery, List<WatchedTitle> ranked, Dictionary<Guid, WatchedTitle> titles, int count, UserPreferences prefs, AudioLanguage language)
     {
         // Taste profile: genres from everything watched, people from the most-weighted titles.
@@ -531,7 +560,7 @@ public class PicksEngine
         }
 
         // The person's own choices: titles they hid, and the genres they picked.
-        var hidden = new HashSet<Guid>(prefs.HiddenItems);
+        var hidden = new HashSet<Guid>(prefs.HiddenItems.Concat(prefs.SeenItems));
         candidates = candidates
             .Where(c => !hidden.Contains(c.Id))
             .Where(c => Genres.Matches(prefs.Genres, c.Genres, c.Tags, c.Name, prefs.Genres.Count > 0 && IsAnime(c)))
@@ -768,7 +797,7 @@ public class PicksEngine
             .ToList();
 
         var tally = new Dictionary<string, DiscoverTally>(StringComparer.Ordinal);
-        var hidden = new HashSet<string>(prefs.HiddenTmdb, StringComparer.Ordinal);
+        var hidden = new HashSet<string>(prefs.HiddenTmdb.Concat(prefs.SeenTmdb), StringComparer.Ordinal);
 
         foreach (var seed in seeds)
         {

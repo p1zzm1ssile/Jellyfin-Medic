@@ -3,6 +3,15 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
+## [1.2.1] – 2026-10-09
+
+### Added
+- **Show me different ones.** A new button on the My picks page swaps your picks for the next best ones, so you can cycle through suggestions instead of seeing the same ones every time. When you've been through them all it starts again from the top, and changing your choices starts fresh.
+
+### Fixed
+- **Update my picks no longer looks stuck.** With a high count and a genre ticked, the page could come back with only a few picks and no explanation, or stop waiting before the rebuild had finished. It now waits until your picks are really done (showing how long it's taking), says "Updated just now" with how many picks you got, and tells you when only a few titles on the server match your choices.
+- **New suggestions from outside your library now appear straight away** after Update my picks, instead of only after reloading the page.
+
 ## [1.2.0] – 2026-10-06
 
 ### Added

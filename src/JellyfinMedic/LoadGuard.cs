@@ -1,12 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
-using System.Linq;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -185,7 +179,8 @@ public sealed class LoadGuard : IHostedService, IDisposable
         return limitBytes <= 0 ? 0 : Math.Clamp(usedBytes / limitBytes * 100, 0, 100);
     }
 
-    private static double? CgroupLimit()
+    /// <summary>The container's memory limit in bytes, or null when there's none.</summary>
+    internal static double? CgroupLimit()
     {
         double? v = ReadNumber("/sys/fs/cgroup/memory.max") ?? ReadNumber("/sys/fs/cgroup/memory/memory.limit_in_bytes");
         // A "no limit" cgroup reports a huge sentinel value; treat that as unknown.

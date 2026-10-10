@@ -1,9 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -19,8 +13,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
-using Microsoft.Extensions.DependencyInjection;
-using System.Collections.Generic;
 using JellyfinMedic.Services;
 
 namespace JellyfinMedic.Api;
@@ -140,7 +132,16 @@ public class MedicController : ControllerBase
 
     /// <summary>What Jellyfin is doing right now. Cheap enough to refresh every few seconds.</summary>
     [HttpGet("Now")]
-    public ActionResult<NowSnapshot> GetNow() => Ok(ServerNow.Snapshot(_sessions, _tasks));
+    public ActionResult<NowSnapshot> GetNow() => Ok(ServerNow.Snapshot(_sessions, _tasks, _paths));
+
+    /// <summary>Banners for admins on the home page: serious errors, and a restart waiting. Empty when turned off.</summary>
+    [HttpGet("Alerts")]
+    public ActionResult<List<AdminAlert>> GetAlerts() =>
+        Ok(AdminAlerts.Current(_paths.LogDirectoryPath, _host, Plugin.Instance?.Configuration ?? new PluginConfiguration()));
+
+    /// <summary>Spells of heavy CPU, memory, disk or GPU use in the last 14 days, and what was running.</summary>
+    [HttpGet("ResourceEvents")]
+    public ActionResult<List<ResourceEvent>> GetResourceEvents() => Ok(ResourceLog.Load(_paths));
 
     /// <summary>Recent times the load guard stopped or restarted a task under memory pressure.</summary>
     [HttpGet("LoadGuard")]
@@ -428,6 +429,7 @@ public class MedicController : ControllerBase
         return Ok(new MedicSettingsDto
         {
             AvoidEnabled = c.AvoidEnabled, AvoidStartHour = c.AvoidStartHour, AvoidEndHour = c.AvoidEndHour,
+            AvoidStartMinute = BusyProfile.AvoidStartMinute(c), AvoidEndMinute = BusyProfile.AvoidEndMinute(c),
             InactiveUserDays = c.InactiveUserDays, LoadGuardEnabled = c.LoadGuardEnabled,
             MemoryCeilingPercent = c.MemoryCeilingPercent, ScheduleMode = c.ScheduleMode,
             TracksKeepLanguages = c.TracksKeepLanguages, TracksRemoveUndetermined = c.TracksRemoveUndetermined,
@@ -439,7 +441,10 @@ public class MedicController : ControllerBase
             TracksWindowEndHour = c.TracksWindowEndHour,
             TracksPauseWhileWatching = c.TracksPauseWhileWatching,
             TracksReplaceInPlace = c.TracksReplaceInPlace, TracksConcurrentFiles = c.TracksConcurrentFiles,
-            TracksFfmpegThreads = c.TracksFfmpegThreads
+            TracksFfmpegThreads = c.TracksFfmpegThreads,
+            TracksExclude = c.TracksExclude ?? string.Empty,
+            AlertCriticalErrors = c.AlertCriticalErrors,
+            AlertRestartNeeded = c.AlertRestartNeeded
         });
     }
 
@@ -458,8 +463,12 @@ public class MedicController : ControllerBase
 
         var c = Plugin.Instance.Configuration;
         c.AvoidEnabled = settings.AvoidEnabled;
-        c.AvoidStartHour = Math.Clamp(settings.AvoidStartHour, 0, 23);
-        c.AvoidEndHour = Math.Clamp(settings.AvoidEndHour, 0, 24);
+        int avoidStart = Math.Clamp(settings.AvoidStartMinute ?? settings.AvoidStartHour * 60, 0, 1439) / 15 * 15;
+        int avoidEnd = (Math.Clamp(settings.AvoidEndMinute ?? settings.AvoidEndHour * 60, 0, 1440) % 1440) / 15 * 15;
+        c.AvoidStartMinute = avoidStart;
+        c.AvoidEndMinute = avoidEnd;
+        c.AvoidStartHour = avoidStart / 60;
+        c.AvoidEndHour = avoidEnd / 60;
         c.InactiveUserDays = Math.Clamp(settings.InactiveUserDays, 7, 3650);
         c.LoadGuardEnabled = settings.LoadGuardEnabled;
         c.MemoryCeilingPercent = Math.Clamp(settings.MemoryCeilingPercent, 60, 95);
@@ -476,6 +485,9 @@ public class MedicController : ControllerBase
         c.TracksReplaceInPlace = settings.TracksReplaceInPlace;
         c.TracksConcurrentFiles = Math.Clamp(settings.TracksConcurrentFiles, 1, 4);
         c.TracksFfmpegThreads = Math.Clamp(settings.TracksFfmpegThreads, 0, 16);
+        c.TracksExclude = string.Join('\n', TrackCleaner.ExcludeList(settings.TracksExclude));
+        c.AlertCriticalErrors = settings.AlertCriticalErrors;
+        c.AlertRestartNeeded = settings.AlertRestartNeeded;
         Plugin.Instance.SaveConfiguration();
         TrackCleaner.ClearScan(); // the last track scan was made with the old settings
         return GetMedicSettings();

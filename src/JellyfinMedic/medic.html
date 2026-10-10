@@ -64,6 +64,10 @@
                         </div>
                         <dl id="md-now" class="so-kv"></dl>
                         <p id="md-guard" class="so-small" role="status"></p>
+                        <details id="md-spikes" class="md-spikes" hidden>
+                            <summary id="md-spikes-summary"></summary>
+                            <ul id="md-spikes-list" class="md-spike-list"></ul>
+                        </details>
                     </section>
                     <section class="md-tile md-wide" aria-labelledby="md-t-issues">
                         <div class="md-row md-space">
@@ -257,6 +261,11 @@
                                 <label for="md-tracks-langs-in">Keep languages</label>
                                 <input type="text" id="md-tracks-langs-in" class="so-input" style="width:160px" placeholder="eng">
                             </div>
+                            <div class="md-row md-wrap" style="align-items:flex-start">
+                                <label for="md-tracks-exclude-in">Leave these alone</label>
+                                <textarea id="md-tracks-exclude-in" class="so-input" rows="3" style="width:320px" placeholder="/media/anime&#10;The Office&#10;Spirited Away"></textarea>
+                                <span class="so-small so-muted" style="flex-basis:100%">One per line: a folder, or part of a show&rsquo;s, film&rsquo;s or file&rsquo;s name. Anything matching is never scanned or changed.</span>
+                            </div>
                             <label class="md-check"><input type="checkbox" id="md-tracks-untagsubs-in"> Remove untagged subtitles (untagged audio is always kept)</label>
                             <div style="margin-left:26px; display:flex; flex-direction:column; gap:8px">
                                 <label class="md-check"><input type="checkbox" id="md-tracks-keepfirst-in"> Keep the first untagged subtitle in films with no subtitle in your languages</label>
@@ -265,9 +274,9 @@
                             <label class="md-check"><input type="checkbox" id="md-tracks-undet-in"> Remove all untagged tracks, audio included (not recommended)</label>
                             <div class="md-row md-wrap" style="gap:8px">
                                 <label class="md-check"><input type="checkbox" id="md-tracks-window-in"> Only remove tracks between</label>
-                                <select id="md-tracks-window-from" aria-label="Window starts"><option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option><option value="3">03:00</option><option value="4">04:00</option><option value="5">05:00</option><option value="6">06:00</option><option value="7">07:00</option><option value="8">08:00</option><option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option><option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option><option value="15">15:00</option><option value="16">16:00</option><option value="17">17:00</option><option value="18">18:00</option><option value="19">19:00</option><option value="20">20:00</option><option value="21">21:00</option><option value="22">22:00</option><option value="23">23:00</option></select>
+                                <select id="md-tracks-window-from" aria-label="Window starts"></select>
                                 <span>and</span>
-                                <select id="md-tracks-window-to" aria-label="Window ends"><option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option><option value="3">03:00</option><option value="4">04:00</option><option value="5">05:00</option><option value="6">06:00</option><option value="7">07:00</option><option value="8">08:00</option><option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option><option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option><option value="15">15:00</option><option value="16">16:00</option><option value="17">17:00</option><option value="18">18:00</option><option value="19">19:00</option><option value="20">20:00</option><option value="21">21:00</option><option value="22">22:00</option><option value="23">23:00</option></select>
+                                <select id="md-tracks-window-to" aria-label="Window ends"></select>
                             </div>
                             <label class="md-check"><input type="checkbox" id="md-tracks-watching-in"> Pause while someone is watching</label>
                             <label class="md-check"><input type="checkbox" id="md-tracks-inplace-in"> Don't keep the originals (by default each one is kept in a hidden .medic-originals folder next to it)</label>
@@ -512,6 +521,11 @@
                         </div>
 
                         <div class="md-setting">
+                            <label class="md-check"><input type="checkbox" id="md-alert-critical"> Show admins a banner on the home page for serious problems (a damaged database, a full disk, a plugin that couldn't load)</label>
+                            <label class="md-check"><input type="checkbox" id="md-alert-restart"> Show admins a banner when Jellyfin needs a restart to finish updates</label>
+                        </div>
+
+                        <div class="md-setting">
                             <div class="md-row md-wrap">
                                 <label class="md-check"><input type="checkbox" id="md-avoid"> Never schedule tasks between</label>
                                 <select id="md-avoid-from" class="so-input" aria-label="From"></select>
@@ -649,6 +663,15 @@
         #JellyfinMedicPage .sev-Good .so-badge { background: #1f642a; }
         #JellyfinMedicPage .so-area { font-size: 0.8em; color: #aaa; }
         #JellyfinMedicPage .so-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 8px; font-size: 0.92em; }
+        #JellyfinMedicPage .md-dups { margin: 8px 0; }
+        #JellyfinMedicPage .md-spikes { margin-top: 8px; }
+        #JellyfinMedicPage .md-spikes summary { cursor: pointer; }
+        #JellyfinMedicPage .md-spike-list { list-style: none; padding: 0; margin: 6px 0 0; max-height: 260px; overflow-y: auto; }
+        #JellyfinMedicPage .md-spike-list li { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        #JellyfinMedicPage .md-dups summary { cursor: pointer; }
+        #JellyfinMedicPage .md-dups .so-input { margin: 8px 0; max-width: 320px; }
+        #JellyfinMedicPage .md-dup-list { list-style: none; padding: 0; margin: 0; max-height: 420px; overflow-y: auto; }
+        #JellyfinMedicPage .md-dup-list li { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
         #JellyfinMedicPage .so-kv dt { color: #aaa; }
         #JellyfinMedicPage .so-kv dd { margin: 0; word-break: break-word; }
         #JellyfinMedicPage .so-suggest { color: #52b788; }
@@ -1579,6 +1602,15 @@
                     row('Watching', watching === 0 ? 'Nobody' : watching + (watching === 1 ? ' person' : ' people') + (transcoding ? ', ' + transcoding + ' transcoding' : ''));
                     const tasks = pick(nowData, 'RunningTasks') || [];
                     row('Running tasks', tasks.length ? tasks.join(', ') : 'None');
+                    // Jellyfin plus the FFmpeg processes it started (not the rest of the machine).
+                    const res = pick(nowData, 'Resources');
+                    if (res) {
+                        const parts = ['CPU ' + pick(res, 'CpuPercent') + '%', pick(res, 'MemoryGb') + ' GB'];
+                        if (pick(res, 'DiskMBps') !== null && pick(res, 'DiskMBps') !== undefined) parts.push('disk ' + pick(res, 'DiskMBps') + ' MB/s');
+                        if (pick(res, 'GpuPercent') !== null && pick(res, 'GpuPercent') !== undefined) parts.push('GPU ' + pick(res, 'GpuPercent') + '%');
+                        const ff = pick(res, 'FfmpegProcesses') || 0;
+                        row('With FFmpeg', parts.join(' · ') + (ff ? ' (' + ff + ' FFmpeg process' + (ff === 1 ? '' : 'es') + ')' : ''));
+                    }
                     row('Active devices', String(pick(nowData, 'ActiveDevices') || 0));
                     const running = pick(nowData, 'RunningTasks') || [];
                     const rt = $('md-running-text');
@@ -1590,6 +1622,22 @@
                         nowData = await getJson('/JellyfinMedic/Now');
                         renderNow();
                     } catch (e) { /* the tile just stays as it was */ }
+                    try {
+                        // Spells of heavy use this week, and what was running at the time.
+                        const spikes = (await getJson('/JellyfinMedic/ResourceEvents') || []).filter(function (e) {
+                            return Date.now() - new Date(pick(e, 'TimeUtc')).getTime() < 7 * 86400000;
+                        });
+                        $('md-spikes').hidden = spikes.length === 0;
+                        $('md-spikes-summary').textContent = spikes.length + (spikes.length === 1 ? ' spell' : ' spells') + ' of heavy use this week';
+                        const list = $('md-spikes-list');
+                        list.innerHTML = '';
+                        spikes.slice(0, 20).forEach(function (e) {
+                            const li = el('li');
+                            li.appendChild(el('strong', null, fmtShort(pick(e, 'TimeUtc')) + ' · ' + pick(e, 'Resource') + ': ' + pick(e, 'Level')));
+                            li.appendChild(el('span', 'so-small so-muted', (pick(e, 'Causes') || []).join('; ')));
+                            list.appendChild(li);
+                        });
+                    } catch (e) { /* older server: no list */ }
                     try {
                         const events = await getJson('/JellyfinMedic/LoadGuard');
                         const g = $('md-guard');
@@ -1682,11 +1730,15 @@
 
                 function runKey(di, r) { return di + '|' + pick(r, 'TaskId') + '|' + pick(r, 'StartMinutes'); }
 
+                // Busy shading comes in slots (15 minutes; older servers sent one value per hour).
+                function slotMinutes(busy) { return busy.length > 0 ? 1440 / busy.length : 60; }
+
                 function busyDuring(day, start, minutes) {
                     const busy = pick(day, 'Busy') || [];
+                    const size = slotMinutes(busy);
                     let peak = 0;
                     for (let m = start; m < start + Math.max(1, minutes); m += 15) {
-                        peak = Math.max(peak, busy[Math.floor(m / 60) % 24] || 0);
+                        peak = Math.max(peak, busy[Math.floor(m / size) % busy.length] || 0);
                     }
                     return peak;
                 }
@@ -1701,7 +1753,8 @@
                     const span = end - start;
                     const pct = function (m) { return ((m - start) / span * 100) + '%'; };
                     const fromViewing = !!pick(cal, 'FromViewing');
-                    const avoided = pick(cal, 'AvoidedHours') || [];
+                    const avoided = pick(cal, 'AvoidedSlots') || pick(cal, 'AvoidedHours') || [];
+                    const avoidSize = avoided.length > 0 ? 1440 / avoided.length : 60;
 
                     $('md-range').textContent = pick(cal, 'RangeLabel');
                     $('md-prev').disabled = calWeek <= 0;
@@ -1709,7 +1762,7 @@
                     $('md-busy-note').textContent = pick(cal, 'BusySummary') || '';
                     $('md-range-note').textContent = range === 'night'
                         ? 'Showing 00:00 to 08:00. Switch to Full day to see the rest.'
-                        : 'Shading shows how busy each hour usually is. Click a task for its details.';
+                        : 'Shading shows how busy each quarter hour usually is. Click a task for its details.';
 
                     // Hour labels
                     const head = el('div', 'md-tl-head');
@@ -1736,23 +1789,27 @@
 
                         const track = el('div', 'md-tl-track');
 
-                        // Busy shading, one band per hour
+                        // Avoided times and busy shading, one band per slot
+                        for (let i = 0; i < avoided.length; i++) {
+                            const as = i * avoidSize;
+                            if (as >= end) break;
+                            if (!avoided[i]) continue;
+                            const a = el('div', 'md-tl-avoid');
+                            a.style.left = pct(as);
+                            a.style.width = (avoidSize / span * 100) + '%';
+                            a.title = 'You asked Medic never to schedule tasks at this time';
+                            track.appendChild(a);
+                        }
                         const busy = pick(day, 'Busy') || [];
-                        for (let h = 0; h < 24; h++) {
-                            const hs = h * 60;
-                            if (hs >= end) break;
-                            if (avoided[h]) {
-                                const a = el('div', 'md-tl-avoid');
-                                a.style.left = pct(hs);
-                                a.style.width = (60 / span * 100) + '%';
-                                a.title = 'You asked Medic never to schedule tasks at this time';
-                                track.appendChild(a);
-                            }
-                            const v = busy[h] || 0;
+                        const busySize = slotMinutes(busy);
+                        for (let i = 0; i < busy.length; i++) {
+                            const bs = i * busySize;
+                            if (bs >= end) break;
+                            const v = busy[i] || 0;
                             if (v > 0.05) {
                                 const b = el('div', 'md-tl-busy');
-                                b.style.left = pct(hs);
-                                b.style.width = (60 / span * 100) + '%';
+                                b.style.left = pct(bs);
+                                b.style.width = (busySize / span * 100) + '%';
                                 b.style.opacity = (0.06 + v * 0.3).toFixed(2);
                                 track.appendChild(b);
                             }
@@ -1932,11 +1989,16 @@
                     } catch (e) { /* leave the table as it is */ }
                 }
 
-                $('md-preview').addEventListener('click', async function () {
+                $('md-preview').addEventListener('click', function () { showPreview(); });
+
+                async function showPreview(keepScroll) {
                     const box = $('md-preview-box');
+                    const scroll = keepScroll ? window.scrollY : null;
                     box.hidden = false;
-                    box.innerHTML = '';
-                    box.appendChild(el('p', 'so-muted', 'Working out the quietest times…'));
+                    if (!keepScroll) {
+                        box.innerHTML = '';
+                        box.appendChild(el('p', 'so-muted', 'Working out the quietest times…'));
+                    }
                     try {
                         const plan = await getJson('/JellyfinMedic/Schedule/PreviewScheduleDiff');
                         box.innerHTML = '';
@@ -1953,7 +2015,7 @@
                         const table = el('table', 'so-table');
                         const thead = el('thead');
                         const hr = el('tr');
-                        ['Task', 'Now', 'Recommended', 'How often', 'Why'].forEach(function (h) { hr.appendChild(el('th', null, h)); });
+                        ['Task', 'Your choice', 'Now', 'Recommended', 'How often', 'Why'].forEach(function (h) { hr.appendChild(el('th', null, h)); });
                         thead.appendChild(hr);
                         table.appendChild(thead);
                         const body = el('tbody');
@@ -1961,6 +2023,29 @@
                             const tr = el('tr');
                             if (!pick(p, 'Changes')) tr.style.opacity = '0.6';
                             tr.appendChild(el('td', null, pick(p, 'TaskName')));
+                            // Per task: let Medic schedule it, keep what it has, or leave it unscheduled.
+                            const choiceCell = el('td');
+                            const choice = el('select', 'so-input');
+                            choice.setAttribute('aria-label', 'Your choice for ' + pick(p, 'TaskName'));
+                            [['medic', 'Let Medic schedule it'], ['keep', 'Keep its schedule'], ['off', 'Leave unscheduled']].forEach(function (o) {
+                                if (o[0] === 'medic' && pick(p, 'CanPlan') === false) return;
+                                const opt = el('option', null, o[1]);
+                                opt.value = o[0];
+                                choice.appendChild(opt);
+                            });
+                            choice.value = pick(p, 'Choice') || 'medic';
+                            choice.addEventListener('change', async function () {
+                                choice.disabled = true;
+                                try {
+                                    await postJson('/JellyfinMedic/Schedule/SetChoice', { taskId: pick(p, 'TaskId'), choice: choice.value });
+                                    await showPreview(true);
+                                } catch (e) {
+                                    choice.disabled = false;
+                                    showStatus('Couldn\'t save that choice.', 'error');
+                                }
+                            });
+                            choiceCell.appendChild(choice);
+                            tr.appendChild(choiceCell);
                             tr.appendChild(el('td', null, fmtTimes(pick(p, 'CurrentSchedule'))));
                             tr.appendChild(el('td', pick(p, 'Changes') ? 'md-ok-text' : null, fmtTimes(pick(p, 'ProposedSchedule'))));
                             tr.appendChild(el('td', null, pick(p, 'Cadence')));
@@ -1974,12 +2059,13 @@
                         table.appendChild(body);
                         wrap.appendChild(table);
                         box.appendChild(wrap);
+                        if (scroll !== null) window.scrollTo(0, scroll);
                     } catch (err) {
                         console.error('Jellyfin Medic: preview failed', err);
                         box.innerHTML = '';
                         box.appendChild(el('p', 'md-bad-text', 'Couldn\'t work out a schedule. Check the Jellyfin log for Jellyfin Medic errors.'));
                     }
-                });
+                }
 
                 async function applyPlan() {
                     if (!window.confirm('Apply the recommended schedule? Your current schedule is backed up first, so you can restore it.')) return;
@@ -2565,8 +2651,31 @@
                         panel.appendChild(dl);
                         const ex = pick(ch, 'Examples') || [];
                         if (ex.length) panel.appendChild(el('p', 'so-small so-muted', 'For example: ' + ex.join(', ')));
-                        if ((pick(ch, 'ExtraCopies') || 0) >= 30) {
-                            panel.appendChild(el('p', 'md-note', 'Dispatcharr can merge these into one channel each, with the best quality first and the others as backups, and lets you keep just the regional versions you want. Xtream Library already supports it.'));
+                        const dups = pick(ch, 'Duplicates') || [];
+                        if (dups.length) {
+                            // Every channel with copies, and the name of each copy, so you can pick which to keep.
+                            const details = el('details', 'md-dups');
+                            details.appendChild(el('summary', null, 'Show all ' + dups.length.toLocaleString('en-GB') + ' channels with copies'));
+                            const filter = el('input', 'so-input');
+                            filter.type = 'search';
+                            filter.placeholder = 'Filter channels';
+                            filter.setAttribute('aria-label', 'Filter channels');
+                            details.appendChild(filter);
+                            const list = el('ul', 'md-dup-list');
+                            dups.forEach(function (d) {
+                                const li = el('li');
+                                li.appendChild(el('strong', null, pick(d, 'Name') + ' (' + (pick(d, 'Versions') || []).length + ')'));
+                                li.appendChild(el('span', 'so-small so-muted', (pick(d, 'Versions') || []).join(' · ')));
+                                li.dataset.text = (pick(d, 'Name') + ' ' + (pick(d, 'Versions') || []).join(' ')).toLowerCase();
+                                list.appendChild(li);
+                            });
+                            details.appendChild(list);
+                            filter.addEventListener('input', function () {
+                                const q = filter.value.trim().toLowerCase();
+                                list.querySelectorAll('li').forEach(function (li) { li.hidden = q !== '' && li.dataset.text.indexOf(q) < 0; });
+                            });
+                            panel.appendChild(details);
+                            panel.appendChild(el('p', 'md-note', 'Keep one version of each (usually the best quality your TVs can play) and hide or remove the rest in your IPTV plugin or provider.'));
                         }
                     }
                     box.appendChild(panel);
@@ -2597,6 +2706,15 @@
                     for (let h = 0; h < 24; h++) {
                         const o = el('option', null, hm(h * 60));
                         o.value = String(h);
+                        select.appendChild(o);
+                    }
+                }
+
+                function fillQuarters(select) {
+                    select.innerHTML = '';
+                    for (let m = 0; m < 1440; m += 15) {
+                        const o = el('option', null, hm(m));
+                        o.value = String(m);
                         select.appendChild(o);
                     }
                 }
@@ -2632,13 +2750,17 @@
                 });
 
                 async function loadMedicSettings() {
-                    fillHours($('md-avoid-from'));
-                    fillHours($('md-avoid-to'));
+                    fillQuarters($('md-avoid-from'));
+                    fillQuarters($('md-avoid-to'));
+                    fillHours($('md-tracks-window-from'));
+                    fillHours($('md-tracks-window-to'));
                     try {
                         const s = await getJson('/JellyfinMedic/MedicSettings');
                         $('md-avoid').checked = !!pick(s, 'AvoidEnabled');
-                        $('md-avoid-from').value = String(pick(s, 'AvoidStartHour'));
-                        $('md-avoid-to').value = String((pick(s, 'AvoidEndHour') || 0) % 24);
+                        const avoidFrom = pick(s, 'AvoidStartMinute');
+                        const avoidTo = pick(s, 'AvoidEndMinute');
+                        $('md-avoid-from').value = String(avoidFrom ?? (pick(s, 'AvoidStartHour') || 0) * 60);
+                        $('md-avoid-to').value = String((avoidTo ?? (pick(s, 'AvoidEndHour') || 0) * 60) % 1440);
                         $('md-inactive').value = String(pick(s, 'InactiveUserDays'));
                         $('md-guard-enabled').checked = pick(s, 'LoadGuardEnabled') !== false;
                         $('md-ceiling').value = String(pick(s, 'MemoryCeilingPercent') || 85);
@@ -2657,6 +2779,9 @@
                         $('md-tracks-inplace-in').checked = !!pick(s, 'TracksReplaceInPlace');
                         $('md-tracks-conc').value = String(pick(s, 'TracksConcurrentFiles') || 1);
                         $('md-tracks-threads').value = String(pick(s, 'TracksFfmpegThreads') || 1);
+                        $('md-tracks-exclude-in').value = pick(s, 'TracksExclude') || '';
+                        $('md-alert-critical').checked = pick(s, 'AlertCriticalErrors') !== false;
+                        $('md-alert-restart').checked = pick(s, 'AlertRestartNeeded') !== false;
                         medicSettingsLoaded = true;
                         $('md-tracks-save').disabled = false;
                     } catch (e) { /* defaults stay; saving stays off so nothing is overwritten with defaults */ }
@@ -2680,8 +2805,10 @@
                     }
                     const body = {
                         AvoidEnabled: $('md-avoid').checked,
-                        AvoidStartHour: parseInt($('md-avoid-from').value, 10),
-                        AvoidEndHour: parseInt($('md-avoid-to').value, 10),
+                        AvoidStartMinute: parseInt($('md-avoid-from').value, 10),
+                        AvoidEndMinute: parseInt($('md-avoid-to').value, 10),
+                        AvoidStartHour: Math.floor(parseInt($('md-avoid-from').value, 10) / 60),
+                        AvoidEndHour: Math.floor(parseInt($('md-avoid-to').value, 10) / 60),
                         InactiveUserDays: parseInt($('md-inactive').value, 10) || 90,
                         LoadGuardEnabled: $('md-guard-enabled').checked,
                         MemoryCeilingPercent: parseInt($('md-ceiling').value, 10) || 85,
@@ -2697,7 +2824,10 @@
                         TracksPauseWhileWatching: $('md-tracks-watching-in').checked,
                         TracksReplaceInPlace: $('md-tracks-inplace-in').checked,
                         TracksConcurrentFiles: parseInt($('md-tracks-conc').value, 10) || 1,
-                        TracksFfmpegThreads: parseInt($('md-tracks-threads').value, 10)
+                        TracksFfmpegThreads: parseInt($('md-tracks-threads').value, 10),
+                        TracksExclude: $('md-tracks-exclude-in').value,
+                        AlertCriticalErrors: $('md-alert-critical').checked,
+                        AlertRestartNeeded: $('md-alert-restart').checked
                     };
                     try {
                         await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JellyfinMedic/MedicSettings'), data: JSON.stringify(body), contentType: 'application/json', dataType: 'json' });
@@ -3108,7 +3238,7 @@
 
                 function loadTracks() {
                     getJson('/JellyfinMedic/MedicSettings').then(function (s) {
-                        $('md-tracks-langs').textContent = 'Keeping: ' + (pick(s, 'TracksKeepLanguages') || 'eng') + (pick(s, 'TracksReplaceInPlace') ? ' · replacing files in place' : ' · keeping originals in .medic-originals') + (pick(s, 'TracksRemoveUndetermined') ? ' · removing all untagged tracks' : pick(s, 'TracksRemoveUntaggedSubtitles') ? ' · removing untagged subtitles' + (pick(s, 'TracksKeepFirstUntaggedSubtitle') !== false ? ' (keeping the first where needed)' : '') + (pick(s, 'TracksAllowRemovingOnlySubtitle') ? ', including a lone one' : '') : ' · keeping untagged tracks');
+                        $('md-tracks-langs').textContent = 'Keeping: ' + (pick(s, 'TracksKeepLanguages') || 'eng') + (pick(s, 'TracksReplaceInPlace') ? ' · replacing files in place' : ' · keeping originals in .medic-originals') + (pick(s, 'TracksRemoveUndetermined') ? ' · removing all untagged tracks' : pick(s, 'TracksRemoveUntaggedSubtitles') ? ' · removing untagged subtitles' + (pick(s, 'TracksKeepFirstUntaggedSubtitle') !== false ? ' (keeping the first where needed)' : '') + (pick(s, 'TracksAllowRemovingOnlySubtitle') ? ', including a lone one' : '') : ' · keeping untagged tracks') + (pick(s, 'TracksExclude') ? ' · leaving ' + String(pick(s, 'TracksExclude')).split('\n').filter(Boolean).length + ' excluded' : '');
                     }).catch(function () {});
                     pollTracks();
                     pollScan();

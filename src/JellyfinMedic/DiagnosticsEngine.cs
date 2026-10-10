@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
-using System.Linq;
 using System.Text.Json;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -52,6 +48,9 @@ public sealed class DiagnosticsEngine
     private const string AreaUsage = "Usage & peak times";
 
     private const string WhereTranscoding = "Dashboard → Playback → Transcoding";
+    private const string WhereTrickplay = "Dashboard → Playback → Trickplay";
+    private const string WhereCustomCss = "Dashboard → General → Custom CSS";
+    private const string AreaTheme = "Themes";
     // Where to change how Jellyfin is run (devices, storage, memory), worded for this platform.
     private static string WhereDocker => HostPlatform.WhereRunSettings;
 
@@ -150,6 +149,15 @@ public sealed class DiagnosticsEngine
             // Unreadable JavaScript Injector settings: skip the script checks.
         }
 
+        // Themes loaded by the custom CSS (Dashboard → General → Custom CSS).
+        foreach (var (url, _) in ThemeImports(CustomCss()))
+        {
+            if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                links.Add(new LinkTarget { Kind = "theme", Name = url, Url = url });
+            }
+        }
+
         return links;
     }
 
@@ -166,13 +174,17 @@ public sealed class DiagnosticsEngine
 
         AddSpecs(hw, encoding, libraries, pluginReports.Count);
 
-        Guard(AreaHardware, () => CheckTranscoding(hw, encoding, usage));
-        Guard(AreaStorage, () => CheckStorage());
+        Guard(AreaHardware, () => CheckTranscoding(hw, encoding));
+        Guard(AreaStorage, () => CheckStorage(libraries, encoding));
         Guard(AreaServer, () => CheckServer(server, hw, libraries));
+        Guard(AreaServer, () => CheckPerformance(server, hw, pluginReports.Count));
+        Guard(AreaTheme, CheckTheme);
+        Guard(AreaServer, CheckResourceSpikes);
         Guard(AreaLibraries, () => CheckLibraries(libraries));
         Guard(AreaLiveTv, () => CheckLiveTv(liveTv));
         Guard(AreaNetwork, () => CheckNetwork(network));
         Guard(AreaTasks, () => CheckTasks(usage));
+        Guard(AreaTasks, () => SuggestSchedule(usage));
         Guard(AreaUsage, () => CheckUsage(usage, encoding, hw));
         Guard("Plugins", () => CheckLinks(links, linkResults));
 
@@ -201,7 +213,7 @@ public sealed class DiagnosticsEngine
         Guard("Storage", () => _report.Findings.AddRange(DiskHealth.Check()));
 
         // One "all good" line for any area with nothing to report.
-        foreach (var area in new[] { AreaHardware, AreaStorage, AreaServer, AreaLibraries, AreaLiveTv, AreaNetwork, AreaTasks, "Plugins", "Users and access", "Security", "Logs" })
+        foreach (var area in new[] { AreaHardware, AreaStorage, AreaServer, AreaLibraries, AreaLiveTv, AreaNetwork, AreaTasks, "Plugins", AreaTheme, "Users and access", "Security", "Logs" })
         {
             if (!_report.Findings.Any(f => f.Area == area))
             {
@@ -297,6 +309,38 @@ public sealed class DiagnosticsEngine
 
         Spec("Storage", "Log folder size", SystemProbe.Size(SystemProbe.DirectorySize(_paths.LogDirectoryPath)));
 
+        // Every library drive, and how fast each drive is filling.
+        foreach (var d in WatchedDrives(libraries, encoding))
+        {
+            string rate = d.GbPerDay switch
+            {
+                null => "fill rate known after 3 days",
+                <= 0.05 => "not filling up",
+                { } r => $"using about {SystemProbe.Gb(r)} a day" + (d.DaysToFull is { } days ? $", full in {Weeks(days)}" : string.Empty)
+            };
+            Spec("Storage", $"Drive for {d.Holds}", $"{SystemProbe.Gb(d.FreeGb)} free of {SystemProbe.Gb(d.TotalGb)} ({rate})");
+        }
+
+        // Folders that quietly grow. Measured in the background, as they can hold millions of files.
+        var serverPaths = _paths as IServerApplicationPaths;
+        foreach (var (label, path) in new[]
+                 {
+                     ("Metadata folder", serverPaths?.InternalMetadataPath),
+                     ("Trickplay images", _paths.TrickplayPath),
+                     ("Image cache", _paths.ImageCachePath),
+                     ("Cache folder (all)", _paths.CachePath)
+                 })
+        {
+            if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+            {
+                continue;
+            }
+
+            Spec("Storage", label, StorageWatch.FolderSize(path) is { } size
+                ? SystemProbe.Size(size.Bytes) + (size.Complete ? string.Empty : " or more")
+                : "measuring, check back in a few minutes");
+        }
+
         Spec("Libraries", "Libraries", libraries.Count.ToString(CultureInfo.InvariantCulture));
         long total = libraries.Sum(l => l.ItemCount ?? 0);
         Spec("Libraries", "Total items", total.ToString("N0", CultureInfo.InvariantCulture));
@@ -312,7 +356,7 @@ public sealed class DiagnosticsEngine
 
     // ---------- Hardware & transcoding ----------
 
-    private void CheckTranscoding(HardwareInfo hw, object? enc, UsageSummary usage)
+    private void CheckTranscoding(HardwareInfo hw, object? enc)
     {
         if (enc is null)
         {
@@ -398,6 +442,59 @@ public sealed class DiagnosticsEngine
                     "Tick H264 and HEVC, plus VP9 and AV1 if your GPU supports them",
                     "With nothing ticked, the CPU decodes every video even though the GPU could.", WhereTranscoding);
             }
+            else if (codecs is not null && deviceThere)
+            {
+                var missing = new[] { "h264", "hevc" }.Where(c => !codecs.Contains(c, StringComparer.OrdinalIgnoreCase)).ToList();
+                if (missing.Count > 0)
+                {
+                    Add(AreaHardware, Sev.Improve, $"{string.Join(" and ", missing.Select(c => c.ToUpperInvariant()))} aren't decoded on the GPU",
+                        "Ticked: " + string.Join(", ", codecs.Select(c => c.ToUpperInvariant())), "Tick H264 and HEVC",
+                        "Nearly all films and series are H264 or HEVC. Unticked, the CPU decodes them before the GPU encodes, which is the slow half of a transcode.", WhereTranscoding);
+                }
+            }
+
+            if (deviceThere && SettingsReader.Bool(enc, "EnableDecodingColorDepth10Hevc") == false)
+            {
+                Add(AreaHardware, Sev.Improve, "10-bit HEVC is decoded on the CPU", "Off", "Enable 10-bit hardware decoding for HEVC: on",
+                    "Most HDR and many recent films are 10-bit HEVC. Decoding them on the CPU is heavy, and 4K HDR can stutter. Every GPU Jellyfin supports from the last several years can do it.", WhereTranscoding);
+            }
+
+            if (deviceThere && SettingsReader.Bool(enc, "AllowHevcEncoding") == false && SettingsReader.Bool(enc, "EnableHardwareEncoding") != false)
+            {
+                Add(AreaHardware, Sev.Tip, "Transcodes are only made as H264", "HEVC encoding off", "Allow encoding in HEVC format: on",
+                    "Apps that can play HEVC get the same picture at about half the bitrate, which helps remote viewers on slow connections. Apps that can't still get H264.", WhereTranscoding);
+            }
+
+            if (deviceThere && hw.GpuVendor == "intel" && hwType is "qsv" or "vaapi"
+                && SettingsReader.Bool(enc, "EnableIntelLowPowerH264HwEncoder") == false
+                && SettingsReader.Bool(enc, "EnableIntelLowPowerHevcHwEncoder") == false)
+            {
+                Add(AreaHardware, Sev.Tip, "Intel low-power encoding is off", "Off", "Enable Intel Low-Power H.264 and HEVC encoders: on",
+                    "On 8th-generation Intel and later, the low-power encoder is faster and leaves the rest of the GPU free for tone mapping and more streams. It needs the GuC/HuC firmware on the host, which most modern Linux systems load by default.", WhereTranscoding);
+            }
+
+            // Trickplay images are made with the same FFmpeg, and can use the GPU too.
+            var server = (object)_config.Configuration;
+            // (Trickplay on the CPU altogether is checked under Server.)
+            if (SettingsReader.Bool(server, "TrickplayOptions.EnableHwAcceleration") != false
+                && SettingsReader.Bool(server, "TrickplayOptions.EnableHwEncoding") == false)
+            {
+                Add(AreaHardware, Sev.Tip, "Trickplay images are encoded on the CPU", "Hardware encoding for trickplay: off", "On (if your GPU supports MJPEG encoding)",
+                    "Intel and recent AMD GPUs can also encode the thumbnails, which takes the last part of the work off the CPU.", WhereTrickplay);
+            }
+        }
+
+        string preset = (SettingsReader.Text(enc, "EncoderPreset") ?? string.Empty).Trim().ToLowerInvariant();
+        if (!hwOn && preset is "slow" or "slower" or "veryslow")
+        {
+            Add(AreaHardware, Sev.Improve, "Software transcodes use a slow preset", preset, "Auto, or veryfast",
+                "With no GPU doing the work, a slow preset makes each transcode use far more CPU for a small gain in quality, so fewer people can watch at once.", WhereTranscoding);
+        }
+
+        if (!hwOn && SettingsReader.Bool((object)_config.Configuration, "TrickplayOptions.EnableKeyFrameOnlyExtraction") == false)
+        {
+            Add(AreaHardware, Sev.Tip, "Trickplay reads every frame", "Key frames only: off", "On",
+                "Without a GPU, making trickplay images from key frames only is many times faster. The thumbnails are a little less exact.", WhereTrickplay);
         }
 
         bool? toneMapping = SettingsReader.Bool(enc, "EnableTonemapping");
@@ -488,8 +585,57 @@ public sealed class DiagnosticsEngine
 
     // ---------- Storage ----------
 
-    private void CheckStorage()
+    private List<DriveStatus>? _drives;
+
+    /// <summary>Config, cache, transcode and library drives, each once, with today's reading saved.</summary>
+    private List<DriveStatus> WatchedDrives(List<LibraryFacts> libraries, object? encoding)
     {
+        if (_drives is not null)
+        {
+            return _drives;
+        }
+
+        var folders = new List<(string, string)>
+        {
+            ("config & database", _paths.DataPath),
+            ("cache", _paths.CachePath),
+            ("transcodes", TranscodePath(encoding))
+        };
+        folders.AddRange(libraries.Where(l => !l.IsStreamed).SelectMany(l => l.Locations.Select(loc => (l.Name, loc))));
+        _drives = StorageWatch.Drives(folders);
+        StorageWatch.Record(_paths.PluginConfigurationsPath, _drives);
+        return _drives;
+    }
+
+    private static string Weeks(double days) =>
+        days < 14 ? $"about {Math.Max(1, Math.Round(days)):0} days" : days < 120 ? $"about {Math.Round(days / 7):0} weeks" : $"about {Math.Round(days / 30):0} months";
+
+    private void CheckStorage(List<LibraryFacts> libraries, object? encoding)
+    {
+        foreach (var d in WatchedDrives(libraries, encoding))
+        {
+            bool holdsConfig = d.Holds.Contains("config & database", StringComparison.Ordinal) || d.Holds.Contains("cache", StringComparison.Ordinal);
+            double freePct = d.TotalGb > 0 ? d.FreeGb / d.TotalGb * 100 : 100;
+            if (!holdsConfig && (freePct < 1 || d.FreeGb < 5))
+            {
+                Add(AreaStorage, Sev.Problem, $"The drive for {d.Holds} is full", $"{SystemProbe.Gb(d.FreeGb)} free of {SystemProbe.Gb(d.TotalGb)}",
+                    "Free some space or add a drive", "New downloads and track cleanup will fail, and Jellyfin can't save images or subtitles next to your files.", d.ExamplePath);
+            }
+            else if (!holdsConfig && (freePct < 3 || d.FreeGb < 25))
+            {
+                Add(AreaStorage, Sev.Improve, $"The drive for {d.Holds} is nearly full", $"{SystemProbe.Gb(d.FreeGb)} free of {SystemProbe.Gb(d.TotalGb)}",
+                    "Keep at least 3% or 25 GB free", "A full drive stops new files arriving and can stop Jellyfin saving artwork and subtitles.", d.ExamplePath);
+            }
+
+            if (d.DaysToFull is { } days && days < 30)
+            {
+                Add(AreaStorage, days < 7 ? Sev.Problem : Sev.Improve, $"The drive for {d.Holds} will be full in {Weeks(days)}",
+                    $"{SystemProbe.Gb(d.FreeGb)} free, using about {SystemProbe.Gb(d.GbPerDay!.Value)} a day",
+                    "Free some space, add a drive, or find what's filling it (for example trickplay images or old downloads)",
+                    "At this rate the drive runs out soon, and Jellyfin, downloads and track cleanup all need room to write.", d.ExamplePath);
+            }
+        }
+
         if (SystemProbe.Space(_paths.DataPath) is { } data)
         {
             if (data.FreeGb < 5)
@@ -541,6 +687,155 @@ public sealed class DiagnosticsEngine
             Add(AreaStorage, Sev.Improve, "Debug logging is on", level, "Information",
                 "Debug logging writes far more and slows the server slightly. Only turn it on while troubleshooting.",
                 "logging.json in your Jellyfin config folder");
+        }
+    }
+
+    // ---------- Themes (custom CSS) ----------
+
+    private string CustomCss() => SettingsReader.Text(TryConfig("branding"), "CustomCss") ?? string.Empty;
+
+    private static readonly System.Text.RegularExpressions.Regex ImportRule = new(
+        @"@import\s+(?:url\(\s*)?[""']?([^""')\s;]+)[""']?\s*\)?[^;]*;?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static readonly System.Text.RegularExpressions.Regex Comments = new(@"/\*.*?\*/", System.Text.RegularExpressions.RegexOptions.Singleline);
+
+    /// <summary>Each @import in the CSS, with whether it comes after other rules (browsers ignore those).</summary>
+    public static List<(string Url, bool Late)> ThemeImports(string css)
+    {
+        string text = Comments.Replace(css ?? string.Empty, string.Empty);
+        var found = new List<(string, bool)>();
+        foreach (System.Text.RegularExpressions.Match m in ImportRule.Matches(text))
+        {
+            // Only @charset and other @imports may come before an @import.
+            string before = ImportRule.Replace(text[..m.Index], string.Empty);
+            before = System.Text.RegularExpressions.Regex.Replace(before, @"@charset[^;]*;", string.Empty, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            found.Add((m.Groups[1].Value.Trim(), before.Trim().Length > 0));
+        }
+
+        return found;
+    }
+
+    private void CheckTheme()
+    {
+        string css = CustomCss();
+        if (string.IsNullOrWhiteSpace(css))
+        {
+            return;
+        }
+
+        var imports = ThemeImports(css);
+        foreach (var (url, late) in imports)
+        {
+            if (late)
+            {
+                Add(AreaTheme, Sev.Improve, "A theme import in your custom CSS is ignored", url,
+                    "Move every @import line to the very top of the custom CSS",
+                    "Browsers skip an @import that comes after any other rule, so this theme never loads. It's the most common reason a theme \"stops working\" after adding a tweak above it.",
+                    WhereCustomCss);
+            }
+
+            if (url.Contains("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            {
+                Add(AreaTheme, Sev.Improve, "A theme is loaded from raw.githubusercontent.com", url,
+                    "Use the theme's jsDelivr or GitHub Pages address from its install page instead",
+                    "GitHub serves these files as plain text and tells browsers not to guess, so browsers refuse to use them as a stylesheet and the theme doesn't apply.",
+                    WhereCustomCss);
+            }
+            else if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                Add(AreaTheme, Sev.Tip, "A theme is loaded over plain http", url, "The https:// address",
+                    "When you open Jellyfin over https (for example through a reverse proxy), browsers block http stylesheets, so the theme only works on some devices.",
+                    WhereCustomCss);
+            }
+        }
+
+        string code = Comments.Replace(css, string.Empty);
+        int open = code.Count(c => c == '{');
+        int close = code.Count(c => c == '}');
+        if (open != close)
+        {
+            Add(AreaTheme, Sev.Improve, "Your custom CSS has unbalanced braces", $"{open} opening {{ and {close} closing }}",
+                "Find the rule missing a brace (usually the last one you added)",
+                "Browsers drop everything from the broken rule onwards, so parts of your theme or tweaks silently stop applying, and pages can draw oddly.",
+                WhereCustomCss);
+        }
+
+        if (css.Contains("/*", StringComparison.Ordinal) && System.Text.RegularExpressions.Regex.Matches(css, @"/\*").Count > System.Text.RegularExpressions.Regex.Matches(css, @"\*/").Count)
+        {
+            Add(AreaTheme, Sev.Improve, "A comment in your custom CSS is never closed", "/* without */",
+                "Close the comment with */",
+                "Everything after an unclosed comment is ignored, including any theme or tweaks below it.",
+                WhereCustomCss);
+        }
+    }
+
+    // ---------- Resource spikes ----------
+
+    private void CheckResourceSpikes()
+    {
+        var recent = ResourceLog.Load(_paths).Where(e => e.TimeUtc > DateTime.UtcNow.AddDays(-7)).ToList();
+        if (recent.Count == 0)
+        {
+            return;
+        }
+
+        // The causes seen most often, without their percentages, so the same task counts once.
+        var top = recent.SelectMany(e => e.Causes)
+            .Select(c => System.Text.RegularExpressions.Regex.Replace(c, @" \(\d+%\)$", string.Empty))
+            .GroupBy(c => c)
+            .OrderByDescending(g => g.Count())
+            .Take(3)
+            .Select(g => $"{g.Key} ({g.Count()}×)");
+        var kinds = recent.GroupBy(e => e.Resource).Select(g => $"{g.Key} {g.Count()}×");
+        Add(AreaServer, recent.Count >= 10 ? Sev.Improve : Sev.Tip, $"Jellyfin ran flat out {recent.Count} time{(recent.Count == 1 ? string.Empty : "s")} this week",
+            string.Join(", ", kinds) + ". Most often running: " + string.Join("; ", top),
+            "Move the tasks named here to quieter times (Schedule), or let the GPU take the transcodes",
+            "Each time, Jellyfin and its FFmpeg processes used nearly all of a resource for at least 45 seconds, which is when playback buffers and pages load slowly. Medic → Dashboard lists each one and what was running.",
+            "Medic → Dashboard");
+    }
+
+    // ---------- General performance ----------
+
+    private void CheckPerformance(object server, HardwareInfo hw, int pluginCount)
+    {
+        if (SystemProbe.Spinning(_paths.DataPath) == true)
+        {
+            Add(AreaServer, Sev.Improve, "Jellyfin's database is on a spinning hard drive", HostPlatform.DataFolder + " is on a hard drive",
+                "Move it to an SSD (on Unraid, the cache pool)",
+                "The database does thousands of small reads and writes. On a hard drive every page of the web UI, every scan and every \"continue watching\" waits for the disk. An SSD makes Jellyfin feel several times quicker.",
+                WhereDocker);
+        }
+
+        long db = SystemProbe.FileSize(Path.Combine(_paths.DataPath, "jellyfin.db"));
+        if (db > 4L * 1024 * 1024 * 1024)
+        {
+            Add(AreaServer, Sev.Tip, "The database is very large", SystemProbe.Size(db),
+                "Keep the activity log for 30–90 days, remove libraries you no longer use, and let \"Optimize database\" run weekly",
+                "A big database makes scans, searches and the home screen slower. Old activity entries and libraries of channels nobody watches are the usual causes.",
+                WhereTasks);
+        }
+
+        if (StorageWatch.FolderSize(_paths.ImageCachePath) is { } images && images.Bytes > 30L * 1024 * 1024 * 1024)
+        {
+            Add(AreaServer, Sev.Tip, "The image cache is very large", SystemProbe.Size(images.Bytes) + (images.Complete ? string.Empty : " or more"),
+                "Run \"Clean Cache Directory\", and keep the cache on an SSD",
+                "Resized artwork piles up here. It's rebuilt as needed, so clearing it is safe, and on a slow disk a huge cache makes artwork load slowly.",
+                WhereTasks);
+        }
+
+        long? imageLimit = SettingsReader.Number(server, "ParallelImageEncodingLimit");
+        if (imageLimit is 0 && hw.CpuThreads is > 0 and <= 4)
+        {
+            Add(AreaServer, Sev.Tip, "Image resizing can use every CPU thread", "Unlimited", "2",
+                $"With {hw.CpuThreads} CPU threads, a page full of new artwork can make playback stutter while images are resized. A limit of 2 keeps a thread free.",
+                WhereGeneral);
+        }
+
+        if (pluginCount >= 30)
+        {
+            Add(AreaServer, Sev.Tip, "Lots of plugins are installed", pluginCount.ToString(CultureInfo.InvariantCulture), "Only the ones you use",
+                "Each plugin loads at start-up and many run their own background work and scheduled tasks. Medic → Plugin directory lists ones you probably don't need any more.",
+                "Dashboard → Plugins");
         }
     }
 
@@ -939,14 +1234,15 @@ public sealed class DiagnosticsEngine
                     continue;
                 }
 
-                int hour = TimeSpan.FromTicks(trigger.TimeOfDayTicks.GetValueOrDefault()).Hours;
+                var at = TimeSpan.FromTicks(trigger.TimeOfDayTicks.GetValueOrDefault());
+                int hour = at.Hours;
                 IEnumerable<int> days = trigger.Type == TaskTriggerInfoType.WeeklyTrigger && trigger.DayOfWeek.HasValue
                     ? new[] { ((int)trigger.DayOfWeek.GetValueOrDefault() + 6) % 7 }
                     : Enumerable.Range(0, 7);
 
                 if (days.Any(d => usage.AverageStreams.ElementAtOrDefault(d * 24 + hour) >= 1.0))
                 {
-                    clashes.Add($"{worker.Name} ({hour:00}:00)");
+                    clashes.Add($"{worker.Name} ({ScheduleStorage.Hhmm(at)})");
                     break;
                 }
             }
@@ -978,7 +1274,7 @@ public sealed class DiagnosticsEngine
         {
             var busy = BusyProfile.Create(usage, Plugin.Instance?.Configuration);
             plan = SchedulePlanner.Build(_tasks.ScheduledTasks.Where(IsVisibleTask).ToList(),
-                ScheduleStorage.LoadProfile(_paths), ScheduleStorage.LoadManaged(_paths), busy);
+                ScheduleStorage.LoadProfile(_paths), ScheduleStorage.LoadManaged(_paths), busy, ScheduleStorage.LoadChoices(_paths));
         }
         catch
         {
@@ -1256,6 +1552,13 @@ public sealed class DiagnosticsEngine
                     paradox ? "The address is missing /plugins/ — use https://www.iamparadox.dev/jellyfin/plugins/manifest.json" : "If this keeps happening, check the address on the plugin's install page, or whether your server can reach the site",
                     "This may just be a temporary outage, so it's only worth acting on if it keeps happening. While it's down, plugins from this repository won't get updates. Fixing or removing a repository doesn't uninstall anything.",
                     "Dashboard → Plugins → Repositories");
+            }
+            else if (link.Kind == "theme")
+            {
+                Add(AreaTheme, Sev.Improve, "A theme in your custom CSS can't be loaded", $"{link.Url} ({result})",
+                    "Check the theme's install page for its current address, or remove the line",
+                    "The browser can't fetch it, so the theme doesn't apply and pages can look half-styled while it keeps trying.",
+                    WhereCustomCss);
             }
             else
             {

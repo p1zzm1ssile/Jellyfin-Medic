@@ -77,6 +77,19 @@ public class ArrStore
         }
     }
 
+    public string? GetQbitPassword() => ReadSecrets().QbitPassword;
+
+    public void SetQbitPassword(string? password)
+    {
+        lock (_lock)
+        {
+            var secrets = ReadSecrets();
+            secrets.QbitPassword = string.IsNullOrEmpty(password) ? null : password;
+            Directory.CreateDirectory(_root);
+            WriteAtomic(SecretsPath, JsonSerializer.Serialize(secrets, JsonOptions));
+        }
+    }
+
     public List<ActionRecord> LoadHistory()
     {
         try
@@ -149,5 +162,7 @@ public class ArrStore
         public string? SonarrKey { get; set; }
 
         public string? RadarrKey { get; set; }
+
+        public string? QbitPassword { get; set; }
     }
 }

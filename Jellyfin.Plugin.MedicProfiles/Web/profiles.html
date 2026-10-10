@@ -11,6 +11,7 @@
             <div class="mp-tabs" role="tablist" aria-label="Medic Profiles sections">
                 <button type="button" role="tab" class="mp-tab" data-tab="downloads" aria-selected="true">Downloads</button>
                 <button type="button" role="tab" class="mp-tab" data-tab="blocked" aria-selected="false" tabindex="-1">Blocked</button>
+                <button type="button" role="tab" class="mp-tab" data-tab="indexers" aria-selected="false" tabindex="-1">Indexers</button>
                 <button type="button" role="tab" class="mp-tab" data-tab="profiles" aria-selected="false" tabindex="-1">Profiles</button>
                 <button type="button" role="tab" class="mp-tab" data-tab="history" aria-selected="false" tabindex="-1">History</button>
                 <button type="button" role="tab" class="mp-tab" data-tab="settings" aria-selected="false" tabindex="-1">Settings</button>
@@ -41,6 +42,14 @@
                 <p class="mp-muted">Releases Sonarr and Radarr won't grab again. Unblock one if it was blocked by mistake.</p>
                 <ul id="mp-blocked" class="mp-list"></ul>
                 <p id="mp-blocked-empty" class="mp-muted" hidden>Nothing is blocked.</p>
+            </section>
+
+            <!-- Indexers -->
+            <section class="mp-panel" data-panel="indexers" role="tabpanel" hidden>
+                <p class="mp-muted">Each indexer Sonarr and Radarr search, and whether it's working. Indexers added by Prowlarr show here too.</p>
+                <ul id="mp-indexer-warnings" class="mp-list"></ul>
+                <ul id="mp-indexers" class="mp-list"></ul>
+                <p id="mp-indexers-empty" class="mp-muted" hidden>No indexers found.</p>
             </section>
 
             <!-- Profiles -->
@@ -92,6 +101,22 @@
                             <button type="button" class="mp-btn mp-btn-plain" data-test="radarr">Test Radarr</button>
                             <button type="button" class="mp-btn mp-btn-plain" data-clear="radarr">Remove key</button>
                             <span class="mp-small" data-test-result="radarr" aria-live="polite"></span>
+                        </div>
+                    </fieldset>
+                    <fieldset>
+                        <legend>qBittorrent: block unsafe files</legend>
+                        <p class="mp-muted mp-small">Stops qBittorrent downloading program files (.exe, .bat, .scr and similar) that come inside film and series torrents. They're never what you want and can be malware. Uses qBittorrent's own "Excluded file names" list (version 4.6 or later); anything you've added there yourself is kept.</p>
+                        <label class="mp-field"><span>Web UI address</span>
+                            <input type="text" id="mp-qbit-url" class="mp-input" placeholder="http://192.168.1.10:8080" autocomplete="off" spellcheck="false"></label>
+                        <label class="mp-field"><span>User name</span>
+                            <input type="text" id="mp-qbit-user" class="mp-input" autocomplete="off" spellcheck="false"></label>
+                        <label class="mp-field"><span>Password</span>
+                            <input type="password" id="mp-qbit-pass" class="mp-input" autocomplete="off"></label>
+                        <label class="mp-check"><input type="checkbox" id="mp-qbit-archives"> Also block archives (.rar, .zip, .7z). Not recommended for Usenet or scene releases, which often come packed and are unpacked for you.</label>
+                        <div class="mp-row">
+                            <button type="button" class="mp-btn mp-btn-plain" id="mp-qbit-block">Block unsafe files</button>
+                            <button type="button" class="mp-btn mp-btn-plain" id="mp-qbit-unblock">Stop blocking</button>
+                            <span class="mp-small" id="mp-qbit-state" aria-live="polite"></span>
                         </div>
                     </fieldset>
                     <fieldset>
@@ -237,7 +262,7 @@
                 return 'done around ' + (sameDay ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : when(iso)) + ' (' + left + ')';
             }
 
-            function appName(app) { return app === 'sonarr' ? 'Sonarr' : 'Radarr'; }
+            function appName(app) { return app === 'sonarr' ? 'Sonarr' : app === 'qbittorrent' ? 'qBittorrent' : 'Radarr'; }
 
             function init(page) {
                 const $ = function (id) { return page.querySelector('#' + id); };
@@ -277,6 +302,7 @@
                     clearTimeout(timer);
                     if (name === 'downloads') loadQueue();
                     else if (name === 'blocked') loadBlocked();
+                    else if (name === 'indexers') loadIndexers();
                     else if (name === 'profiles') loadAdvice(!!force);
                     else if (name === 'history') loadHistory();
                     else if (name === 'settings') loadSettings();
@@ -678,6 +704,30 @@
                     });
                 }
 
+                // ---------- Indexers ----------
+                function loadIndexers() {
+                    getJson('Indexers').then(function (data) {
+                        showSetup(data.configured);
+                        showErrors(data.errors);
+                        const warn = $('mp-indexer-warnings');
+                        warn.textContent = '';
+                        (data.warnings || []).forEach(function (w) { warn.appendChild(el('li', 'mp-banner error', w)); });
+                        const list = $('mp-indexers');
+                        list.textContent = '';
+                        (data.rows || []).forEach(function (r) {
+                            const li = el('li', 'mp-card');
+                            const title = el('p', 'mp-card-title');
+                            title.appendChild(el('span', 'mp-badge', appName(r.app)));
+                            title.appendChild(document.createTextNode(r.name + (r.protocol ? ' (' + r.protocol + ')' : '')));
+                            li.appendChild(title);
+                            const state = r.state === 'failing' ? 'Failing' : r.state === 'off' ? 'Switched off' : 'Working';
+                            li.appendChild(el('p', 'mp-note ' + (r.state === 'failing' ? 'bad' : r.state === 'off' ? '' : 'ok'), state + (r.detail ? ': ' + r.detail : '')));
+                            list.appendChild(li);
+                        });
+                        $('mp-indexers-empty').hidden = list.children.length > 0;
+                    });
+                }
+
                 // ---------- Profiles ----------
                 $('mp-advice-refresh').addEventListener('click', function () { loadAdvice(true); });
 
@@ -751,7 +801,7 @@
                     getJson('History').then(function (data) {
                         const list = $('mp-history');
                         list.textContent = '';
-                        const words = { remove: 'Removed', block: 'Removed and blocked', unblock: 'Unblocked', import: 'Imported by hand' };
+                        const words = { remove: 'Removed', block: 'Removed and blocked', unblock: 'Unblocked', import: 'Imported by hand', 'blocked files': 'Blocked in qBittorrent', 'unblocked files': 'No longer blocked in qBittorrent' };
                         (data.rows || []).forEach(function (h) {
                             const li = el('li', 'mp-card');
                             const title = el('p', 'mp-card-title');
@@ -777,8 +827,36 @@
                         $('mp-sonarr-keystate').textContent = st.sonarr.keySet ? 'A key is saved.' : 'No key saved yet.';
                         $('mp-radarr-keystate').textContent = st.radarr.keySet ? 'A key is saved.' : 'No key saved yet.';
                         $('mp-stuck').value = st.stuckAfterHours;
+                        const q = st.qbit || {};
+                        $('mp-qbit-url').value = q.url || '';
+                        $('mp-qbit-user').value = q.user || '';
+                        $('mp-qbit-pass').value = '';
+                        $('mp-qbit-pass').placeholder = q.passwordSet ? 'Saved. Type a new one to replace it.' : '';
+                        if (q.url) loadFileFilter();
                     });
                 }
+
+                function loadFileFilter() {
+                    const out = $('mp-qbit-state');
+                    out.textContent = 'Checking qBittorrent…';
+                    getJson('FileFilter').then(function (f) {
+                        out.textContent = f.message;
+                        out.style.color = f.reachable && f.listOn && f.blocksPrograms ? '#7fe0b5' : (f.reachable ? '' : '#ff9a9e');
+                        $('mp-qbit-archives').checked = !!f.blocksArchives;
+                    }).catch(function () { out.textContent = 'Couldn’t check qBittorrent.'; });
+                }
+
+                function setFileFilter(block) {
+                    const out = $('mp-qbit-state');
+                    out.textContent = 'Saving and updating qBittorrent…';
+                    post('Settings', settingsBody(), false)
+                        .then(function () { return post('FileFilter', { block: block, archives: $('mp-qbit-archives').checked }); })
+                        .then(function (res) { out.textContent = res.message; out.style.color = res.ok ? '#7fe0b5' : '#ff9a9e'; })
+                        .catch(function () { out.textContent = 'That didn’t work. Try again.'; out.style.color = '#ff9a9e'; });
+                }
+
+                $('mp-qbit-block').addEventListener('click', function () { setFileFilter(true); });
+                $('mp-qbit-unblock').addEventListener('click', function () { setFileFilter(false); });
 
                 function settingsBody(extra) {
                     return Object.assign({
@@ -786,7 +864,10 @@
                         radarrUrl: $('mp-radarr-url').value,
                         sonarrKey: $('mp-sonarr-key').value,
                         radarrKey: $('mp-radarr-key').value,
-                        stuckAfterHours: parseInt($('mp-stuck').value, 10) || 6
+                        stuckAfterHours: parseInt($('mp-stuck').value, 10) || 6,
+                        qbitUrl: $('mp-qbit-url').value,
+                        qbitUser: $('mp-qbit-user').value,
+                        qbitPassword: $('mp-qbit-pass').value
                     }, extra || {});
                 }
 
