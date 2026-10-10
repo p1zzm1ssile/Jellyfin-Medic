@@ -186,6 +186,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicProfiles/thumb.png",
     "versions": [
       {
+        "version": "1.1.0.0",
+        "changelog": "Merge pull request #10 from p1zzm1ssile/claude/laughing-volta-8uxi4n\n\nMedic 1.0.13, Medic Picks 1.2.1, Medic Profiles 1.1.0, and end-to-end tests",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/profiles-v1.1.0/MedicProfiles-v1.1.0.zip",
+        "checksum": "a5f0a5e6cde28a735c6bc966e977f354",
+        "timestamp": "2026-10-10T07:49:18Z"
+      },
+      {
         "version": "1.0.1.0",
         "changelog": "Merge pull request #9 from p1zzm1ssile/claude/x265-scoring-disk-space-l6585r\n\nMedic Profiles 1.0.1",
         "targetAbi": "12.0.0.0",
