@@ -405,11 +405,12 @@ await check('schedule Preview: choosing per task updates the plan', async () => 
 
 await check('admin banner on the home page for a serious error, and it can be dismissed', async () => {
     // Pretend the database reported damage, by adding the line to the newest log file.
-    const fs = await import('node:fs');
-    const dir = `${process.env.WORK}/config/log`;
-    const newest = fs.readdirSync(dir).filter((f) => f.endsWith('.log')).sort().pop();
+    // Written from inside the container: the log belongs to Jellyfin's user, not the one running the tests.
+    const { execFileSync } = await import('node:child_process');
+    const newest = execFileSync('docker', ['exec', 'medic-e2e', 'sh', '-c', 'ls /config/log/*.log | sort | tail -1']).toString().trim();
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    fs.appendFileSync(`${dir}/${newest}`, `[${now}.000 +00:00] [ERR] [42] Microsoft.EntityFrameworkCore: SQLite Error 11: 'database disk image is malformed'.\n`);
+    const line = `[${now}.000 +00:00] [ERR] [42] Microsoft.EntityFrameworkCore: SQLite Error 11: 'database disk image is malformed'.`;
+    execFileSync('docker', ['exec', 'medic-e2e', 'sh', '-c', `echo "$1" >> "$2"`, 'sh', line, newest]);
     let alerts = [];
     for (let i = 0; i < 70 && !alerts.some((a) => a.Kind === 'critical'); i++) {
         alerts = (await api('GET', '/JellyfinMedic/Alerts')).json || [];
