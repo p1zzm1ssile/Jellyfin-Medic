@@ -118,6 +118,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPicks/thumb.png",
     "versions": [
       {
+        "version": "1.2.2.0",
+        "changelog": "Merge pull request #13 from p1zzm1ssile/claude/awesome-brown-i2l9ej\n\nClaude/awesome brown i2l9ej",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/picks-v1.2.2/MedicPicks-v1.2.2.zip",
+        "checksum": "1186946de3cadee0e2f991abba14a5dd",
+        "timestamp": "2026-10-10T14:32:32Z"
+      },
+      {
         "version": "1.2.1.0",
         "changelog": "Merge pull request #10 from p1zzm1ssile/claude/laughing-volta-8uxi4n\n\nMedic 1.0.13, Medic Picks 1.2.1, Medic Profiles 1.1.0, and end-to-end tests",
         "targetAbi": "12.0.0.0",
