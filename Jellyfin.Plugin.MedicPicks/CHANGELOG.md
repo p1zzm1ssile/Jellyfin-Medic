@@ -3,6 +3,12 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
+## [1.2.2] – 2026-10-10
+
+### Fixed
+- **The Seerr address is saved with the key.** It used to be saved only by the Save button at the bottom of the settings, so pressing Save key next to it lost the address, and Test Seerr then said to add the address and key even though both were filled in. Save key, Test Seerr and Save now all save every setting on the page, including any key you've typed. The Save button is now at the very bottom of the settings page, below the menu link settings.
+- **Saving a TMDb key switches on suggestions from outside your library.** Before, "Suggest titles that aren't on the server" had to be ticked separately, so with only the key saved the My picks page showed nothing that wasn't on the server, and no Request buttons. Turning it on now rebuilds everyone's picks straight away, and the settings warn when a key is saved but suggestions are off, or when the Seerr key has no address.
+
 ## [1.2.1] – 2026-10-09
 
 ### Added
