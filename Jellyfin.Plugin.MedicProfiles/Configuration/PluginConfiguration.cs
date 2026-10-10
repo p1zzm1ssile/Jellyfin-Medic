@@ -16,4 +16,9 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Downloads stuck for at least this many hours are flagged on the Downloads tab.</summary>
     public int StuckAfterHours { get; set; } = 6;
+
+    /// <summary>qBittorrent's Web UI address, for blocking unsafe file types. Its password is kept with the keys.</summary>
+    public string QbitUrl { get; set; } = string.Empty;
+
+    public string QbitUser { get; set; } = string.Empty;
 }

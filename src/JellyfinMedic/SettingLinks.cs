@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using JellyfinMedic.Api;
 
 namespace JellyfinMedic.Services;
@@ -16,6 +13,14 @@ public static class SettingLinks
     private static readonly (string Title, string Section, string Name)[] Map =
     {
         ("Hardware encoding is off", "Transcoding", "EnableHardwareEncoding"),
+        ("Image resizing can use every CPU thread", "General", "ParallelImageEncodingLimit"),
+        ("aren't decoded on the GPU", "Transcoding", "HardwareDecodingCodecs"),
+        ("10-bit HEVC is decoded on the CPU", "Transcoding", "EnableDecodingColorDepth10Hevc"),
+        ("Transcodes are only made as H264", "Transcoding", "AllowHevcEncoding"),
+        ("Intel low-power encoding is off", "Transcoding", "EnableIntelLowPowerH264HwEncoder"),
+        ("Software transcodes use a slow preset", "Transcoding", "EncoderPreset"),
+        ("Trickplay images are encoded on the CPU", "General", "TrickplayOptions.EnableHwEncoding"),
+        ("Trickplay reads every frame", "General", "TrickplayOptions.EnableKeyFrameOnlyExtraction"),
         ("No formats are ticked for hardware decoding", "Transcoding", "HardwareDecodingCodecs"),
         ("Tone mapping", "Transcoding", "EnableTonemapping"),
         ("Transcoding is set to use more threads", "Transcoding", "EncodingThreadCount"),

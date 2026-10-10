@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using JellyfinMedic.Services;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -16,12 +12,18 @@ namespace JellyfinMedic;
 /// <summary>Medic's own settings, saved by Jellyfin with the plugin.</summary>
 public class PluginConfiguration : BasePluginConfiguration
 {
-    // Never schedule tasks between these hours (wraps past midnight if needed).
+    // Never schedule tasks between these times (wraps past midnight if needed).
     public bool AvoidEnabled { get; set; }
 
+    // Whole hours, kept for settings saved before the window could start or end on a quarter hour.
     public int AvoidStartHour { get; set; } = 18;
 
     public int AvoidEndHour { get; set; } = 23;
+
+    // Minutes past midnight, in 15-minute steps. Unset on older settings, which use the hours above.
+    public int? AvoidStartMinute { get; set; }
+
+    public int? AvoidEndMinute { get; set; }
 
     // Accounts with no activity for this many days are reported as inactive.
     public int InactiveUserDays { get; set; } = 90;
@@ -65,6 +67,15 @@ public class PluginConfiguration : BasePluginConfiguration
     public int TracksConcurrentFiles { get; set; } = 1;
 
     public int TracksFfmpegThreads { get; set; } = 1;
+
+    // Track cleanup skips files whose path contains any of these lines: a folder, or part of a
+    // show's, film's or file's name.
+    public string TracksExclude { get; set; } = string.Empty;
+
+    // Banners for admins on the Jellyfin home page.
+    public bool AlertCriticalErrors { get; set; } = true;
+
+    public bool AlertRestartNeeded { get; set; } = true;
 }
 
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
@@ -111,6 +122,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService<ManagedScheduleRunner>();
         serviceCollection.AddHostedService<UsageSampler>();
         serviceCollection.AddHostedService<LoadGuard>();
+        serviceCollection.AddHostedService<ResourceMonitor>();
 
         // Shows the issue you're fixing on the Jellyfin page a Medic link sends you to (see PageHelper.cs).
         serviceCollection.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, PageHelperStartupFilter>();

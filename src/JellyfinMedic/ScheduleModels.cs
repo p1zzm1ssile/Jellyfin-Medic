@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using MediaBrowser.Model.Tasks;
 
 namespace JellyfinMedic.Api;
@@ -127,4 +125,12 @@ public class CalendarRun
     public string LastText { get; set; } = string.Empty;
 
     public string? Note { get; set; }
+}
+
+/// <summary>The owner's choice for one task in Preview (see ScheduleStorage.ChoiceMedic and friends).</summary>
+public class TaskChoice
+{
+    public string TaskId { get; set; } = string.Empty;
+
+    public string Choice { get; set; } = string.Empty;
 }

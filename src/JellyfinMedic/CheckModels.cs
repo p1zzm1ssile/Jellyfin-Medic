@@ -1,6 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.Text.Json.Serialization;
 using JellyfinMedic.Services;
 
 namespace JellyfinMedic.Api;
@@ -106,6 +104,11 @@ public class MedicSettingsDto
 
     public int AvoidEndHour { get; set; } = 23;
 
+    // Minutes past midnight, in 15-minute steps. Older pages only send the hours.
+    public int? AvoidStartMinute { get; set; }
+
+    public int? AvoidEndMinute { get; set; }
+
     public int InactiveUserDays { get; set; } = 90;
 
     public bool LoadGuardEnabled { get; set; } = true;
@@ -137,6 +140,12 @@ public class MedicSettingsDto
     public int TracksConcurrentFiles { get; set; } = 1;
 
     public int TracksFfmpegThreads { get; set; } = 1;
+
+    public string TracksExclude { get; set; } = string.Empty;
+
+    public bool AlertCriticalErrors { get; set; } = true;
+
+    public bool AlertRestartNeeded { get; set; } = true;
 }
 
 /// <summary>Playback seen in one hour of the week (server local time).</summary>
@@ -166,6 +175,12 @@ public class UsageProfile
     public int TotalSamples { get; set; }
 
     public List<UsageBucket> Buckets { get; set; } = Enumerable.Range(0, 168).Select(_ => new UsageBucket()).ToList();
+
+    // The same samples by quarter hour, 7 x 96: index = day * 96 + quarter of the day, so the
+    // planner can tell a quiet 02:45 from a busy 02:00. Empty in profiles saved before 1.0.13.
+    public List<int> QuarterSamples { get; set; } = new();
+
+    public List<long> QuarterStreamSums { get; set; } = new();
 }
 
 public class UsageSummary
@@ -179,6 +194,13 @@ public class UsageSummary
 
     // How many 5-minute samples each of those hours has; 0 means that hour hasn't been seen yet.
     public List<int> SampleCounts { get; set; } = new();
+
+    // The same by quarter hour (672 values, Monday 00:00 first), for the planner only.
+    [JsonIgnore]
+    public List<double> QuarterAverageStreams { get; set; } = new();
+
+    [JsonIgnore]
+    public List<int> QuarterSampleCounts { get; set; } = new();
 
     public string? BusiestHours { get; set; }
 

@@ -14,5 +14,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ArrClient>();
         serviceCollection.AddSingleton<DownloadsService>();
         serviceCollection.AddSingleton<ProfileAdvisor>();
+        serviceCollection.AddSingleton<IndexersService>();
+        serviceCollection.AddSingleton<QbitFileFilter>();
     }
 }

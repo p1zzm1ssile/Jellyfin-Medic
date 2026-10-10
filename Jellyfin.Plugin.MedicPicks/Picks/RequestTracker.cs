@@ -83,7 +83,7 @@ public class RequestTracker
 
     /// <summary>
     /// This person's own requests. Null when Seerr couldn't be reached; an empty list with
-    /// <paramref name="linked"/> false when they've never signed in to Seerr.
+    /// Linked false when they've never signed in to Seerr.
     /// </summary>
     public async Task<(List<RequestRow>? Rows, bool Linked)> ForUserAsync(string baseUrl, Guid jellyfinUserId, CancellationToken ct)
     {

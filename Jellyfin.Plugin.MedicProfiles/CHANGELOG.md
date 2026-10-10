@@ -3,6 +3,12 @@
 All notable changes to Medic Profiles are recorded here. The newest version is at the top.
 Jellyfin Medic and Medic Picks have their own changelogs.
 
+## [1.1.0] – 2026-10-10
+
+### Added
+- **Block unsafe files in qBittorrent.** Under Settings, add qBittorrent's Web UI address and sign-in, then press **Block unsafe files**: qBittorrent then skips program files (.exe, .bat, .scr, .msi and similar) that come inside film and series torrents, so they never reach your disk. It uses qBittorrent's own "Excluded file names" list (version 4.6 or later) and keeps anything you'd added there yourself. Archives (.rar, .zip, .7z) can be blocked too, but that's off by default, as many genuine Usenet and scene releases come packed and Sonarr and Radarr unpack them. Sonarr and Radarr can't do this themselves, as they only see release names, not the files inside. Other download clients aren't supported yet.
+- **Indexers tab.** Every indexer Sonarr and Radarr search, and whether it's working: failing (since when, and when Sonarr or Radarr will try it again), working (and whether it's used for RSS, automatic or manual searches), or switched off. Indexer warnings from Sonarr's and Radarr's own health checks are shown at the top. Indexers added by Prowlarr show here too, as Prowlarr adds them to Sonarr and Radarr.
+
 ## [1.0.1] – 2026-10-06
 
 ### Fixed

@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
-using System.Linq;
 using System.Text.Json;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Common.Configuration;
@@ -91,7 +87,8 @@ public class ScheduleController : ControllerBase
             TodayIndex = weekOffset == 0 ? ScheduleStorage.MondayFirst(today.DayOfWeek) : -1,
             BusySummary = busy.Summary,
             FromViewing = busy.FromViewing,
-            AvoidedHours = busy.AvoidedHours(),
+            SlotMinutes = BusyProfile.SlotMinutes,
+            AvoidedSlots = busy.AvoidedSlots(),
             Days = days
         });
     }
@@ -283,6 +280,9 @@ public class ScheduleController : ControllerBase
         var rows = plan.Select(p => new
         {
             TaskName = p.Worker.Name,
+            TaskId = p.Worker.Id.ToString(),
+            Choice = p.Choice,
+            CanPlan = p.CanPlan,
             CurrentSchedule = p.CurrentSchedule,
             ProposedSchedule = p.ProposedSchedule,
             Cadence = p.CadenceLabel,
@@ -292,6 +292,20 @@ public class ScheduleController : ControllerBase
         }).ToList();
 
         return Ok(new { TotalAuditedTasks = rows.Count, Changing = rows.Count(r => r.Changes), BusySummary = Busy().Summary, SchedulePlan = rows });
+    }
+
+    /// <summary>Saves the owner's choice for one task: medic (let Medic schedule it), keep, or off.</summary>
+    [HttpPost("SetChoice")]
+    public ActionResult<object> SetChoice([FromQuery] string taskId, [FromQuery] string choice)
+    {
+        if (choice is not (ScheduleStorage.ChoiceMedic or ScheduleStorage.ChoiceKeep or ScheduleStorage.ChoiceOff) ||
+            ScheduleStorage.FindWorker(_taskManager, taskId) is null)
+        {
+            return BadRequest();
+        }
+
+        ScheduleStorage.SaveChoice(_appPaths, taskId, choice);
+        return Ok(new { Success = true });
     }
 
     [HttpPost("ApplyRecommendedSchedule")]
@@ -500,7 +514,7 @@ public class ScheduleController : ControllerBase
         _taskManager.ScheduledTasks.Where(ScheduleStorage.IsVisible).ToList();
 
     private List<PlannedTask> BuildPlan() =>
-        SchedulePlanner.Build(VisibleTasks(), ScheduleStorage.LoadProfile(_appPaths), ScheduleStorage.LoadManaged(_appPaths), Busy());
+        SchedulePlanner.Build(VisibleTasks(), ScheduleStorage.LoadProfile(_appPaths), ScheduleStorage.LoadManaged(_appPaths), Busy(), ScheduleStorage.LoadChoices(_appPaths));
 
     private BusyProfile Busy() =>
         BusyProfile.Create(UsageAnalyzer.Summarise(UsageStore.Load(_appPaths)), Plugin.Instance?.Configuration);
