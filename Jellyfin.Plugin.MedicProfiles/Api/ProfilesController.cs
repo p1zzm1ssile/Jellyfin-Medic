@@ -26,10 +26,12 @@ public class ProfilesController : ControllerBase
     private readonly DownloadsService _downloads;
     private readonly ProfileAdvisor _advisor;
     private readonly IndexersService _indexers;
+    private readonly QbitFileFilter _qbit;
 
-    public ProfilesController(ArrStore store, ArrClient arr, DownloadsService downloads, ProfileAdvisor advisor, IndexersService indexers)
+    public ProfilesController(ArrStore store, ArrClient arr, DownloadsService downloads, ProfileAdvisor advisor, IndexersService indexers, QbitFileFilter qbit)
     {
         _indexers = indexers;
+        _qbit = qbit;
         _store = store;
         _arr = arr;
         _downloads = downloads;
@@ -46,7 +48,8 @@ public class ProfilesController : ControllerBase
         {
             sonarr = new { url = config.SonarrUrl, keySet = _store.GetKey(ArrApp.Sonarr) is not null },
             radarr = new { url = config.RadarrUrl, keySet = _store.GetKey(ArrApp.Radarr) is not null },
-            stuckAfterHours = config.StuckAfterHours
+            stuckAfterHours = config.StuckAfterHours,
+            qbit = new { url = config.QbitUrl, user = config.QbitUser, passwordSet = _store.GetQbitPassword() is not null }
         });
     }
 
@@ -62,6 +65,21 @@ public class ProfilesController : ControllerBase
         plugin.Configuration.SonarrUrl = CleanUrl(request.SonarrUrl);
         plugin.Configuration.RadarrUrl = CleanUrl(request.RadarrUrl);
         plugin.Configuration.StuckAfterHours = Math.Clamp(request.StuckAfterHours ?? plugin.Configuration.StuckAfterHours, 1, 168);
+        if (request.QbitUrl is not null)
+        {
+            plugin.Configuration.QbitUrl = CleanUrl(request.QbitUrl);
+            plugin.Configuration.QbitUser = (request.QbitUser ?? string.Empty).Trim();
+        }
+
+        if (request.ClearQbitPassword)
+        {
+            _store.SetQbitPassword(null);
+        }
+        else if (!string.IsNullOrEmpty(request.QbitPassword))
+        {
+            _store.SetQbitPassword(request.QbitPassword);
+        }
+
         plugin.SaveConfiguration();
 
         // A blank key box means "keep the saved key"; Remove clears it.
@@ -129,6 +147,43 @@ public class ProfilesController : ControllerBase
     {
         var (rows, warnings, errors) = await _indexers.StatusAsync(ct).ConfigureAwait(false);
         return Json(new { configured = Configured(), rows, warnings, errors });
+    }
+
+    // ---------- Unsafe files in qBittorrent ----------
+
+    [HttpGet("FileFilter")]
+    public async Task<ActionResult> GetFileFilter(CancellationToken ct) => Json(await _qbit.StateAsync(ct).ConfigureAwait(false));
+
+    [HttpPost("FileFilter")]
+    public async Task<ActionResult> SetFileFilter([FromBody] FileFilterRequest request, CancellationToken ct)
+    {
+        if (request is null)
+        {
+            return BadRequest();
+        }
+
+        var (ok, message) = await _qbit.ApplyAsync(request.Block, request.Archives, ct).ConfigureAwait(false);
+        if (ok)
+        {
+            _store.Record(new ActionRecord
+            {
+                Utc = DateTime.UtcNow,
+                App = "qbittorrent",
+                Action = request.Block ? "blocked files" : "unblocked files",
+                Title = request.Block ? (request.Archives ? "Program files and archives" : "Program files") : "Program files and archives",
+                Detail = "qBittorrent's excluded file names",
+                By = UserName()
+            });
+        }
+
+        return Json(new { ok, message });
+    }
+
+    public class FileFilterRequest
+    {
+        public bool Block { get; set; }
+
+        public bool Archives { get; set; }
     }
 
     [HttpGet("Blocked")]
@@ -255,6 +310,14 @@ public class ProfilesController : ControllerBase
         public bool ClearRadarrKey { get; set; }
 
         public int? StuckAfterHours { get; set; }
+
+        public string? QbitUrl { get; set; }
+
+        public string? QbitUser { get; set; }
+
+        public string? QbitPassword { get; set; }
+
+        public bool ClearQbitPassword { get; set; }
     }
 
     public class RemoveRequest
