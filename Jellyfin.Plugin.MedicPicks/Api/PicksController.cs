@@ -9,7 +9,6 @@ using Jellyfin.Plugin.MedicPicks.ScheduledTasks;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Tasks;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Jellyfin.Plugin.MedicPicks.Api;

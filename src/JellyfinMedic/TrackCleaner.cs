@@ -1,14 +1,5 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 
@@ -1556,9 +1547,6 @@ public static class TrackCleaner
         await Task.WhenAny(err, Task.Delay(1000, CancellationToken.None)).ConfigureAwait(false);
         return p.ExitCode;
     }
-
-    private static string StrippedPath(string path) =>
-        Path.Combine(Path.GetDirectoryName(path) ?? string.Empty, Path.GetFileNameWithoutExtension(path) + StrippedSuffix + Path.GetExtension(path));
 
     /// <summary>Where the untouched original of a file is kept: a hidden folder beside it.</summary>
     private static string OriginalPath(string path) =>

@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using MediaBrowser.Model.Tasks;
 
 namespace JellyfinMedic.Api;

@@ -45,13 +45,12 @@ public class QbitFileFilter
 
     public static readonly string[] Archives = { "*.rar", "*.zip", "*.7z" };
 
-    private readonly IHttpClientFactory _http;
     private readonly ArrStore _store;
     private readonly ILogger<QbitFileFilter> _logger;
 
-    public QbitFileFilter(IHttpClientFactory http, ArrStore store, ILogger<QbitFileFilter> logger)
+    // qBittorrent needs its own client to keep the sign-in cookie, so the shared HttpClient factory isn't used.
+    public QbitFileFilter(ArrStore store, ILogger<QbitFileFilter> logger)
     {
-        _http = http;
         _store = store;
         _logger = logger;
     }

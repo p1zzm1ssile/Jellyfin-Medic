@@ -213,6 +213,11 @@ await check('schedule: unscheduled tasks stay off unless chosen, and per-task ch
     await api('POST', `/JellyfinMedic/Schedule/SetChoice?taskId=${scan.Id}&choice=medic`);
 });
 
+await check('"Suggest" mode flags a better schedule in Checks', async () => {
+    const titles = ((await ok('/JellyfinMedic/Report')).Findings || []).map((f) => f.Title);
+    expect(titles.includes('A better schedule is available'), 'no suggestion: ' + titles.filter((t) => /schedul/i.test(t)).join(' | '));
+});
+
 await check('avoid window saves in 15-minute steps', async () => {
     const s = await ok('/JellyfinMedic/MedicSettings');
     const saved = await api('POST', '/JellyfinMedic/MedicSettings', { ...s, AvoidEnabled: true, AvoidStartMinute: 18 * 60 + 45, AvoidEndMinute: 22 * 60 + 15 });

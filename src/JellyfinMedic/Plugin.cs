@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using JellyfinMedic.Services;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
