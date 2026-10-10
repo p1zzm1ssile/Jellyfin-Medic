@@ -7,6 +7,11 @@ Z changes for fixes, Y for new features, X for changes that break compatibility.
 
 Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 
+## [1.0.15] – 2026-10-10
+
+### Fixed
+- **1.0.15 is 1.0.14 as intended.** The 1.0.14 download was built from the code before its changes, so it still showed the false "database looks damaged" and "database upgrade failed" banners. 1.0.15 has everything listed under 1.0.14 below.
+
 ## [1.0.14] – 2026-10-10
 
 ### Fixed

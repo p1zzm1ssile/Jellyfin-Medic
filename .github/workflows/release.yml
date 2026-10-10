@@ -31,6 +31,12 @@ jobs:
           if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::Tag must look like v1.2.3 (got $GITHUB_REF_NAME)"; exit 1
           fi
+          # The tag must sit on the code for that version: tagging before merging would otherwise
+          # publish the previous version's code under the new number.
+          IN_CODE=$(grep -oP '(?<=<AssemblyVersion>)[0-9.]+(?=</AssemblyVersion>)' src/JellyfinMedic/JellyfinMedic.csproj)
+          if [ "$IN_CODE" != "$VERSION.0" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME is on a commit whose code is version $IN_CODE. Merge the release first, then tag the merged commit (delete this tag with: git push origin :refs/tags/$GITHUB_REF_NAME)."; exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "changelog=$(git log -1 --format=%s)" >> "$GITHUB_OUTPUT"
 
