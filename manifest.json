@@ -10,6 +10,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/src/JellyfinMedic/thumb.png",
     "versions": [
       {
+        "version": "1.0.15.0",
+        "changelog": "Merge pull request #11 from p1zzm1ssile/claude/laughing-volta-8uxi4n",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/v1.0.15/JellyfinMedic-v1.0.15.zip",
+        "checksum": "d86b96f56c76c46051fd1284a8308d1e",
+        "timestamp": "2026-10-10T08:39:42Z"
+      },
+      {
         "version": "1.0.14.0",
         "changelog": "manifest: Medic Profiles 1.1.0.0",
         "targetAbi": "12.1.0.0",
