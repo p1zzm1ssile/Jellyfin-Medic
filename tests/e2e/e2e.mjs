@@ -410,6 +410,11 @@ await check('admin banner on the home page for a serious error, and it can be di
     const { execFileSync } = await import('node:child_process');
     const newest = execFileSync('docker', ['exec', 'medic-e2e', 'sh', '-c', 'ls /config/log/*.log | sort | tail -1']).toString().trim();
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    // A warning that only mentions the words must not count (Jellyfin logs these routinely).
+    const warning = `[${now}.000 +00:00] [WRN] [28] Jellyfin.Server.Implementations.Item.BaseItemRepository: Skipping item with unknown type. This may indicate a removed plugin or database corruption.`;
+    execFileSync('docker', ['exec', 'medic-e2e', 'sh', '-c', `echo "$1" >> "$2"`, 'sh', warning, newest]);
+    await sleep(1000);
+    expect(!((await api('GET', '/JellyfinMedic/Alerts')).json || []).some((a) => a.Kind === 'critical'), 'a warning raised a banner');
     const line = `[${now}.000 +00:00] [ERR] [42] Microsoft.EntityFrameworkCore: SQLite Error 11: 'database disk image is malformed'.`;
     execFileSync('docker', ['exec', 'medic-e2e', 'sh', '-c', `echo "$1" >> "$2"`, 'sh', line, newest]);
     let alerts = [];
@@ -418,6 +423,8 @@ await check('admin banner on the home page for a serious error, and it can be di
         if (!alerts.some((a) => a.Kind === 'critical')) await sleep(2000); // cached for 2 minutes
     }
     expect(alerts.some((a) => a.Id.startsWith('critical:database')), 'no database alert: ' + JSON.stringify(alerts));
+    const inChecks = ((await ok('/JellyfinMedic/Report')).Findings || []).some((f) => f.Area === 'Logs' && /database looks damaged/.test(f.Title));
+    expect(inChecks, 'the banner\'s problem is missing from Checks');
 
     errors.length = 0;
     await page.goto(JF + '/web/index.html#/home');
@@ -457,6 +464,35 @@ await check('Picks: 30 + a genre explains a short list, and "Show me different o
     const second = await names();
     expect(first && second && first !== second, `same picks after "Show me different ones": ${first}`);
     return 'picks changed';
+});
+
+await check('one-time on every device: a dismissed banner and a seen "What\'s new" stay gone on another device', async () => {
+    // A second, fresh browser is a new device: nothing remembered locally.
+    const other = await browser.newContext({ locale: 'en-GB' });
+    const p2 = await other.newPage();
+    const errs = [];
+    p2.on('pageerror', (e) => errs.push(e.message));
+    await p2.goto(JF + '/web/index.html#/login');
+    await p2.waitForSelector('#txtManualName', { timeout: 60000 });
+    await p2.fill('#txtManualName', 'admin');
+    await p2.fill('#txtManualPassword', 'admin');
+    await p2.click('.manualLoginForm button[type="submit"]');
+    await p2.waitForURL(/home/, { timeout: 60000 });
+    await sleep(6000);
+    expect(!(await p2.locator('#jellyfin-medic-banners').isVisible().catch(() => false)), 'dismissed banner came back on another device');
+    await p2.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
+    await p2.waitForSelector('#JellyfinMedicPage .so-tab', { timeout: 30000 });
+    await sleep(3000);
+    expect(!(await p2.locator('#md-whatsnew').isVisible()), '"What\'s new" showed again on another device');
+    await p2.click('#JellyfinMedicPage .so-tab[data-tab="settings"]');
+    await p2.click('#md-changelog-all');
+    await p2.waitForSelector('#md-whatsnew:not([hidden])', { timeout: 15000 });
+    const versions = await p2.locator('#md-whatsnew-body h3').count();
+    expect(versions >= 5, 'full changelog shows only ' + versions + ' versions');
+    await other.close();
+    const ours = errs.filter((e) => !/ResizeObserver|^CancelledError/i.test(e));
+    expect(ours.length === 0, ours.join(' | '));
+    return versions + ' versions in the full changelog';
 });
 
 await browser.close();

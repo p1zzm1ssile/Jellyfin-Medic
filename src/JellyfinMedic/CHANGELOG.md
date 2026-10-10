@@ -7,6 +7,18 @@ Z changes for fixes, Y for new features, X for changes that break compatibility.
 
 Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 
+## [1.0.14] – 2026-10-10
+
+### Fixed
+- **False "database damaged" and "database upgrade failed" banners.** The home-page banners reacted to warnings that only mention those words, such as Jellyfin's "This may indicate a removed plugin or database corruption" (a leftover item from a removed plugin) and Entity Framework's routine note that a migration step "cannot be executed in a transaction". They now only react to errors and fatal errors, and the exception text printed under them.
+- **The banners' problems now show in Checks too**, under Logs, so the two always agree.
+
+### Changed
+- **Banners and "What's new" are one-time, on every device.** Dismissing a banner, or seeing "What's new" after an update, is now remembered on the server for your account, so your other phones, browsers and TVs don't show it again. A banner only comes back if the problem happens again on another day.
+
+### Added
+- **What's new in each version.** A button in Medic's Settings shows every version's changes.
+
 ## [1.0.13] – 2026-10-09
 
 ### Added
