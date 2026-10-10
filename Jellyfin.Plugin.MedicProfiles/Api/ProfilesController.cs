@@ -25,9 +25,11 @@ public class ProfilesController : ControllerBase
     private readonly ArrClient _arr;
     private readonly DownloadsService _downloads;
     private readonly ProfileAdvisor _advisor;
+    private readonly IndexersService _indexers;
 
-    public ProfilesController(ArrStore store, ArrClient arr, DownloadsService downloads, ProfileAdvisor advisor)
+    public ProfilesController(ArrStore store, ArrClient arr, DownloadsService downloads, ProfileAdvisor advisor, IndexersService indexers)
     {
+        _indexers = indexers;
         _store = store;
         _arr = arr;
         _downloads = downloads;
@@ -120,6 +122,13 @@ public class ProfilesController : ControllerBase
 
         var (ok, message) = await _downloads.RemoveAsync(app, request.QueueIds ?? new List<int>(), request.Block, request.SearchAgain, request.Title ?? "A download", UserName(), ct).ConfigureAwait(false);
         return Json(new { ok, message });
+    }
+
+    [HttpGet("Indexers")]
+    public async Task<ActionResult> GetIndexers(CancellationToken ct)
+    {
+        var (rows, warnings, errors) = await _indexers.StatusAsync(ct).ConfigureAwait(false);
+        return Json(new { configured = Configured(), rows, warnings, errors });
     }
 
     [HttpGet("Blocked")]

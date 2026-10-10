@@ -11,6 +11,7 @@
             <div class="mp-tabs" role="tablist" aria-label="Medic Profiles sections">
                 <button type="button" role="tab" class="mp-tab" data-tab="downloads" aria-selected="true">Downloads</button>
                 <button type="button" role="tab" class="mp-tab" data-tab="blocked" aria-selected="false" tabindex="-1">Blocked</button>
+                <button type="button" role="tab" class="mp-tab" data-tab="indexers" aria-selected="false" tabindex="-1">Indexers</button>
                 <button type="button" role="tab" class="mp-tab" data-tab="profiles" aria-selected="false" tabindex="-1">Profiles</button>
                 <button type="button" role="tab" class="mp-tab" data-tab="history" aria-selected="false" tabindex="-1">History</button>
                 <button type="button" role="tab" class="mp-tab" data-tab="settings" aria-selected="false" tabindex="-1">Settings</button>
@@ -41,6 +42,14 @@
                 <p class="mp-muted">Releases Sonarr and Radarr won't grab again. Unblock one if it was blocked by mistake.</p>
                 <ul id="mp-blocked" class="mp-list"></ul>
                 <p id="mp-blocked-empty" class="mp-muted" hidden>Nothing is blocked.</p>
+            </section>
+
+            <!-- Indexers -->
+            <section class="mp-panel" data-panel="indexers" role="tabpanel" hidden>
+                <p class="mp-muted">Each indexer Sonarr and Radarr search, and whether it's working. Indexers added by Prowlarr show here too.</p>
+                <ul id="mp-indexer-warnings" class="mp-list"></ul>
+                <ul id="mp-indexers" class="mp-list"></ul>
+                <p id="mp-indexers-empty" class="mp-muted" hidden>No indexers found.</p>
             </section>
 
             <!-- Profiles -->
@@ -277,6 +286,7 @@
                     clearTimeout(timer);
                     if (name === 'downloads') loadQueue();
                     else if (name === 'blocked') loadBlocked();
+                    else if (name === 'indexers') loadIndexers();
                     else if (name === 'profiles') loadAdvice(!!force);
                     else if (name === 'history') loadHistory();
                     else if (name === 'settings') loadSettings();
@@ -675,6 +685,30 @@
                             list.appendChild(li);
                         });
                         $('mp-blocked-empty').hidden = list.children.length > 0;
+                    });
+                }
+
+                // ---------- Indexers ----------
+                function loadIndexers() {
+                    getJson('Indexers').then(function (data) {
+                        showSetup(data.configured);
+                        showErrors(data.errors);
+                        const warn = $('mp-indexer-warnings');
+                        warn.textContent = '';
+                        (data.warnings || []).forEach(function (w) { warn.appendChild(el('li', 'mp-banner error', w)); });
+                        const list = $('mp-indexers');
+                        list.textContent = '';
+                        (data.rows || []).forEach(function (r) {
+                            const li = el('li', 'mp-card');
+                            const title = el('p', 'mp-card-title');
+                            title.appendChild(el('span', 'mp-badge', appName(r.app)));
+                            title.appendChild(document.createTextNode(r.name + (r.protocol ? ' (' + r.protocol + ')' : '')));
+                            li.appendChild(title);
+                            const state = r.state === 'failing' ? 'Failing' : r.state === 'off' ? 'Switched off' : 'Working';
+                            li.appendChild(el('p', 'mp-note ' + (r.state === 'failing' ? 'bad' : r.state === 'off' ? '' : 'ok'), state + (r.detail ? ': ' + r.detail : '')));
+                            list.appendChild(li);
+                        });
+                        $('mp-indexers-empty').hidden = list.children.length > 0;
                     });
                 }
 
