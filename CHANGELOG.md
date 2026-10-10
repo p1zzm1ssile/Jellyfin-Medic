@@ -7,6 +7,30 @@ Z changes for fixes, Y for new features, X for changes that break compatibility.
 
 Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 
+## [1.0.13] – 2026-10-09
+
+### Added
+- **Resource monitoring for Jellyfin itself.** Every 15 seconds Medic measures what Jellyfin and the FFmpeg processes it starts are using (CPU, memory, disk and, for NVIDIA and AMD, the GPU), and nothing else on the machine. The Dashboard shows it under Right now. When one stays near its limit for 45 seconds, Medic records what was running: scheduled tasks, transcodes (with the titles), and other FFmpeg work such as trickplay or chapter images. The Dashboard lists this week's spells, and Checks sums up the most common causes. Intel GPU load can't be read without extra tools, and work a plugin does outside a scheduled task can't be told apart from Jellyfin's own, as all plugins run in Jellyfin's process.
+- **Theme checks.** A new Themes section in Checks looks at your custom CSS (Dashboard → General): themes whose address doesn't load, @import lines placed after other rules (browsers ignore them, the usual reason a theme "stops working"), themes loaded from raw.githubusercontent.com (browsers refuse those as stylesheets), themes loaded over plain http, and unbalanced braces or unclosed comments that make the browser drop the rest of the CSS. Medic can't see how a page actually draws, so it can't catch every display problem.
+- **Better disk space checks.** Medic now watches every drive your libraries are on, not just the config and cache drives, and warns when one is nearly full. It records each drive's free space once a day and tells you how fast it's filling, with a warning when a drive will be full within a month ("full in about 3 weeks"). Specs also show how much space the metadata folder, trickplay images and image cache take (measured in the background, as they can hold millions of files).
+- **Banners for admins on the home page.** Serious problems now show as a banner the moment they appear in Jellyfin's log, however rarely they happen: a damaged database ("database disk image is malformed"), a full disk, a failed database upgrade, a plugin that couldn't load, or a fatal error. A second banner says when Jellyfin needs a restart to finish installing updates. Only admins see them, each can be dismissed (it comes back if the problem happens again on another day), and both can be turned off in Medic's settings. If the database is so damaged that Jellyfin can't start, no plugin can show anything.
+- **Choose per task in Preview.** Each task in the schedule preview now has a choice: let Medic schedule it, keep its current schedule, or leave it unscheduled. Medic remembers your choice. A task with no schedule (such as Scheduled restart) is never given one unless you choose "Let Medic schedule it".
+- **Time left for running tasks.** Running tasks on the Dashboard now show roughly how long they have left, for example "Scan Media Library (42%, about 12 min left)". It works from the task's progress so far and, early on, from how long it usually takes.
+- **Leave chosen folders, shows or films out of track cleanup.** Under Track settings, "Leave these alone" takes one entry per line: a folder (such as /media/anime) or part of a show's, film's or file's name. Anything matching is never scanned or changed. IPTV and other streamed files were already skipped.
+
+### Changed
+- **More performance advice.** Medic now flags Jellyfin's database on a spinning hard drive (it tells real disks from virtual ones, which always claim to spin), a very large database or image cache, image resizing allowed to use every thread on a small CPU, and a very long list of plugins.
+- **More precise GPU advice.** With a GPU in use, Medic now also checks that H264 and HEVC are both decoded on it, that 10-bit HEVC (most HDR) is decoded on it, whether transcodes can be made in HEVC for apps that play it (about half the bitrate for remote viewers), Intel's low-power encoders on QuickSync and VAAPI, and hardware encoding for trickplay. Without a GPU, it flags slow software presets and suggests key-frame-only trickplay, which is many times faster. Medic can't switch the GPU on for you; each finding says which setting to change.
+- **IPTV lists every duplicate channel.** Instead of just saying some live channels appear several times, the IPTV tab now lists each channel with copies and the name of every copy (for example "BBC One · BBC One HD · UK: BBC One FHD"), with a filter box, so you can see which to keep. The Dispatcharr advice is gone.
+
+### Fixed
+- **"Suggest" schedule mode works.** The check that tells you a better schedule is available ("A better schedule is available" in Checks) was never run, so Suggest mode did nothing. It now runs with every check.
+- **The schedule uses 15-minute slots properly.** Medic planned in 15-minute blocks, but judged how busy each one was by the hour, so a block at 02:00 looked no better than one at 02:15 and tasks kept landing on the hour. It now knows how busy each quarter hour is: straight away from a smooth curve through your hourly viewing, then more exactly as it records each quarter hour (it starts doing this now). Press Preview, then Apply on the Schedule tab to use it.
+- **Quick tasks take one 15-minute slot.** Every task used to hold at least 30 minutes, even one that finishes in a minute, so tasks stepped along every half hour or hour. A quick task now takes a single slot with at least 5 minutes spare (longer tasks still get a quarter of their run time spare), so the night's tasks run back to back and finish sooner.
+- **The "Never schedule tasks between" window goes in 15-minute steps**, for example 18:30 to 22:45. Your existing hours carry over.
+- **The Schedule shading is drawn per quarter hour**, to match what the planner uses.
+- **"Tasks run while people are usually watching" shows each task's real time**, such as 04:15, instead of rounding it down to 04:00.
+
 ## [1.0.12] – 2026-10-06
 
 ### Fixed
