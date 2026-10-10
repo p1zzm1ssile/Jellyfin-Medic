@@ -298,6 +298,31 @@ await check('Medic Profiles shows indexer status', async () => {
     expect((r.warnings || []).some((w) => /Broken Indexer/.test(w)), 'no health warning');
 });
 
+await check('Medic Profiles blocks program files in qBittorrent, keeping the owner\'s own entries', async () => {
+    const qbitServer = await fakeArr.startQbit(18080);
+    try {
+        const QB = ARR.replace('18989', '18080');
+        await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, RadarrUrl: '', QbitUrl: QB, QbitUser: 'admin', QbitPassword: 'secret' });
+        let state = await ok('/MedicProfiles/FileFilter');
+        expect(state.reachable && !state.blocksPrograms, 'before: ' + JSON.stringify(state));
+        const set = await api('POST', '/MedicProfiles/FileFilter', { block: true, archives: false });
+        expect(set.json?.ok, 'block failed: ' + set.text);
+        const sent = fakeArr.qbit.sets.at(-1);
+        expect(sent.excluded_file_names_enabled === true, 'list not switched on');
+        const list = sent.excluded_file_names.split('\n');
+        expect(list.includes('*.exe') && list.includes('*.nfo') && !list.includes('*.rar'), 'list: ' + sent.excluded_file_names);
+        state = await ok('/MedicProfiles/FileFilter');
+        expect(state.blocksPrograms && !state.blocksArchives, 'after: ' + JSON.stringify(state));
+        await api('POST', '/MedicProfiles/FileFilter', { block: false, archives: false });
+        expect(fakeArr.qbit.prefs.excluded_file_names === '*.nfo', 'unblock left: ' + fakeArr.qbit.prefs.excluded_file_names);
+        await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, RadarrUrl: '', QbitUrl: QB, QbitUser: 'admin', QbitPassword: 'wrong' });
+        state = await ok('/MedicProfiles/FileFilter');
+        expect(!state.reachable && /user name and password/.test(state.message), 'wrong password: ' + JSON.stringify(state));
+    } finally {
+        qbitServer.close();
+    }
+});
+
 // ---------- Pages in a real browser ----------
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });

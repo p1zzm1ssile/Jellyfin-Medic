@@ -37,3 +37,42 @@ export function start(port) {
     });
     return new Promise((resolve) => server.listen(port, '0.0.0.0', () => resolve(server)));
 }
+
+// A pretend qBittorrent Web UI: sign-in with admin/secret, and the "Excluded file names" preference.
+export const qbit = { prefs: { excluded_file_names_enabled: false, excluded_file_names: '*.nfo' }, sets: [] };
+
+export function startQbit(port) {
+    const server = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', (c) => { body += c; });
+        req.on('end', () => {
+            const path = req.url.split('?')[0];
+            const signedIn = /SID=good/.test(req.headers.cookie || '');
+            if (path === '/api/v2/auth/login') {
+                const form = new URLSearchParams(body);
+                if (form.get('username') === 'admin' && form.get('password') === 'secret') {
+                    res.writeHead(200, { 'Set-Cookie': 'SID=good; HttpOnly; path=/' });
+                    res.end('Ok.');
+                } else {
+                    res.writeHead(200); res.end('Fails.');
+                }
+                return;
+            }
+            if (!signedIn) { res.writeHead(403); res.end('Forbidden'); return; }
+            if (path === '/api/v2/app/preferences') {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(qbit.prefs));
+                return;
+            }
+            if (path === '/api/v2/app/setPreferences') {
+                const json = JSON.parse(new URLSearchParams(body).get('json'));
+                qbit.sets.push(json);
+                Object.assign(qbit.prefs, json);
+                res.writeHead(200); res.end();
+                return;
+            }
+            res.writeHead(404); res.end();
+        });
+    });
+    return new Promise((resolve) => server.listen(port, '0.0.0.0', () => resolve(server)));
+}
