@@ -1,5 +1,6 @@
 /* Jellyfin Medic: banners for admins on the home page, for serious problems (a damaged database, a
-   full disk, a plugin that couldn't load) and for a restart that's waiting to finish updates.
+   full disk, a plugin that couldn't load), for a restart that's waiting to finish updates, and for
+   what's new once Medic has been updated.
    Only admins see them. Dismissing one hides it on every device (it's kept on the server, per person),
    and both kinds can be turned off in Medic's settings. */
 (function () {
@@ -45,6 +46,7 @@
         box.id = ID;
         show.forEach(function (a) {
             var critical = a.Kind === 'critical';
+            var whatsNew = a.Kind === 'whatsnew';
             var card = el('div', null, 'background:' + (critical ? '#3a1416' : '#16263a') + ';color:#f0f0f0;' +
                 'border:1px solid ' + (critical ? '#ff5a5f' : '#00a4dc') + ';border-radius:10px;padding:12px 14px;' +
                 'box-shadow:0 8px 24px rgba(0,0,0,.45);display:flex;gap:12px;align-items:flex-start;');
@@ -52,7 +54,7 @@
             var text = el('div', null, 'flex:1;min-width:0;');
             text.appendChild(el('strong', (critical ? '⚠ ' : '') + a.Title, 'display:block;margin-bottom:2px;'));
             text.appendChild(el('div', a.Detail, 'opacity:.9;overflow-wrap:anywhere;'));
-            var off = el('a', 'Turn these banners off', 'color:#7cc0ff;font-size:12px;');
+            var off = el('a', whatsNew ? 'See all the changes in Medic \u2192 Settings' : 'Turn these banners off', 'color:#7cc0ff;font-size:12px;');
             off.href = '#/configurationpage?name=JellyfinMedic';
             text.appendChild(off);
             var close = el('button', '×', 'background:none;border:0;color:inherit;font-size:20px;line-height:1;cursor:pointer;padding:0 2px;');

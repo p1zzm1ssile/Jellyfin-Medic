@@ -134,14 +134,64 @@ public class MedicController : ControllerBase
     [HttpGet("Now")]
     public ActionResult<NowSnapshot> GetNow() => Ok(ServerNow.Snapshot(_sessions, _tasks, _paths));
 
-    /// <summary>Banners for admins on the home page: serious errors, and a restart waiting. Empty when turned off.</summary>
+    private const string WhatsNewPrefix = "whatsnew:";
+
+    /// <summary>Banners for admins on the home page: serious errors, a restart waiting, and what's new after an update.</summary>
     [HttpGet("Alerts")]
     public ActionResult<List<AdminAlert>> GetAlerts()
     {
         var alerts = AdminAlerts.Current(_paths.LogDirectoryPath, _host, Plugin.Instance?.Configuration ?? new PluginConfiguration());
+        var seen = CurrentUserId() is { } id ? SeenStore.Get(_paths.PluginConfigurationsPath, id) : null;
+        if (seen is not null && WhatsNewAlert(seen.SeenVersion) is { } whatsNew)
+        {
+            alerts.Add(whatsNew);
+        }
+
         // Leave out the ones this person has already dismissed, on any device.
-        var dismissed = CurrentUserId() is { } id ? SeenStore.Get(_paths.PluginConfigurationsPath, id).DismissedAlerts : new List<string>();
+        var dismissed = seen?.DismissedAlerts ?? new List<string>();
         return Ok(alerts.Where(a => !dismissed.Contains(a.Id, StringComparer.Ordinal)).ToList());
+    }
+
+    /// <summary>
+    /// A "Medic was updated" banner, until this person has seen what's new in this version, here or
+    /// in Medic itself. Lists the headline of each change; Medic's page has the full notes.
+    /// </summary>
+    private static AdminAlert? WhatsNewAlert(string? seenVersion)
+    {
+        string version = typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+        if (string.Equals(seenVersion, version, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var entry = ChangelogReader.Read(1).FirstOrDefault(e => e.Version == version);
+        if (entry is null)
+        {
+            return null;
+        }
+
+        var headlines = entry.Lines
+            .Where(l => l.StartsWith("- ", StringComparison.Ordinal))
+            .Select(l =>
+            {
+                string t = l[2..].Trim();
+                int start = t.IndexOf("**", StringComparison.Ordinal);
+                int end = start >= 0 ? t.IndexOf("**", start + 2, StringComparison.Ordinal) : -1;
+                return (end > start ? t[(start + 2)..end] : t).Replace("**", string.Empty, StringComparison.Ordinal).Trim();
+            })
+            .Where(t => t.Length > 0)
+            .ToList();
+        string detail = headlines.Count == 0
+            ? "Open Medic to see what's changed."
+            : string.Join(" ", headlines.Take(3).Select(h => h.EndsWith('.') ? h : h + ".")) + (headlines.Count > 3 ? $" And {headlines.Count - 3} more." : string.Empty);
+
+        return new AdminAlert
+        {
+            Id = WhatsNewPrefix + version,
+            Kind = "whatsnew",
+            Title = $"Jellyfin Medic {version}: what's new",
+            Detail = detail
+        };
     }
 
     /// <summary>Dismisses a banner for this person on every device. A new occurrence (another day) brings it back.</summary>
@@ -153,7 +203,15 @@ public class MedicController : ControllerBase
             return BadRequest();
         }
 
-        SeenStore.Update(_paths.PluginConfigurationsPath, user, s => s.DismissedAlerts.Add(id));
+        SeenStore.Update(_paths.PluginConfigurationsPath, user, s =>
+        {
+            s.DismissedAlerts.Add(id);
+            // Closing the "what's new" banner counts as having seen it, so Medic's page doesn't show it again.
+            if (id.StartsWith(WhatsNewPrefix, StringComparison.Ordinal))
+            {
+                s.SeenVersion = id[WhatsNewPrefix.Length..];
+            }
+        });
         return Ok(new { Success = true });
     }
 
