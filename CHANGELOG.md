@@ -7,6 +7,11 @@ Z changes for fixes, Y for new features, X for changes that break compatibility.
 
 Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 
+## [1.0.16] – 2026-10-10
+
+### Fixed
+- **No more "audio normalisation scanning is on" for films, series and IPTV libraries.** Jellyfin only measures loudness for music and only shows that option on music libraries, so elsewhere it couldn't be switched off and the advice couldn't be followed. Medic now only mentions it for large music libraries.
+
 ## [1.0.15] – 2026-10-10
 
 ### Fixed

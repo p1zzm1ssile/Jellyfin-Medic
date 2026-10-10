@@ -1067,7 +1067,10 @@ public sealed class DiagnosticsEngine
                     WhereLibraries);
             }
 
-            if (SettingsReader.Bool(opts, "EnableLUFSScan") == true && lib.ItemCount >= 5_000)
+            // Jellyfin only measures loudness for music, and only shows this option on music libraries.
+            // It's on by default everywhere else too, where it does nothing and can't be switched off.
+            bool isMusic = string.Equals(lib.CollectionType, "music", StringComparison.OrdinalIgnoreCase);
+            if (isMusic && SettingsReader.Bool(opts, "EnableLUFSScan") == true && lib.ItemCount >= 5_000)
             {
                 Add(AreaLibraries, Sev.Tip, $"{lib.Name}: audio normalisation scanning is on", "On", "Off unless you use it",
                     "Measuring loudness reads every audio file in full, which is slow on a large library.", WhereLibraries);
