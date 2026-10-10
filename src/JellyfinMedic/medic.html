@@ -3237,11 +3237,12 @@
                     const markSeen = function () { postJson('/JellyfinMedic/Version/Seen', { version: version }).catch(function () {}); };
                     if (pick(info, 'SeenVersion') === version) return;
                     if (local === version) { markSeen(); return; } // seen here before the server kept track
+                    if (!$('md-whatsnew').hidden) return; // already open
                     const log = pick(info, 'Changelog') || [];
                     const entry = log.find(function (e) { return pick(e, 'Version') === version; }) || log[0];
+                    if (entry) showChangelog("What's new in " + pick(entry, 'Version'), [entry]);
+                    // Only counted as seen once it's actually on screen.
                     markSeen();
-                    if (!entry) return;
-                    showChangelog("What's new in " + pick(entry, 'Version'), [entry]);
                 }
 
                 $('md-changelog-all').addEventListener('click', async function () {
@@ -4109,9 +4110,10 @@
                     setTimeout(function () { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
                 });
 
-                maybeShowWhatsNew();
-
+                // Checked on every visit, not just the first: Jellyfin's web app keeps this page loaded,
+                // and doesn't reload after a restart, so an update can arrive while it's still open.
                 return function refresh() {
+                    maybeShowWhatsNew();
                     loadReport();
                     loadTab(activeTab);
                     updateActivity();

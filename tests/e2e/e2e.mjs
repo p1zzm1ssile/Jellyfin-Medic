@@ -415,6 +415,8 @@ await check('admin banner on the home page for a serious error, and it can be di
     execFileSync('docker', ['exec', 'medic-e2e', 'sh', '-c', `echo "$1" >> "$2"`, 'sh', warning, newest]);
     await sleep(1000);
     expect(!((await api('GET', '/JellyfinMedic/Alerts')).json || []).some((a) => a.Kind === 'critical'), 'a warning raised a banner');
+    // "What's new" was seen on Medic's page above, so its home banner is gone too.
+    expect(!((await api('GET', '/JellyfinMedic/Alerts')).json || []).some((a) => a.Kind === 'whatsnew'), '"What\'s new" banner still showing after seeing it in Medic');
     const line = `[${now}.000 +00:00] [ERR] [42] Microsoft.EntityFrameworkCore: SQLite Error 11: 'database disk image is malformed'.`;
     execFileSync('docker', ['exec', 'medic-e2e', 'sh', '-c', `echo "$1" >> "$2"`, 'sh', line, newest]);
     let alerts = [];
