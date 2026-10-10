@@ -5,7 +5,7 @@ Anything not ticked has not been done.
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Test setup: real Jellyfin in Docker with the three plugins, run by `tests/e2e/run.sh` | Done: 32 checks (API, schedule, Picks build, every plugin page and tab in a real browser); also runs on pull requests |
+| 1 | Test setup: real Jellyfin in Docker with the three plugins, run by `tests/e2e/run.sh` | Done: now 46 checks (API, schedule, Picks, track cleanup, IPTV, banners, Medic Profiles against a pretend Sonarr and qBittorrent, every plugin page and tab in a real browser); also runs on pull requests |
 | 2 | Picks: "Update my picks" responds with 30 picks and a genre; "Show me different ones" | Done: Medic Picks 1.2.1 |
 | 3 | Admin banners on the home page (serious errors on first sight; restart needed), each with an off switch | Done: Medic 1.0.13 (restart banner not tested end to end: the test server never has an update waiting) |
 | 4 | Scheduling: per task, keep current / let Medic schedule / leave unscheduled | Done: Medic 1.0.13 |
