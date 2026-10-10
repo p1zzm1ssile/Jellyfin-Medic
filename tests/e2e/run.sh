@@ -65,7 +65,7 @@ mkdir -p "$WORK/media/livetv"
 
 echo "== Starting Jellyfin ($IMAGE)"
 docker rm -f "$NAME" >/dev/null 2>&1 || true
-docker run -d --name "$NAME" -p "$PORT:8096" \
+docker run -d --name "$NAME" -p "$PORT:8096" --add-host=host.docker.internal:host-gateway \
   -v "$WORK/config:/config" -v "$WORK/cache:/cache" -v "$WORK/media:/media" "$IMAGE" >/dev/null
 cleanup() { [ "${KEEP:-0}" = 1 ] || docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT

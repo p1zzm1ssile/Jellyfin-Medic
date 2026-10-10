@@ -140,6 +140,7 @@ Sonarr and Radarr, from your Jellyfin dashboard, under **Plugins → Medic Profi
 - **Downloads.** Everything Sonarr and Radarr are downloading, in one list, with progress and when it should finish. Problems come first, with Sonarr's or Radarr's own explanation: couldn't be imported, failed, unwanted files, not matched, or stalled. **Remove**, or **Remove and block** so that release is never grabbed again and a different one is searched for.
 - **Import manually.** For downloads that finished but weren't imported: see each file, what Sonarr or Radarr thinks it is and why it refused, fix the film, series or episodes if the match is wrong, and import.
 - **Blocked.** What Sonarr and Radarr won't grab again, with Unblock.
+- **Indexers.** Each indexer Sonarr and Radarr search and whether it's working, failing (and until when it's paused) or switched off, with their own indexer warnings.
 - **Profiles.** Advice on your quality profiles and custom formats, from what your server actually plays (with Jellyfin Medic installed, from the files it caught being transcoded and why) and from the profiles themselves. For example: avoid DTS-only audio if your TVs can't play it, avoid 4K for devices that can't show it, or untick cinema recordings. Read-only for now: you make the changes in Sonarr or Radarr.
 - **History** of what was removed, blocked, unblocked or imported, and by whom.
 

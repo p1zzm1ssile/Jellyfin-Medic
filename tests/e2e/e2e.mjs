@@ -276,6 +276,28 @@ await check('My picks page is served with no-cache', async () => {
     expect((res.headers.get('cache-control') || '').includes('no-cache'), 'cache-control ' + res.headers.get('cache-control'));
 });
 
+// ---------- Medic Profiles, against a pretend Sonarr ----------
+
+const fakeArr = await import('./fake-arr.mjs');
+const arrServer = await fakeArr.start(18989);
+const ARR = process.env.ARR_URL || 'http://host.docker.internal:18989';
+
+await check('Medic Profiles connects to Sonarr', async () => {
+    const saved = await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, SonarrKey: 'test-key', RadarrUrl: '' });
+    expect(saved.status === 200 || saved.status === 204, 'saving settings ' + saved.status);
+    const test = await api('POST', '/MedicProfiles/Test/sonarr');
+    expect(test.json?.ok, 'test failed: ' + test.text);
+});
+
+await check('Medic Profiles shows indexer status', async () => {
+    const r = await ok('/MedicProfiles/Indexers');
+    const byName = Object.fromEntries((r.rows || []).map((x) => [x.name, x]));
+    expect(byName['Broken Indexer']?.state === 'failing', 'broken: ' + JSON.stringify(byName['Broken Indexer']));
+    expect(byName['Good Indexer']?.state === 'ok', 'good: ' + JSON.stringify(byName['Good Indexer']));
+    expect(byName['Unused Indexer']?.state === 'off', 'unused: ' + JSON.stringify(byName['Unused Indexer']));
+    expect((r.warnings || []).some((w) => /Broken Indexer/.test(w)), 'no health warning');
+});
+
 // ---------- Pages in a real browser ----------
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
@@ -406,5 +428,6 @@ await check('Picks: 30 + a genre explains a short list, and "Show me different o
 });
 
 await browser.close();
+arrServer.close();
 console.log(`${passed}/${passed + failed} passed`);
 process.exit(failed ? 1 : 0);

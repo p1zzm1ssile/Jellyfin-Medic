@@ -3,6 +3,11 @@
 All notable changes to Medic Profiles are recorded here. The newest version is at the top.
 Jellyfin Medic and Medic Picks have their own changelogs.
 
+## [1.1.0] – 2026-10-10
+
+### Added
+- **Indexers tab.** Every indexer Sonarr and Radarr search, and whether it's working: failing (since when, and when Sonarr or Radarr will try it again), working (and whether it's used for RSS, automatic or manual searches), or switched off. Indexer warnings from Sonarr's and Radarr's own health checks are shown at the top. Indexers added by Prowlarr show here too, as Prowlarr adds them to Sonarr and Radarr.
+
 ## [1.0.1] – 2026-10-06
 
 ### Fixed
