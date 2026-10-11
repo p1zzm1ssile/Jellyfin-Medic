@@ -3,6 +3,11 @@
 All notable changes to Medic Profiles are recorded here. The newest version is at the top.
 Jellyfin Medic and Medic Picks have their own changelogs.
 
+## [1.1.1] – 2026-10-11
+
+### Added
+- **Contact tab.** Report a problem on GitHub (the new issue is already titled for Medic Profiles), see the open issues, or email p1zzm1ssilerepo@gmail.com for anything private.
+
 ## [1.1.0] – 2026-10-10
 
 ### Added
