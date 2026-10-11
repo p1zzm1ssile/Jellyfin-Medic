@@ -1,9 +1,10 @@
-# Once a day, logs how many times the evictarr container image has been pulled
-# and sends the count to Telegram.
-# The history lives in evictarr_pulls.csv on the package-stats branch, so main stays clean.
+# Once a day, logs the downloads of every container image and every repo's releases
+# under the account, and sends a summary to Telegram.
+# The history lives in downloads.csv on the package-stats branch, so main stays clean.
 # Needs two repo secrets: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
+# If an image is ever missing from the message, add its name to EXTRA_PACKAGES below.
 
-name: Package downloads
+name: GitHub downloads
 
 on:
   schedule:
@@ -19,8 +20,8 @@ concurrency:
 
 env:
   OWNER: 'P1zzm1ssile'
-  PACKAGE: 'evictarr'
-  CSV: 'evictarr_pulls.csv'
+  CSV: 'downloads.csv'
+  EXTRA_PACKAGES: ''
 
 jobs:
   log:
@@ -44,7 +45,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: scripts/package-downloads.sh "$OWNER" "$PACKAGE" "stats/$CSV"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/github-downloads.py "$OWNER" "stats/$CSV"
 
       - name: Save the history
         shell: bash
@@ -53,5 +55,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add "$CSV"
-          git commit -qm "Log $PACKAGE downloads"
+          git commit -qm "Log downloads"
           git push origin HEAD:package-stats
