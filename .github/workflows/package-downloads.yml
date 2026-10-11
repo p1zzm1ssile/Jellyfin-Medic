@@ -1,0 +1,57 @@
+# Once a day, logs how many times the evictarr container image has been pulled
+# and sends the count to Telegram.
+# The history lives in evictarr_pulls.csv on the package-stats branch, so main stays clean.
+# Needs two repo secrets: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
+
+name: Package downloads
+
+on:
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: package-stats
+  cancel-in-progress: false
+
+env:
+  OWNER: 'P1zzm1ssile'
+  PACKAGE: 'evictarr'
+  CSV: 'evictarr_pulls.csv'
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the stats branch
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --heads origin package-stats >/dev/null; then
+            git fetch --depth 1 origin package-stats
+            git worktree add stats origin/package-stats
+          else
+            git worktree add --detach stats
+            git -C stats checkout --orphan package-stats
+            git -C stats rm -rfq .
+          fi
+
+      - name: Log downloads and send to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: scripts/package-downloads.sh "$OWNER" "$PACKAGE" "stats/$CSV"
+
+      - name: Save the history
+        shell: bash
+        run: |
+          cd stats
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$CSV"
+          git commit -qm "Log $PACKAGE downloads"
+          git push origin HEAD:package-stats
