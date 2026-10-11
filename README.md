@@ -189,7 +189,9 @@ So I built the tools I wanted: first Task Advisor to schedule tasks sensibly, th
 
 Medic was built with AI assistance for the development, directed and tested by me against my own server and its real problems. I'm sharing it for anyone running something similar.
 
-Issues, suggestions and pull requests are welcome. Translations especially: Medic keeps all its wording in one place so other languages can be added, and I'd rather have them checked by people who speak the language than machine-translated.
+[Issues](https://github.com/P1zzm1ssile/Jellyfin-Medic/issues), suggestions and pull requests are welcome. Translations especially: Medic keeps all its wording in one place so other languages can be added, and I'd rather have them checked by people who speak the language than machine-translated.
+
+For anything that doesn't belong on a public page, email [p1zzm1ssilerepo@gmail.com](mailto:p1zzm1ssilerepo@gmail.com). Each plugin's page has these links too, under Contact.
 
 ## Thanks
 

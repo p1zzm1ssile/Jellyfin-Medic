@@ -7,6 +7,14 @@ Z changes for fixes, Y for new features, X for changes that break compatibility.
 
 Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 
+## [1.0.17] – 2026-10-11
+
+### Added
+- **Contact tab.** Report a problem on GitHub (the new issue is already titled for Jellyfin Medic), see the open issues, or email for anything private.
+
+### Changed
+- **New contact email.** Plugin settings shared from the Plugins tab now go to p1zzm1ssilerepo@gmail.com.
+
 ## [1.0.16] – 2026-10-10
 
 ### Fixed

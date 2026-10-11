@@ -372,7 +372,7 @@ async function openPage(name, hash, selector, tabs) {
 
 await openPage('Jellyfin Medic', '/configurationpage?name=JellyfinMedic', '#JellyfinMedicPage .so-tab', '.so-tab');
 await openPage('Medic Profiles', '/configurationpage?name=MedicProfiles', '#MedicProfilesPage .mp-tab', '.mp-tab');
-await openPage('Medic Picks settings', '/configurationpage?name=Medic%20Picks', 'form');
+await openPage('Medic Picks settings', '/configurationpage?name=Medic%20Picks', '#MedicPicksConfigForm');
 
 await check('My picks page opens signed in', async () => {
     errors.length = 0;

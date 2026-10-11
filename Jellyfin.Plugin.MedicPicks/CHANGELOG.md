@@ -3,6 +3,11 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
+## [1.2.3] – 2026-10-11
+
+### Added
+- **Contact section** at the bottom of the settings page: report a problem on GitHub (the new issue is already titled for Medic Picks), see the open issues, or email p1zzm1ssilerepo@gmail.com for anything private.
+
 ## [1.2.2] – 2026-10-10
 
 ### Fixed
