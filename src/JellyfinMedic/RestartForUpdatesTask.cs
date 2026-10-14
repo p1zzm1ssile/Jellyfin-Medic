@@ -1,5 +1,7 @@
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Session;
+using MediaBrowser.Model.LiveTv;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
@@ -7,13 +9,17 @@ namespace JellyfinMedic.Services;
 
 /// <summary>
 /// Shared by Medic's two restart tasks: waits for a safe moment (nobody watching, no track cleanup,
-/// no other scheduled task busy), then asks Jellyfin to restart itself, exactly like the Dashboard's
-/// Restart button. If it isn't safe, it checks every 5 minutes for up to an hour, then gives up.
+/// no Live TV recording, no other scheduled task busy, and still so two minutes later), then asks
+/// Jellyfin to restart itself, exactly like the Dashboard's Restart button. If it isn't safe, it checks
+/// every 5 minutes for up to an hour, then gives up.
 /// </summary>
 public static class SafeRestart
 {
     private static readonly TimeSpan CheckEvery = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan GiveUpAfter = TimeSpan.FromHours(1);
+
+    // Between two episodes nothing is playing for a moment, so a quiet check is confirmed this much later.
+    private static readonly TimeSpan ConfirmAfter = TimeSpan.FromMinutes(2);
 
     public static async Task<bool> WhenSafeAsync(
         string why,
@@ -30,10 +36,15 @@ public static class SafeRestart
         while (true)
         {
             ct.ThrowIfCancellationRequested();
-            string? blocker = Blocker(sessions, tasks, ownKey);
+            string? blocker = await BlockerAsync(sessions, tasks, services, ownKey, ct).ConfigureAwait(false);
             if (blocker is null)
             {
-                break;
+                await Task.Delay(ConfirmAfter, ct).ConfigureAwait(false);
+                blocker = await BlockerAsync(sessions, tasks, services, ownKey, ct).ConfigureAwait(false);
+                if (blocker is null)
+                {
+                    break;
+                }
             }
 
             if (DateTime.UtcNow >= deadline)
@@ -64,7 +75,7 @@ public static class SafeRestart
         return true;
     }
 
-    private static string? Blocker(ISessionManager sessions, ITaskManager tasks, string ownKey)
+    private static async Task<string?> BlockerAsync(ISessionManager sessions, ITaskManager tasks, IServiceProvider services, string ownKey, CancellationToken ct)
     {
         try
         {
@@ -82,6 +93,20 @@ public static class SafeRestart
         if (TrackCleaner.CurrentProgress().Running)
         {
             return "track cleanup is running";
+        }
+
+        // A restart in the middle of a Live TV recording would cut it short.
+        try
+        {
+            if (services.GetService(typeof(ILiveTvManager)) is ILiveTvManager liveTv
+                && (await liveTv.GetTimers(new TimerQuery { IsActive = true }, ct).ConfigureAwait(false)).TotalRecordCount > 0)
+            {
+                return "a Live TV recording is in progress";
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // If recordings can't be listed (no Live TV set up), don't block on it.
         }
 
         try
@@ -134,7 +159,7 @@ public static class SafeRestart
     }
 }
 
-/// <summary>Restarts Jellyfin only when plugin updates are waiting for one. Runs at 04:00 by default.</summary>
+/// <summary>Restarts Jellyfin only when plugin updates are waiting for one. It has no time set until someone adds one.</summary>
 public sealed class RestartForUpdatesTask : IScheduledTask
 {
     public const string TaskKey = "JellyfinMedicRestartForUpdates";
@@ -159,8 +184,9 @@ public sealed class RestartForUpdatesTask : IScheduledTask
     public string Key => TaskKey;
 
     public string Description =>
-        "If plugin updates are waiting for a restart, restarts Jellyfin, but only when nobody is watching, no track cleanup is running "
-        + "and no other scheduled task is busy. If it isn't safe, it checks again every 5 minutes for up to an hour, then waits for its next run.";
+        "If plugin updates are waiting for a restart, restarts Jellyfin, but only when nobody is watching, no track cleanup or Live TV recording is running "
+        + "and no other scheduled task is busy, and it's still so two minutes later. If it isn't safe, it checks again every 5 minutes for up to an hour, then waits for its next run. "
+        + "It has no time set to begin with: add one (04:00, say) to turn it on.";
 
     public string Category => "Jellyfin Medic";
 
@@ -179,13 +205,8 @@ public sealed class RestartForUpdatesTask : IScheduledTask
             .ConfigureAwait(false);
     }
 
-    public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
-    {
-        return new[]
-        {
-            new TaskTriggerInfo { Type = TaskTriggerInfoType.DailyTrigger, TimeOfDayTicks = TimeSpan.FromHours(4).Ticks }
-        };
-    }
+    // No time to begin with, like Scheduled restart: restarting the server is the admin's choice to make.
+    public IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => Array.Empty<TaskTriggerInfo>();
 }
 
 /// <summary>
@@ -218,7 +239,7 @@ public sealed class ScheduledRestartTask : IScheduledTask
 
     public string Description =>
         "Restarts Jellyfin at the times you set here, for example once a week to clear memory. It only restarts when nobody is watching, "
-        + "no track cleanup is running and no other scheduled task is busy; otherwise it checks again every 5 minutes for up to an hour. "
+        + "no track cleanup or Live TV recording is running and no other scheduled task is busy (still so two minutes later); otherwise it checks again every 5 minutes for up to an hour. "
         + "It has no time set to begin with: add one to turn it on.";
 
     public string Category => "Jellyfin Medic";

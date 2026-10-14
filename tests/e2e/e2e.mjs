@@ -299,6 +299,8 @@ await check('schedule: unscheduled tasks stay off unless chosen, and per-task ch
     const tasks = await ok('/ScheduledTasks');
     const restart = tasks.find((t) => t.Name === 'Scheduled restart');
     expect(restart && restart.Triggers.length === 0, 'Scheduled restart should start with no schedule');
+    const forUpdates = tasks.find((t) => t.Name === 'Restart Jellyfin for waiting updates');
+    expect(forUpdates && forUpdates.Triggers.length === 0, 'Restart Jellyfin for waiting updates should start with no schedule: ' + JSON.stringify(forUpdates?.Triggers));
     const row = (plan, id) => plan.SchedulePlan.find((p) => p.TaskId.replace(/-/g, '') === id.replace(/-/g, ''));
     let plan = await ok('/JellyfinMedic/Schedule/PreviewScheduleDiff');
     let r = row(plan, restart.Id);

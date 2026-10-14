@@ -71,7 +71,7 @@ public static class AdminAlerts
                 Id = "restart:" + System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks,
                 Kind = "restart",
                 Title = "Jellyfin needs a restart",
-                Detail = "Updated plugins finish installing when Jellyfin restarts. Restart it from Dashboard → Restart when nobody's watching, or let Medic's \"Restart Jellyfin for waiting updates\" task do it overnight."
+                Detail = "Updated plugins finish installing when Jellyfin restarts. Restart it from Dashboard → Restart when nobody's watching, or give Medic's \"Restart Jellyfin for waiting updates\" task a time under Scheduled Tasks to have it done overnight."
             });
         }
 

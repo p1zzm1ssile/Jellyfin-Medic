@@ -117,10 +117,12 @@ A single screen of tiles:
     ceiling while more than one heavy task is running, Medic stops the extra
     heavy tasks (keeping the one that started first), then restarts them one
     at a time once memory recovers.
-  - Scheduled task "Restart Jellyfin for waiting updates" (04:00 by default):
-    restarts Jellyfin when plugin updates are waiting, but only when nobody is
-    watching, no track cleanup is running and no other task is busy. If it
-    isn't safe, it re-checks every 5 minutes for up to an hour.
+  - Scheduled task "Restart Jellyfin for waiting updates" (no time set to
+    begin with: add one under Scheduled Tasks): restarts Jellyfin when plugin
+    updates are waiting, but only when nobody is watching, no track cleanup or
+    Live TV recording is running and no other task is busy, still so two
+    minutes later. If it isn't safe, it re-checks every 5 minutes for up to an
+    hour.
   - Scheduled task "Scheduled restart": restarts Jellyfin at times you set
     (for example weekly, to clear memory), with the same safety checks. Has
     no time set to begin with, so it never restarts until you add one.
