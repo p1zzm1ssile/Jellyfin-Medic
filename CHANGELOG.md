@@ -7,7 +7,7 @@ Z changes for fixes, Y for new features, X for changes that break compatibility.
 
 Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 
-## Unreleased
+## [1.0.18] – 2026-10-14
 
 ### Fixed
 - **Track cleanup no longer removes the wrong track when a file has changed.** It worked out which tracks to keep from Jellyfin's list of the file's tracks, which can be out of date: after an earlier cleanup, or when Sonarr or Radarr replaced the file and Jellyfin hadn't read it again. It then kept tracks by their old numbers, so it could drop a language you keep (with "replace in place" on, for good). Each file is now checked with FFprobe right before it's changed; if it doesn't match, it's skipped and Jellyfin is asked to read it again, and Jellyfin is also asked to read every file Medic changes.

@@ -3,7 +3,7 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
-## Unreleased
+## [1.2.4] – 2026-10-14
 
 ### Added
 - **A Seerr address for viewers.** If this server reaches Seerr at an address people can't open (http://seerr:5055 inside Docker, say), put theirs in the new "Seerr address for viewers" box: links to Seerr use it, while Medic Picks keeps using the other one itself.

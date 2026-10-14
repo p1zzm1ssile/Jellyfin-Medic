@@ -3,7 +3,7 @@
 All notable changes to Medic Profiles are recorded here. The newest version is at the top.
 Jellyfin Medic and Medic Picks have their own changelogs.
 
-## Unreleased
+## [1.1.2] – 2026-10-14
 
 ### Added
 - **Remove can leave the download in the client.** The Remove panel has a new tick box, on by default. Untick it and the download stays in the download client, still seeding, while Sonarr or Radarr stops tracking it, as their own "Ignore download" does. Handy for a finished download that couldn't be imported.
