@@ -1,0 +1,8 @@
+services:
+  cover-maker:
+    build: .
+    image: jellyfin-cover-maker
+    container_name: jellyfin-cover-maker
+    ports:
+      - "8097:80"
+    restart: unless-stopped
