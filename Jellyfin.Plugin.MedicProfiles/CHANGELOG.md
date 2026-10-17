@@ -3,7 +3,7 @@
 All notable changes to Medic Profiles are recorded here. The newest version is at the top.
 Jellyfin Medic and Medic Picks have their own changelogs.
 
-## Unreleased
+## [1.1.5] – 2026-10-17
 
 ### Fixed
 - **API keys and the qBittorrent password only go to the addresses you saved.** When the Sonarr, Radarr or qBittorrent address answered with a redirect to another address, the call followed it, sending the API key along, and for a 307 or 308 the qBittorrent sign-in posted the user name and password again to the new address. Redirects are no longer followed for these calls. The call fails with a message naming where the address points, so you can save that address instead.

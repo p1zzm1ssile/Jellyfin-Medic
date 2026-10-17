@@ -7,7 +7,7 @@ Z changes for fixes, Y for new features, X for changes that break compatibility.
 
 Medic Picks has its own changelog: Jellyfin.Plugin.MedicPicks/CHANGELOG.md.
 
-## Unreleased
+## [1.0.23] – 2026-10-17
 
 ### Fixed
 - **The Disks panel says when a library drive is missing, instead of charting the drive above it.** When a library folder couldn't be found, as when a USB or network drive didn't mount, Medic read the space of the folder above it, usually the system drive, and charted it as that library's drive, with a forecast that could say "full in under a day". An empty library folder, which a drive that didn't mount often leaves behind, did the same. Those folders are no longer read: the panel marks the drive as missing, with the folder it looked for and its last reading, and the Disks tile says how many drives are missing. Checks already reported the missing folder.
