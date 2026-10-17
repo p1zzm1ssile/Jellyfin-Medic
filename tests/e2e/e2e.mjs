@@ -1874,7 +1874,7 @@ await check('Medic Posters page: a library cover gets its own text and a picked 
         await page.waitForSelector('#MedicPostersPage #po-custom-moments li .po-thumb img', { timeout: 30000 });
         await page.selectOption('#MedicPostersPage #po-cover-font', 'Cinzel');
         await page.click('#MedicPostersPage #po-form button[type=submit]');
-        await page.getByText('Saved.').waitFor({ timeout: 10000 });
+        await page.waitForFunction(() => document.querySelector('#MedicPostersPage #po-saved').textContent === 'Saved.', null, { timeout: 10000 });
         const s = (await api('GET', '/MedicPosters/Status')).json;
         const own = s.settings.custom.find((c) => c.itemId === movies);
         expect(own && own.title === 'Live Films' && own.moments.length === 1 && own.moments[0].itemId === film.id && own.moments[0].start > 0,
