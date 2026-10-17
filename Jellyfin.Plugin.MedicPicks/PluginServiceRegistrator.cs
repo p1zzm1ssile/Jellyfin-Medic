@@ -17,7 +17,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         // Calls that carry an API key, which don't follow redirects (see ServiceHttp.KeyClient).
-        ServiceHttp.AddKeyClient(serviceCollection);
+        ServiceHttp.AddKeyClient(serviceCollection, applicationHost);
         serviceCollection.AddSingleton<PicksStore>();
         serviceCollection.AddSingleton<TmdbClient>();
         serviceCollection.AddSingleton<SeerrClient>();

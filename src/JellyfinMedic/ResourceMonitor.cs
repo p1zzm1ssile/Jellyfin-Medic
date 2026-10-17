@@ -77,6 +77,9 @@ public sealed class ResourceMonitor : IHostedService, IDisposable
     private (DateTime Wall, double CpuSeconds, double IoBytes)? _previous;
     private int _busy;
 
+    // Whether the last measure failed, so a failure that repeats every 15 seconds is a warning once.
+    private bool _failing;
+
     public ResourceMonitor(ITaskManager tasks, ISessionManager sessions, IApplicationPaths paths, ILogger<ResourceMonitor> logger)
     {
         _tasks = tasks;
@@ -143,21 +146,33 @@ public sealed class ResourceMonitor : IHostedService, IDisposable
         try
         {
             var sample = Measure(out var ffmpeg);
-            if (sample is null)
+            if (sample is not null)
             {
-                return;
+                Remember(sample);
+
+                Watch("CPU", sample.CpuPercent >= CpuAlertPercent, $"{sample.CpuPercent:0}% of all CPU threads", ffmpeg);
+                Watch("Memory", sample.MemoryPercent >= MemoryAlertPercent, $"{sample.MemoryGb:0.#} GB ({sample.MemoryPercent:0}% of what Jellyfin may use)", ffmpeg);
+                Watch("Disk", sample.DiskMBps >= DiskAlertMBps, $"{sample.DiskMBps:0} MB/s of reads and writes", ffmpeg);
+                Watch("GPU", sample.GpuPercent >= GpuAlertPercent, $"{sample.GpuPercent:0}% GPU", ffmpeg);
             }
 
-            Remember(sample);
-
-            Watch("CPU", sample.CpuPercent >= CpuAlertPercent, $"{sample.CpuPercent:0}% of all CPU threads", ffmpeg);
-            Watch("Memory", sample.MemoryPercent >= MemoryAlertPercent, $"{sample.MemoryGb:0.#} GB ({sample.MemoryPercent:0}% of what Jellyfin may use)", ffmpeg);
-            Watch("Disk", sample.DiskMBps >= DiskAlertMBps, $"{sample.DiskMBps:0} MB/s of reads and writes", ffmpeg);
-            Watch("GPU", sample.GpuPercent >= GpuAlertPercent, $"{sample.GpuPercent:0}% GPU", ffmpeg);
+            if (_failing)
+            {
+                _failing = false;
+                _logger.LogInformation("Jellyfin Medic: measuring resource use works again.");
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Jellyfin Medic: couldn't measure resource use this time.");
+            if (!_failing)
+            {
+                _failing = true;
+                _logger.LogWarning(ex, "Jellyfin Medic: couldn't measure resource use; Medic keeps trying every 15 seconds.");
+            }
+            else
+            {
+                _logger.LogDebug(ex, "Jellyfin Medic: still couldn't measure resource use.");
+            }
         }
         finally
         {

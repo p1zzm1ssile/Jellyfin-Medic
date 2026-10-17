@@ -40,6 +40,30 @@ public class HostLoadTests
     }
 
     [Fact]
+    public void Inside_an_lxc_the_zfs_cache_is_the_hosts_and_is_not_counted_as_free()
+    {
+        // A 4 GiB container at 75% use. lxcfs shows the container's own memory, but arcstats is the whole host's.
+        string[] meminfo = { "MemTotal:        4194304 kB", "MemAvailable:    1048576 kB" };
+        string[] arcstats = { "c_min                           4    2147483648", "size                            4    8589934592" };
+
+        Assert.Equal(75, HostCounters.ParseMemory(meminfo, arcstats, HostKind.ProxmoxLxc));
+        // A Docker container's /proc/meminfo is the host's, as on bare metal, so the host's cache counts there.
+        Assert.Equal(0, HostCounters.ParseMemory(meminfo, arcstats, HostKind.Docker));
+        Assert.Equal(0, HostCounters.ParseMemory(meminfo, arcstats, HostKind.Linux));
+    }
+
+    [Fact]
+    public void A_reading_is_left_out_when_a_task_ended_during_its_spell()
+    {
+        // FakeTaskWorker's last run ended at 04:00 UTC on 1 October 2026.
+        var ended = new DateTime(2026, 10, 1, 4, 0, 0, DateTimeKind.Utc);
+        var tasks = new[] { new FakeTaskWorker("Scan Media Library", "RefreshLibrary", 20) };
+
+        Assert.True(HostLoadSampler.TaskTouched(tasks, ended.AddMinutes(3).AddMinutes(-5)));
+        Assert.False(HostLoadSampler.TaskTouched(tasks, ended.AddMinutes(7).AddMinutes(-5)));
+    }
+
+    [Fact]
     public void Only_whole_drives_are_counted()
     {
         var lines = new[]

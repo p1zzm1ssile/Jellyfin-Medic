@@ -397,9 +397,9 @@ public class MedicController : ControllerBase
 
     /// <summary>How many originals Medic is keeping, and how much space they take.</summary>
     [HttpGet("Tracks/KeptOriginals")]
-    public ActionResult<object> TracksKeptOriginals()
+    public ActionResult<object> TracksKeptOriginals(CancellationToken cancellationToken)
     {
-        var (files, bytes, orphans, orphanBytes) = TrackCleaner.KeptOriginals(_library, _engine.Libraries);
+        var (files, bytes, orphans, orphanBytes) = TrackCleaner.KeptOriginals(_library, _engine.Libraries, cancellationToken);
         return Ok(new
         {
             Files = files, Bytes = bytes, SizeText = SystemProbe.Size(bytes),
@@ -853,41 +853,20 @@ public class MedicController : ControllerBase
 
     /// <summary>Disk space that can usually be freed safely.</summary>
     [HttpGet("Cleanup")]
-    public ActionResult<CleanupReport> GetCleanup() => Ok(Housekeeping.Scan(_paths, TranscodePath(), KnownStrmPaths));
+    public ActionResult<CleanupReport> GetCleanup(CancellationToken cancellationToken) =>
+        Ok(Housekeeping.Scan(_paths, TranscodePath(), () => Housekeeping.KnownStrmPaths(_library, cancellationToken)));
 
     /// <summary>Removes the leftover files of one kind, after the admin confirms on the page.</summary>
     [HttpPost("Cleanup")]
-    public ActionResult<object> RunCleanup([FromQuery] string kind)
+    public ActionResult<object> RunCleanup([FromQuery] string kind, CancellationToken cancellationToken)
     {
-        var (ok, message, freed) = Housekeeping.Clean(kind ?? string.Empty, _paths, TranscodePath(), KnownStrmPaths);
+        var (ok, message, freed) = Housekeeping.Clean(kind ?? string.Empty, _paths, TranscodePath(), () => Housekeeping.KnownStrmPaths(_library, cancellationToken));
         if (ok)
         {
             WeeklyLedger.AddFreed("Clean-ups", freed);
         }
 
         return Ok(new { Success = ok, Message = message, Freed = freed });
-    }
-
-    /// <summary>Every .strm file Jellyfin has an item for, or null if the library couldn't be read.</summary>
-    private ISet<string>? KnownStrmPaths()
-    {
-        try
-        {
-            var known = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-            foreach (var item in _library.GetItemList(new InternalItemsQuery { Recursive = true, IsFolder = false }))
-            {
-                if (item.Path is { } path && path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase))
-                {
-                    known.Add(path);
-                }
-            }
-
-            return known;
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     private string TranscodePath() => SettingsReader.TranscodePath(_config.GetConfiguration("encoding"), _paths.CachePath);

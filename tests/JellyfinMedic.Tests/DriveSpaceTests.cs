@@ -2,10 +2,40 @@ using JellyfinMedic.Services;
 
 namespace JellyfinMedic.Tests;
 
-public sealed class DriveSpaceTests
+public sealed class DriveSpaceTests : IDisposable
 {
     // Medic reads sizes in GiB, so a 16 TB drive is about 14,901 of them.
     private const double SixteenTb = 14901;
+
+    private readonly string _root = Directory.CreateTempSubdirectory("medic-drives-").FullName;
+
+    public void Dispose()
+    {
+        foreach (var folder in Directory.EnumerateDirectories(_root))
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                new DirectoryInfo(folder).UnixFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+            }
+        }
+
+        Directory.Delete(_root, true);
+    }
+
+    private string Folder(string name, bool withFile)
+    {
+        string folder = Path.Combine(_root, name);
+        Directory.CreateDirectory(folder);
+        if (withFile)
+        {
+            File.WriteAllText(Path.Combine(folder, "Film (2020).mkv"), "film");
+        }
+
+        return folder;
+    }
+
+    // A reading of the drive behind folder, as Record saves it.
+    private static DiskSample ReadingOf(string folder, string holds) => new() { Key = "/mnt/films", Day = "2026-10-01", FreeGb = 100, Holds = holds, Path = folder };
 
     [Theory]
     [InlineData(140, "Improve")]
@@ -116,5 +146,118 @@ public sealed class DriveSpaceTests
         var drive = Assert.Single(StorageWatch.Drives(new[] { ("transcodes", Path.Combine(parent, "medic-no-transcodes-yet")) }, _ => false));
 
         Assert.Equal("transcodes", drive.Holds);
+    }
+
+    [Fact]
+    public void A_library_folder_reads_as_listed_empty_or_gone()
+    {
+        Assert.Equal(DiagnosticsEngine.LibraryFolderState.Listed, DiagnosticsEngine.ReadLibraryFolder(Folder("films", true)).State);
+        Assert.Equal(DiagnosticsEngine.LibraryFolderState.Empty, DiagnosticsEngine.ReadLibraryFolder(Folder("new", false)).State);
+        Assert.Equal(DiagnosticsEngine.LibraryFolderState.Gone, DiagnosticsEngine.ReadLibraryFolder(Path.Combine(_root, "never-made")).State);
+    }
+
+    [Fact]
+    public void A_library_folder_that_fails_to_list_is_read_by_its_error()
+    {
+        // No test can make a share stop answering, so the listing throws what one would.
+        var read = DiagnosticsEngine.ReadLibraryFolder("/mnt/share/films", _ => throw new IOException("Stale file handle"));
+
+        Assert.Equal(DiagnosticsEngine.LibraryFolderState.Failed, read.State);
+        Assert.Equal("Stale file handle", read.Error);
+    }
+
+    [Fact]
+    public void A_listing_refused_is_denied_and_a_folder_not_found_is_gone()
+    {
+        Assert.Equal(DiagnosticsEngine.LibraryFolderState.Denied,
+            DiagnosticsEngine.ReadLibraryFolder("/mnt/films", _ => throw new UnauthorizedAccessException("Access denied")).State);
+        Assert.Equal(DiagnosticsEngine.LibraryFolderState.Gone,
+            DiagnosticsEngine.ReadLibraryFolder("/mnt/films", _ => throw new DirectoryNotFoundException("Not found")).State);
+    }
+
+    [Fact]
+    public void A_library_folder_Jellyfin_may_not_list_is_reported()
+    {
+        // Root lists any folder, and Windows has no Unix permissions.
+        if (OperatingSystem.IsWindows() || Environment.UserName == "root")
+        {
+            return;
+        }
+
+        string folder = Folder("locked", true);
+        new DirectoryInfo(folder).UnixFileMode = UnixFileMode.None;
+
+        Assert.Equal(DiagnosticsEngine.LibraryFolderState.Denied, DiagnosticsEngine.ReadLibraryFolder(folder).State);
+        var finding = Assert.Single(DiagnosticsEngine.UnreadLibraryFindings(new[] { ("Films", folder) }, Array.Empty<DiskSample>(), DiagnosticsEngine.ReadLibraryFolder));
+        Assert.Equal("The drive for Films can't be read", finding.Title);
+        Assert.Equal("Jellyfin isn't allowed to list its folder", finding.Current);
+        Assert.Equal("Problem", finding.Severity);
+        Assert.Equal(folder, finding.Where);
+    }
+
+    [Fact]
+    public void A_library_folder_that_fails_to_list_gives_the_error_rather_than_a_cause()
+    {
+        // A network share that stopped answering fails with an I/O error, not a permission one; no test can make one.
+        string folder = Path.Combine(_root, "share");
+        static (DiagnosticsEngine.LibraryFolderState, string) Failing(string path) => (DiagnosticsEngine.LibraryFolderState.Failed, "Stale file handle");
+
+        var finding = Assert.Single(DiagnosticsEngine.UnreadLibraryFindings(new[] { ("Films", folder) }, Array.Empty<DiskSample>(), Failing));
+        Assert.Equal("The drive for Films couldn't be read", finding.Title);
+        Assert.Equal("Listing its folder failed: Stale file handle", finding.Current);
+        Assert.DoesNotContain("allowed", finding.Current + finding.Recommended, StringComparison.Ordinal);
+        Assert.Equal(folder, finding.Where);
+    }
+
+    [Fact]
+    public void A_new_empty_library_is_not_reported()
+    {
+        string folder = Folder("new", false);
+
+        Assert.Empty(DiagnosticsEngine.UnreadLibraryFindings(new[] { ("New films", folder) }, Array.Empty<DiskSample>(), DiagnosticsEngine.ReadLibraryFolder));
+    }
+
+    [Fact]
+    public void An_empty_library_folder_whose_drive_was_read_before_is_reported()
+    {
+        // A drive that didn't mount leaves its mount point empty; the drive's last reading went through a folder inside it.
+        string folder = Folder("films", false);
+        var history = new[] { ReadingOf(Path.Combine(folder, "Films"), "Films, Shows") };
+
+        var finding = Assert.Single(DiagnosticsEngine.UnreadLibraryFindings(new[] { ("Films", folder) }, history, DiagnosticsEngine.ReadLibraryFolder));
+        Assert.Equal("The drive for Films looks unmounted", finding.Title);
+        Assert.Equal("Problem", finding.Severity);
+        Assert.Equal(folder, finding.Where);
+    }
+
+    [Fact]
+    public void An_empty_folder_beside_one_read_before_is_new_rather_than_unmounted()
+    {
+        string folder = Folder("films", false);
+        var history = new[] { ReadingOf(Folder("films-old", true), "Films") };
+
+        Assert.Empty(DiagnosticsEngine.UnreadLibraryFindings(new[] { ("Films", folder) }, history, DiagnosticsEngine.ReadLibraryFolder));
+    }
+
+    [Fact]
+    public void Listed_and_gone_library_folders_have_no_storage_finding()
+    {
+        // A gone folder has its own finding under Libraries.
+        string listed = Folder("films", true);
+        string gone = Path.Combine(_root, "never-made");
+        var history = new[] { ReadingOf(listed, "Films"), ReadingOf(gone, "Shows") };
+
+        Assert.Empty(DiagnosticsEngine.UnreadLibraryFindings(new[] { ("Films", listed), ("Shows", gone) }, history, DiagnosticsEngine.ReadLibraryFolder));
+    }
+
+    [Fact]
+    public void One_library_with_two_unmounted_folders_is_one_finding()
+    {
+        string first = Folder("disk1", false);
+        string second = Folder("disk2", false);
+        var history = new[] { ReadingOf(first, "Films"), ReadingOf(second, "Films") };
+
+        var finding = Assert.Single(DiagnosticsEngine.UnreadLibraryFindings(new[] { ("Films", first), ("Films", second) }, history, DiagnosticsEngine.ReadLibraryFolder));
+        Assert.Equal(first + ", " + second, finding.Where);
     }
 }

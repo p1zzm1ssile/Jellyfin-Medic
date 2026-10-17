@@ -185,6 +185,8 @@
 #JellyfinMedicPage .md-day-block { position: absolute; height: 22px; min-width: 6px; padding: 0 3px; border: 0; border-radius: 4px; font: 600 0.68em/22px ui-monospace, monospace; color: #10131a; overflow: hidden; white-space: nowrap; cursor: pointer; }
 #JellyfinMedicPage .md-day-block.md-planned { top: 24px; height: 14px; min-width: 8px; background: transparent; border: 2px solid #5fd0b3; line-height: 10px; }
 #JellyfinMedicPage .md-day-block.md-planned.md-plan-missed { border-style: dashed; }
+/* Filled like a stopped run: every run for this plan was cancelled before it finished. */
+#JellyfinMedicPage .md-day-block.md-planned.md-plan-cancelled { background: #5a6370; }
 #JellyfinMedicPage .md-day-block.md-actual { top: 52px; }
 #JellyfinMedicPage .md-day-block.md-run-failed { background: #d9534f; color: #fff; min-width: 44px; z-index: 1; }
 #JellyfinMedicPage .md-day-block.md-run-stopped { background: #5a6370; color: #e6e8ec; min-width: 52px; z-index: 1; }

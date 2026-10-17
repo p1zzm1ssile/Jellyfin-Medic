@@ -1,8 +1,8 @@
 ===============================================================================
-         JELLYFIN MEDIC, MEDIC PICKS, MEDIC PROFILES AND THE POSTER PLUGINS
+         JELLYFIN MEDIC, MEDIC PICKS AND MEDIC PROFILES: FULL FEATURE LIST
 ===============================================================================
 
-This repository contains four Jellyfin plugins:
+This repository contains three Jellyfin plugins:
 
   1. JELLYFIN MEDIC
      For the person who runs the server. Health checks, performance tests,
@@ -19,16 +19,10 @@ This repository contains four Jellyfin plugins:
      dashboard: downloads, fixes, and quality profile advice.
      Needs Jellyfin 12.0 or later. Administrators only.
 
-  4. MEDIC POSTERS
-     For everyone who uses the server, set up by the person who runs it.
-     Animated posters for every film, cut from moments of the film.
-     Needs Jellyfin 12.0 or later. Settings are for administrators only.
-
 Each plugin's current version and what changed are in its changelog (CHANGELOG.md,
-Jellyfin.Plugin.MedicPicks/CHANGELOG.md, Jellyfin.Plugin.MedicProfiles/CHANGELOG.md,
-Jellyfin.Plugin.MedicPosters/CHANGELOG.md).
+Jellyfin.Plugin.MedicPicks/CHANGELOG.md, Jellyfin.Plugin.MedicProfiles/CHANGELOG.md).
 
-All four are installed from the same plugin repository:
+All three are installed from the same plugin repository:
   https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/manifest.json
 
 
@@ -76,9 +70,11 @@ A single screen of 15 tiles:
     places.
   - Updates: plugin updates waiting and pending restarts.
   - Maintenance panel:
-      * Free up disk space: left-over transcode files, and metadata or image
-        folders for items no longer in your library. Scanning is read-only;
-        nothing is removed until you confirm.
+      * Free up disk space: shows how much can be freed and offers a button
+        for each kind of left-over file: transcode files older than 6 hours,
+        old logs and IPTV stream files (below). Scanning is read-only;
+        nothing is removed until you confirm. It never touches metadata or
+        image folders, or Jellyfin's database.
       * Clear old logs: removes Jellyfin daily logs and FFmpeg playback logs
         older than a day. Today's log is never touched.
       * Clear IPTV stream files: removes left-over IPTV .strm files that
@@ -478,12 +474,16 @@ Running it:
     titles were transcoded and why. Not who.
   - No passwords are ever read, stored or sent.
   - What reaches the internet, and when:
-      * Building the checks (when the page opens, and after "Check
-        again") checks that addresses the server already uses still answer:
-        every enabled plugin repository, the outside .js and .css files
+      * Building the checks (when the page opens, and after "Run checks")
+        checks that addresses the server already uses still answer: every
+        enabled plugin repository, the outside .js and .css files
         JavaScript Injector scripts load, and the @imports in the theme's
-        custom CSS, kept for 10 minutes. It also asks Jellyfin which plugin
-        updates are waiting.
+        custom CSS, kept for 10 minutes.
+      * Your plugin repositories are also contacted through Jellyfin's own
+        plugin catalogue: the checks and the Dashboard's Updates tile ask
+        which plugin updates are waiting, and opening the Plugin directory
+        tab (or its "Check again") asks which plugins your catalogue
+        offers. Each answer is kept for an hour.
       * The speed test (Cloudflare) and the exposure check run only when you
         press their buttons. The exposure check connects to the address you
         give; for an IP address it may ask portchecker.io, which gets that
@@ -492,6 +492,8 @@ Running it:
         icanhazip.com and then checkip.amazonaws.com if it doesn't answer,
         at most once an hour.
       * The Plugin directory fetches the public awesome-jellyfin list.
+      * Medic Picks and Medic Profiles: see their own privacy notes (2.9 and
+        3.6).
 
 
 ===============================================================================
@@ -595,7 +597,9 @@ A settings box at the top of the My picks page:
   - "Test Seerr" button in the admin settings.
   - "Who gets Discover picks": untick accounts (for example children's) to
     leave them out. Turning Discover off for someone clears their old
-    Discover picks.
+    Discover picks. TMDb titles can't be filtered by parental controls, so
+    accounts with any (a maximum rating, or blocked or allowed tags) start
+    unticked and only get Discover once an admin ticks them.
 
 
 -------------------------------------------------------------------------------
@@ -652,6 +656,9 @@ A settings box at the top of the My picks page:
     controls.
   - Discover is off by default. When on, the server sends TMDb only the TMDb
     IDs of titles people have watched: no names or account details.
+  - Posters for Discover picks and for My requests are loaded by each
+    person's browser straight from TMDb's image server (image.tmdb.org), so
+    TMDb sees that person's IP address and which posters they load.
   - TMDb and Seerr keys are stored separately from other settings, readable
     only by admins, and never reach anyone's browser. Requests are made on
     the server, as the person who pressed Request.
@@ -777,76 +784,6 @@ press a button. Tabs: Downloads, Blocked, Indexers, Profiles, History, Settings.
     file, separate from other settings, and never sent to a browser.
   - Release names from indexers are shown as plain text, never as page code.
   - Talks only to your own Sonarr, Radarr and qBittorrent.
-
-
-===============================================================================
-PART 4: MEDIC POSTERS (PLUGIN 4)
-===============================================================================
-
-Found under Plugins -> Medic Posters. Settings are for administrators only.
-
-
--------------------------------------------------------------------------------
-4.1  THE POSTERS
--------------------------------------------------------------------------------
-
-  - A short animated GIF for each film, series, home video and music video:
-    a few moments of the film (spread from 15% to 75% of the way through),
-    or one from each of a few episodes of a series, cropped to a 2:3 poster.
-  - A wide 16:9 animated cover for each library, the shape of Jellyfin's
-    library cards, cut from moments of a few random things in it, with the
-    library's name. Can be turned off; four sizes, 320 x 180 to 640 x 360.
-  - The title in capitals in Bodoni Moda over a soft dark band, and a
-    rounded white frame. Either can be turned off.
-  - GIF because Jellyfin never resizes a GIF, so the poster reaches apps
-    still animated. Other formats are turned into a still picture.
-  - HDR films are converted to normal colour first.
-  - Made by Jellyfin's own FFmpeg. Nothing else to install.
-
-
--------------------------------------------------------------------------------
-4.2  MAKING THEM
--------------------------------------------------------------------------------
-
-  - "Make animated posters" scheduled task, nightly at 4 am to begin with:
-    makes posters for films that don't have one yet.
-  - Make posters now and Make all posters again, Make library covers now
-    and Make all covers again (each only its own kind), and Stop, with
-    progress while it runs.
-  - How much space they use now, and for each kind how many are left to
-    make and roughly how much they'll take, from the settings on screen.
-  - Posters changed by hand (or by a metadata refresh that replaces images)
-    are left alone, unless you make them all again.
-  - Preview: a poster for a film or series you pick, or a cover for a
-    library you pick (or random ones), with the settings on screen, saved
-    or not, and its size, without changing it. Use this one puts it on.
-  - Films without a poster are listed with the reason (a stream, a disc
-    folder, a missing file, or one FFmpeg can't read).
-
-
--------------------------------------------------------------------------------
-4.3  SETTINGS
--------------------------------------------------------------------------------
-
-  - Which libraries: films, TV, home videos, music videos and mixed. All
-    are ticked; untick one (such as IPTV) to leave it alone. New libraries
-    are included.
-  - Posters and library covers each have their own settings:
-  - Size: posters 160 x 240 to 300 x 450, covers 320 x 180 to 640 x 360.
-  - How many moments (1 to 6) and how long each plays (0.5 to 3 seconds).
-  - Frames per second (6 to 15) and colours (48 to 256).
-  - Title and frame on or off.
-
-
--------------------------------------------------------------------------------
-4.4  PRIVACY AND SAFETY (MEDIC POSTERS)
--------------------------------------------------------------------------------
-
-  - Nothing in your media folders is changed or deleted. Posters are kept
-    in the server's data folder, under medic-posters.
-  - Each film's own poster is remembered, and Put back (one film) or Put
-    back the original posters (all of them) brings them back.
-  - Nothing is sent anywhere: the posters are made on your server.
 
 
 ===============================================================================

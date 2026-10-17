@@ -127,9 +127,11 @@ public sealed class TrackRunTests : IDisposable
     /// <summary>FFmpeg and FFprobe stand-ins in a folder of their own. Returns FFmpeg's path.</summary>
     private string FakeFfmpeg()
     {
-        // FFprobe's report on the film, and on its cleaned copy, which has lost the French track.
+        // FFprobe's report on the film, and on its cleaned copy, which has lost the French track. Asked for the copy's
+        // last packets, it says they reach the 60 s its report gives.
         const string ffprobe = """
             #!/bin/sh
+            case "$*" in *-read_intervals*) echo '59.960000,0.040000'; exit ;; esac
             for last; do :; done
             case "$last" in
               *.medic-tmp*) french='' ;;

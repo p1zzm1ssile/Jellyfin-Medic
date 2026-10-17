@@ -95,6 +95,9 @@ public sealed class UntimedTaskAdvice
 /// runs in stages: the library scan first, then the tasks that build on it, then upkeep. A
 /// task is only put before an earlier stage when every slot after it is much busier. Tasks
 /// that don't run every night are spread across nights.
+///
+/// Once Medic has learned when the server is busy, hours it has never seen the server on are left
+/// out, and a task keeps its current time unless another saves a clear amount (MoveSaving).
 /// </summary>
 public static class SchedulePlanner
 {
@@ -114,6 +117,15 @@ public static class SchedulePlanner
     private const double FollowNudge = 0.002;       // per 15 minutes of gap after the earlier stages, to keep the night together
     private const double SpreadNudge = 0.002;       // prefer days with less already planned
     private const double TieBreakNudge = 0.0001;    // prefer the early hours when all else is equal
+
+    // What a move to another time has to save, once Medic has learned how busy the server is, so
+    // near ties don't make a task hop between times from one week to the next. A score is in people
+    // watching x hours summed over the runs of one week; a monthly task's single run counts 12/52 of it.
+    private const double MoveSaving = 0.25;
+    private const double MonthlyRunsPerWeek = 12.0 / 52;
+
+    private const string NoQuieterTime = "There was no quieter free time for it.";
+    private const string NotWorthMoving = "A slightly quieter time is free, but it would save too little to be worth moving it.";
     private const int EarlyHoursCell = 4;           // 01:00
     private const int NoonCell = 12 * 60 / CellMinutes; // the night is ordered from noon to noon
 
@@ -279,54 +291,26 @@ public static class SchedulePlanner
         long? maxRuntime = MaxRuntime(c.Worker);
 
         // Each day the task runs, with the cell it starts at.
-        var slots = new List<(DayOfWeek Day, int Start)>();
-
-        if (cadence == Cadence.Daily)
-        {
-            // One time every day is simplest. Only use different times on different days when
-            // that is clearly quieter (your quiet hours differ through the week).
-            var same = BestCommonStart(grid, busy, night, AllDays, length);
-            var perDay = AllDays.Select(d => (Day: d, Best: BestCommonStart(grid, busy, night, new[] { d }, length))).ToList();
-            bool perDayPossible = perDay.All(p => p.Best is not null);
-            double perDayCost = perDayPossible ? perDay.Sum(p => p.Best!.Value.Cost) : double.MaxValue;
-
-            if (same is { } s && s.Cost <= perDayCost + SameTimeTolerance)
-            {
-                slots.AddRange(AllDays.Select(d => (d, s.Start)));
-            }
-            else if (perDayPossible)
-            {
-                slots.AddRange(perDay.Select(p => (p.Day, p.Best!.Value.Start)));
-            }
-        }
-        else
-        {
-            var options = cadence switch
-            {
-                Cadence.EveryOtherDay => EveryOtherDaySets,
-                Cadence.TwiceWeekly => TwiceWeeklySets,
-                _ => WeeklySets // Weekly, and Monthly (which runs on the first of a chosen weekday)
-            };
-
-            (DayOfWeek[] Days, int Start, double Cost)? best = null;
-            foreach (var days in options)
-            {
-                if (BestCommonStart(grid, busy, night, days, length) is { } found &&
-                    (best is null || found.Cost < best.Value.Cost))
-                {
-                    best = (days, found.Start, found.Cost);
-                }
-            }
-
-            if (best is { } b)
-            {
-                slots.AddRange(b.Days.Select(d => (d, b.Start)));
-            }
-        }
-
+        var slots = ChooseSlots(grid, busy, night, cadence, length, allowUnseen: false);
         if (slots.Count == 0)
         {
-            return LeaveAlone(c.Worker, c.Current, "There was no free slot left for this task, so it's left as it is.");
+            return LeaveAlone(c.Worker, c.Current,
+                busy.HasUnseenTimes && ChooseSlots(grid, busy, night, cadence, length, allowUnseen: true).Count > 0
+                    ? "The only free times left are hours Medic has never seen the server on, so it may be switched off then. It's left as it is."
+                    : "There was no free slot left for this task, so it's left as it is.");
+        }
+
+        // Before Medic has learned anything the profile doesn't change from week to week, so there's nothing to damp.
+        // Slots the task could have moved to, when it stays where it is instead.
+        List<(DayOfWeek Day, int Start)>? passedOver = null;
+        if ((busy.FromViewing || busy.FromServerLoad)
+            && CurrentSlots(c, cadence) is { } current
+            && current.All(sl => grid.IsFree(sl.Day, sl.Start, length) && !busy.TouchesUnseen(sl.Start, length))
+            && (SlotsCost(grid, busy, night, current, length) - SlotsCost(grid, busy, night, slots, length))
+                * (cadence == Cadence.Monthly ? MonthlyRunsPerWeek : 1) < MoveSaving)
+        {
+            passedOver = slots;
+            slots = current;
         }
 
         foreach (var (day, start) in slots)
@@ -336,27 +320,28 @@ public static class SchedulePlanner
         }
 
         var warnings = CommonWarnings(c);
+        int runMinutes = (int)Math.Ceiling(estimate);
         if (busy.FromViewing)
         {
-            var (peak, peakMinute) = slots
-                .Select(sl => busy.PeakOver(sl.Day, sl.Start * CellMinutes, (int)Math.Ceiling(estimate)))
-                .OrderByDescending(x => x.Peak)
-                .First();
+            var (peak, peakMinute) = Busiest(slots, sl => busy.PeakOver(sl.Day, sl.Start * CellMinutes, runMinutes));
             if (peak >= BusyThreshold)
             {
-                warnings.Insert(0, $"Runs when people often watch (about {peak:0.#} watching around {ScheduleStorage.Hhmm(TimeSpan.FromMinutes(peakMinute))}). There was no quieter free time for it.");
+                string why = passedOver is not null && Busiest(passedOver, sl => busy.PeakOver(sl.Day, sl.Start * CellMinutes, runMinutes)).Peak < peak
+                    ? NotWorthMoving
+                    : NoQuieterTime;
+                warnings.Insert(0, $"Runs when people often watch (about {peak:0.#} watching around {ScheduleStorage.Hhmm(TimeSpan.FromMinutes(peakMinute))}). {why}");
             }
         }
 
         if (busy.FromServerLoad)
         {
-            var (peak, peakMinute) = slots
-                .Select(sl => busy.ServerPeakOver(sl.Day, sl.Start * CellMinutes, (int)Math.Ceiling(estimate)))
-                .OrderByDescending(x => x.Peak)
-                .First();
+            var (peak, peakMinute) = Busiest(slots, sl => busy.ServerPeakOver(sl.Day, sl.Start * CellMinutes, runMinutes));
             if (peak >= BusyProfile.BusyServerThreshold)
             {
-                warnings.Add($"Runs when the server is usually busy (about {peak * 100:0}% around {ScheduleStorage.Hhmm(TimeSpan.FromMinutes(peakMinute))}). There was no quieter free time for it.");
+                string why = passedOver is not null && Busiest(passedOver, sl => busy.ServerPeakOver(sl.Day, sl.Start * CellMinutes, runMinutes)).Peak < peak
+                    ? NotWorthMoving
+                    : NoQuieterTime;
+                warnings.Add($"Runs when the server is usually busy (about {peak * 100:0}% around {ScheduleStorage.Hhmm(TimeSpan.FromMinutes(peakMinute))}). {why}");
             }
         }
 
@@ -386,6 +371,12 @@ public static class SchedulePlanner
             };
             result.ProposedSchedule = ScheduleStorage.FormatManaged(result.Managed);
         }
+        else if (passedOver is not null)
+        {
+            // Staying put: rewriting the same times in another form would show as a change in Preview.
+            result.Triggers = c.Worker.Triggers.ToArray();
+            result.ProposedSchedule = ScheduleStorage.FormatTriggers(result.Triggers);
+        }
         else
         {
             bool oneTimeEveryDay = cadence == Cadence.Daily && slots.Select(sl => sl.Start).Distinct().Count() == 1;
@@ -400,6 +391,123 @@ public static class SchedulePlanner
 
         return result;
     }
+
+    // The days the task runs and the cell it starts at on each, or none when nothing is free.
+    private static List<(DayOfWeek Day, int Start)> ChooseSlots(WeekGrid grid, BusyProfile busy, NightOrder night, Cadence cadence, int length, bool allowUnseen)
+    {
+        var slots = new List<(DayOfWeek Day, int Start)>();
+
+        if (cadence == Cadence.Daily)
+        {
+            // One time every day is simplest. Only use different times on different days when
+            // that is clearly quieter (your quiet hours differ through the week).
+            var same = BestCommonStart(grid, busy, night, AllDays, length, allowUnseen);
+            var perDay = AllDays.Select(d => (Day: d, Best: BestCommonStart(grid, busy, night, new[] { d }, length, allowUnseen))).ToList();
+            bool perDayPossible = perDay.All(p => p.Best is not null);
+            double perDayCost = perDayPossible ? perDay.Sum(p => p.Best!.Value.Cost) : double.MaxValue;
+
+            if (same is { } s && s.Cost <= perDayCost + SameTimeTolerance)
+            {
+                slots.AddRange(AllDays.Select(d => (d, s.Start)));
+            }
+            else if (perDayPossible)
+            {
+                slots.AddRange(perDay.Select(p => (p.Day, p.Best!.Value.Start)));
+            }
+
+            return slots;
+        }
+
+        (DayOfWeek[] Days, int Start, double Cost)? best = null;
+        foreach (var days in DaySets(cadence))
+        {
+            if (BestCommonStart(grid, busy, night, days, length, allowUnseen) is { } found &&
+                (best is null || found.Cost < best.Value.Cost))
+            {
+                best = (days, found.Start, found.Cost);
+            }
+        }
+
+        if (best is { } b)
+        {
+            slots.AddRange(b.Days.Select(d => (d, b.Start)));
+        }
+
+        return slots;
+    }
+
+    private static (double Peak, int Minute) Busiest(List<(DayOfWeek Day, int Start)> slots, Func<(DayOfWeek Day, int Start), (double Peak, int Minute)> peakOf) =>
+        slots.Select(peakOf).OrderByDescending(x => x.Peak).First();
+
+    private static DayOfWeek[][] DaySets(Cadence cadence) => cadence switch
+    {
+        Cadence.EveryOtherDay => EveryOtherDaySets,
+        Cadence.TwiceWeekly => TwiceWeeklySets,
+        _ => WeeklySets // Weekly, and Monthly (which runs on the first of a chosen weekday)
+    };
+
+    /// <summary>
+    /// Where the task runs now, as planner slots, when that is a schedule the planner could have
+    /// chosen for this cadence; null otherwise (another cadence, or times off the quarter hour).
+    /// </summary>
+    private static List<(DayOfWeek Day, int Start)>? CurrentSlots(Candidate c, Cadence cadence)
+    {
+        if (cadence == Cadence.Monthly)
+        {
+            return c.Managed is { } m && StartCell(m.TimeOfDayTicks) is { } monthlyCell
+                ? new List<(DayOfWeek Day, int Start)> { (m.Weekday, monthlyCell) }
+                : null;
+        }
+
+        if (c.Managed is not null)
+        {
+            return null;
+        }
+
+        var slots = new List<(DayOfWeek Day, int Start)>();
+        foreach (var t in c.Worker.Triggers ?? Enumerable.Empty<TaskTriggerInfo>())
+        {
+            if (t.TimeOfDayTicks is not { } ticks || StartCell(ticks) is not { } cell)
+            {
+                return null;
+            }
+
+            if (t.Type == TaskTriggerInfoType.DailyTrigger)
+            {
+                slots.AddRange(AllDays.Select(d => (d, cell)));
+            }
+            else if (t.Type == TaskTriggerInfoType.WeeklyTrigger && t.DayOfWeek is { } day)
+            {
+                slots.Add((day, cell));
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        var days = slots.Select(sl => sl.Day).ToHashSet();
+        if (days.Count != slots.Count)
+        {
+            return null; // more than one run on a day
+        }
+
+        bool fits = cadence == Cadence.Daily
+            ? days.Count == AllDays.Length
+            : DaySets(cadence).Any(set => days.SetEquals(set)) && slots.Select(sl => sl.Start).Distinct().Count() == 1;
+        return fits ? slots : null;
+    }
+
+    private static int? StartCell(long ticks)
+    {
+        var at = TimeSpan.FromTicks(ticks);
+        return at >= TimeSpan.Zero && at < TimeSpan.FromDays(1) && ticks % TimeSpan.FromMinutes(CellMinutes).Ticks == 0
+            ? (int)(at.TotalMinutes / CellMinutes)
+            : null;
+    }
+
+    private static double SlotsCost(WeekGrid grid, BusyProfile busy, NightOrder night, List<(DayOfWeek Day, int Start)> slots, int length) =>
+        slots.Sum(sl => SlotCost(grid, busy, night, sl.Day, sl.Start, length));
 
     /// <summary>
     /// The tasks with no time to run at (no daily, weekly or interval trigger, and not run monthly by Medic),
@@ -607,26 +715,19 @@ public static class SchedulePlanner
     /// earlier stages have finished that night, a small nudge to follow them closely, a nudge
     /// towards days with less already planned, and (when costs are equal) the early hours.
     /// </summary>
-    private static (int Start, double Cost)? BestCommonStart(WeekGrid grid, BusyProfile busy, NightOrder night, DayOfWeek[] days, int length)
+    private static (int Start, double Cost)? BestCommonStart(WeekGrid grid, BusyProfile busy, NightOrder night, DayOfWeek[] days, int length, bool allowUnseen)
     {
         (int Start, double Cost)? best = null;
 
         // Any start time of the day: a run that doesn't end by midnight carries on into the next day.
         for (int start = 0; start < CellsPerDay; start++)
         {
-            if (!days.All(d => grid.IsFree(d, start, length)))
+            if (!days.All(d => grid.IsFree(d, start, length)) || (!allowUnseen && busy.TouchesUnseen(start, length)))
             {
                 continue;
             }
 
-            double cost = 0;
-            foreach (var day in days)
-            {
-                cost += busy.CostOver(day, start, length, CellMinutes);
-                cost += night.Cost(day, start);
-
-                cost += grid.Load(day) * SpreadNudge;
-            }
+            double cost = days.Sum(day => SlotCost(grid, busy, night, day, start, length));
 
             // Prefer the early hours (from 01:00) when everything else is equal.
             cost += ((start - EarlyHoursCell + CellsPerDay) % CellsPerDay) * TieBreakNudge;
@@ -639,6 +740,9 @@ public static class SchedulePlanner
 
         return best;
     }
+
+    private static double SlotCost(WeekGrid grid, BusyProfile busy, NightOrder night, DayOfWeek day, int start, int length) =>
+        busy.CostOver(day, start, length, CellMinutes) + night.Cost(day, start) + (grid.Load(day) * SpreadNudge);
 
     private static void ReserveExisting(WeekGrid grid, IEnumerable<TaskTriggerInfo>? triggers, ManagedRun? managed, double minutes)
     {

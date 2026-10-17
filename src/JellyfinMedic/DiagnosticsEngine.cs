@@ -623,10 +623,107 @@ public sealed class DiagnosticsEngine
             ("cache", _paths.CachePath),
             ("transcodes", TranscodePath(encoding))
         };
-        folders.AddRange(libraries.Where(l => !l.IsStreamed).SelectMany(l => l.Locations.Select(loc => (l.Name, loc))));
+        folders.AddRange(LibraryFolders(libraries));
         _drives = StorageWatch.Drives(folders);
         StorageWatch.Record(_paths.PluginConfigurationsPath, _drives);
         return _drives;
+    }
+
+    // Each folder of a library on a drive (not a streamed one), with the library's name.
+    private static IEnumerable<(string Holds, string Path)> LibraryFolders(List<LibraryFacts> libraries) =>
+        libraries.Where(l => !l.IsStreamed).SelectMany(l => l.Locations.Select(loc => (l.Name, loc)));
+
+    internal enum LibraryFolderState
+    {
+        Listed,
+        Empty,
+        Denied,
+        Failed,
+        Gone
+    }
+
+    /// <summary>
+    /// Whether a library folder lists with something in it, lists empty, may not be listed, fails to list (with the
+    /// error), or doesn't exist.
+    /// </summary>
+    internal static (LibraryFolderState State, string Error) ReadLibraryFolder(string path) => ReadLibraryFolder(path, Directory.EnumerateFileSystemEntries);
+
+    // An overload rather than an optional parameter, so ReadLibraryFolder stays a Func<string, ...> for UnreadLibraryFindings.
+    internal static (LibraryFolderState State, string Error) ReadLibraryFolder(string path, Func<string, IEnumerable<string>> list)
+    {
+        try
+        {
+            return (list(path).Any() ? LibraryFolderState.Listed : LibraryFolderState.Empty, string.Empty);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return (LibraryFolderState.Gone, string.Empty);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return (LibraryFolderState.Denied, ex.Message);
+        }
+        catch (IOException ex)
+        {
+            return (LibraryFolderState.Failed, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// The library folders StorageWatch.Drives leaves out, as their space would be the parent drive's: one that may not
+    /// be listed, one that fails to list, and an empty one whose drive was read before (an empty mount point, where a drive didn't mount).
+    /// A new library that's still empty says nothing, and a folder that's gone has CheckLibraries' finding.
+    /// </summary>
+    internal static List<Finding> UnreadLibraryFindings(IEnumerable<(string Holds, string Path)> folders, IEnumerable<DiskSample> history, Func<string, (LibraryFolderState State, string Error)> read)
+    {
+        var readings = history.Select(h => h.Path).Where(p => p.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+        // A reading inside the folder means the folder held a drive then; one beside it says nothing about it.
+        bool readBefore(string folder)
+        {
+            string inside = folder.TrimEnd('/', '\\');
+            return readings.Any(p => p.Equals(inside, StringComparison.OrdinalIgnoreCase)
+                                     || (p.StartsWith(inside, StringComparison.OrdinalIgnoreCase) && p.Length > inside.Length && p[inside.Length] is '/' or '\\'));
+        }
+
+        var findings = new List<Finding>();
+        foreach (var library in folders.Where(f => !string.IsNullOrWhiteSpace(f.Path)).GroupBy(f => f.Holds, StringComparer.OrdinalIgnoreCase))
+        {
+            var states = library.Select(f => (f.Path, Read: read(f.Path))).ToList();
+            var unreadable = states.Where(f => f.Read.State == LibraryFolderState.Denied).Select(f => f.Path).ToList();
+            if (unreadable.Count > 0)
+            {
+                findings.Add(NewFinding(AreaStorage, Sev.Problem, $"The drive for {library.Key} can't be read", "Jellyfin isn't allowed to list its folder",
+                    HostPlatform.IsContainer
+                        ? "Check the folder is mapped into the container and that the user Jellyfin runs as can read it"
+                        : "Give the user Jellyfin runs as permission to read the folder",
+                    "Medic can't check the drive's free space, and Jellyfin can't see what's in the folder, so a scan may mark its items as missing.",
+                    string.Join(", ", unreadable)));
+            }
+
+            // An I/O error doesn't say why (a network share that stopped answering, a failing disk), so the finding gives the error.
+            var failed = states.Where(f => f.Read.State == LibraryFolderState.Failed).ToList();
+            if (failed.Count > 0)
+            {
+                findings.Add(NewFinding(AreaStorage, Sev.Problem, $"The drive for {library.Key} couldn't be read",
+                    "Listing its folder failed: " + string.Join("; ", failed.Select(f => f.Read.Error).Distinct(StringComparer.Ordinal)),
+                    "Check the drive or network share behind the folder is connected and answering",
+                    "Medic can't check the drive's free space, and Jellyfin can't see what's in the folder, so a scan may mark its items as missing.",
+                    string.Join(", ", failed.Select(f => f.Path))));
+            }
+
+            var unmounted = states.Where(f => f.Read.State == LibraryFolderState.Empty && readBefore(f.Path)).Select(f => f.Path).ToList();
+            if (unmounted.Count > 0)
+            {
+                findings.Add(NewFinding(AreaStorage, Sev.Problem, $"The drive for {library.Key} looks unmounted", "Its folder is empty, though Medic read the drive there before",
+                    HostPlatform.IsContainer
+                        ? "Check the drive is mounted, and mounted before the container starts"
+                        : "Check the drive is connected and mounted",
+                    "An empty folder where a drive was usually means the drive didn't mount. Medic can't check its free space, and a scan may mark its items as missing.",
+                    string.Join(", ", unmounted)));
+            }
+        }
+
+        return findings;
     }
 
     internal static string Weeks(double days) =>
@@ -689,6 +786,7 @@ public sealed class DiagnosticsEngine
     private void CheckStorage(List<LibraryFacts> libraries, object? encoding)
     {
         _report.Findings.AddRange(DriveSpaceFindings(WatchedDrives(libraries, encoding)));
+        _report.Findings.AddRange(UnreadLibraryFindings(LibraryFolders(libraries), StorageWatch.History(_paths.PluginConfigurationsPath), ReadLibraryFolder));
 
         if (SystemProbe.Space(_paths.DataPath) is { } data)
         {

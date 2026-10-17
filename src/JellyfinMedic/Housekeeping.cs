@@ -1,10 +1,12 @@
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
 
 namespace JellyfinMedic.Services;
 
 public class CleanupItem
 {
-    public string Kind { get; set; } = string.Empty; // "transcodes" or "orphan-metadata"
+    public string Kind { get; set; } = string.Empty; // "transcodes", "orphan-strm:<folder>" or "logs"
 
     public string Label { get; set; } = string.Empty;
 
@@ -29,14 +31,43 @@ public class CleanupReport
 }
 
 /// <summary>
-/// Finds disk space that can usually be freed safely: leftover transcode files, and metadata or
-/// image folders for items no longer in your library. Scanning is read-only; removing only happens
-/// when the admin confirms, and even then Jellyfin can rebuild anything it needs on the next scan.
+/// Finds disk space that can usually be freed safely: leftover transcode files, .strm files under
+/// Xtream Library's folders that Jellyfin has no item for, and old log files. Metadata and image
+/// folders, and Jellyfin's database, are never touched. Scanning is read-only; removing only happens
+/// when the admin confirms, and a re-sync in Xtream Library recreates any stream files still wanted.
 /// </summary>
 public static class Housekeeping
 {
     // A .strm file this new may just not have been scanned in yet, so it's never treated as left over.
     private static readonly TimeSpan StrmMinimumAge = TimeSpan.FromDays(2);
+
+    internal static readonly LibraryWalkCache<ISet<string>?> KnownStrm = new(TimeProvider.System);
+
+    /// <summary>Every .strm file Jellyfin has an item for, or null if the library couldn't be read.</summary>
+    public static ISet<string>? KnownStrmPaths(ILibraryManager library, CancellationToken ct) =>
+        KnownStrm.Get(c => WalkKnownStrm(library, c), ct);
+
+    private static ISet<string>? WalkKnownStrm(ILibraryManager library, CancellationToken ct)
+    {
+        try
+        {
+            var known = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+            foreach (var item in library.GetItemList(new InternalItemsQuery { Recursive = true, IsFolder = false }))
+            {
+                ct.ThrowIfCancellationRequested();
+                if (item.Path is { } path && path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase))
+                {
+                    known.Add(path);
+                }
+            }
+
+            return known;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
 
     /// <param name="knownStrm">Every .strm path Jellyfin has an item for, or null if that couldn't be read.</param>
     public static CleanupReport Scan(IApplicationPaths paths, string transcodePath, Func<ISet<string>?> knownStrm)
@@ -238,6 +269,9 @@ public static class Housekeeping
                     return (false, "That folder no longer exists.", 0);
                 }
 
+                // Files are only deleted against what Jellyfin has right now, never a list read minutes ago.
+                KnownStrm.Clear();
+
                 // Write a list of what we're about to remove, so it's recoverable knowledge even though
                 // a re-sync recreates wanted files anyway.
                 var files = OrphanStrm(dir, knownStrm());
@@ -280,7 +314,7 @@ public static class Housekeeping
 
             return (false, "Nothing to clean for that.", 0);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return (false, "Couldn't clean up: " + ex.Message, 0);
         }

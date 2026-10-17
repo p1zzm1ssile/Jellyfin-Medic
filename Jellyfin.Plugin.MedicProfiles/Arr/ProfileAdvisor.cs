@@ -119,6 +119,11 @@ public class ProfileAdvisor
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AdviceReport? _cached;
 
+    // Forget doesn't wait for a report being made; it moves this on, and a report begun before that isn't kept.
+    // It and _cached change together under _cacheLock, so a save can't fall between the check and the store.
+    private readonly object _cacheLock = new();
+    private int _generation;
+
     public ProfileAdvisor(ArrClient arr, ILibraryManager libraryManager, IApplicationPaths paths, ILogger<ProfileAdvisor> logger)
     {
         _arr = arr;
@@ -128,16 +133,31 @@ public class ProfileAdvisor
     }
 
     /// <summary>Forgets the kept report, after the settings change (another server, a new key).</summary>
-    public void Forget() => _cached = null;
+    public void Forget()
+    {
+        lock (_cacheLock)
+        {
+            _generation++;
+            _cached = null;
+        }
+    }
 
     public async Task<AdviceReport> GetAsync(bool refresh, CancellationToken ct)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (!refresh && _cached is not null && DateTime.UtcNow - _cached.GeneratedUtc < TimeSpan.FromHours(1))
+            AdviceReport? kept;
+            int generation;
+            lock (_cacheLock)
             {
-                return _cached;
+                kept = _cached;
+                generation = _generation;
+            }
+
+            if (!refresh && kept is not null && DateTime.UtcNow - kept.GeneratedUtc < TimeSpan.FromHours(1))
+            {
+                return kept;
             }
 
             var report = new AdviceReport { GeneratedUtc = DateTime.UtcNow, Evidence = GatherEvidence() };
@@ -164,7 +184,14 @@ public class ProfileAdvisor
                 .ThenBy(s => s.App)
                 .ToList();
             // A report that couldn't reach Sonarr or Radarr isn't kept, so the next visit asks again.
-            _cached = report.Errors.Count == 0 ? report : null;
+            lock (_cacheLock)
+            {
+                if (generation == _generation)
+                {
+                    _cached = report.Errors.Count == 0 ? report : null;
+                }
+            }
+
             return report;
         }
         finally
@@ -386,7 +413,8 @@ public class ProfileAdvisor
             LosslessOnlyAudio = audio.Count > 0 && audio.All(a => a.Codec is { } c
                 && (c.StartsWith("dts", StringComparison.OrdinalIgnoreCase) || c.Equals("truehd", StringComparison.OrdinalIgnoreCase))),
             DolbyVisionOnly = range.Equals("DOVI", StringComparison.OrdinalIgnoreCase),
-            Bitrate = streams.Sum(s => (long)(s.BitRate ?? 0))
+            // Streams often carry no bitrate (MKV video without BPS tags), so the container's own figure counts too.
+            Bitrate = Math.Max(streams.Sum(s => (long)(s.BitRate ?? 0)), item.TotalBitrate ?? 0)
         };
     }
 
@@ -411,7 +439,7 @@ public class ProfileAdvisor
         {
             if (!profiles.Ok || profiles.Json is null || profiles.Json.RootElement.ValueKind != JsonValueKind.Array)
             {
-                data.Error = profiles.Ok ? ArrClient.Name(app) + " sent something unexpected." : profiles.Message;
+                data.Error = profiles.Ok ? DownloadsService.Unexpected(app, profiles, JsonValueKind.Array) : profiles.Message;
                 return data;
             }
 

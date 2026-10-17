@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
+using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
@@ -12,6 +13,7 @@ using MediaBrowser.Controller.Playlists;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.Playlists;
+using MediaBrowser.Model.Querying;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.MedicPicks.Picks;
@@ -27,6 +29,10 @@ public class PicksEngine
     private const int ShortlistSize = 150;
     private const int DiscoverSeeds = 8;
 
+    // Reading the TMDb ids on the server means reading every film and series, so rebuilds from the picks page reuse
+    // them for a while. A film or series added, changed or removed clears them, and the nightly run reads them afresh.
+    private static readonly TimeSpan LibraryIdsReuse = TimeSpan.FromMinutes(10);
+
     private readonly ILibraryManager _libraryManager;
     private readonly IUserManager _userManager;
     private readonly IUserDataManager _userDataManager;
@@ -35,6 +41,11 @@ public class PicksEngine
     private readonly TmdbClient _tmdb;
     private readonly PicksStore _store;
     private readonly ILogger<PicksEngine> _logger;
+    private readonly object _libraryIdsLock = new();
+    private HashSet<string>? _libraryIds;
+    private DateTime _libraryIdsReadUtc;
+    private int _libraryIdsChanges;
+    private int _libraryChanges;
 
     public PicksEngine(
         ILibraryManager libraryManager,
@@ -54,10 +65,20 @@ public class PicksEngine
         _tmdb = tmdb;
         _store = store;
         _logger = logger;
+
+        // The engine lives as long as the server, so these are never removed.
+        libraryManager.ItemAdded += OnLibraryChanged;
+        libraryManager.ItemUpdated += OnLibraryChanged;
+        libraryManager.ItemRemoved += OnLibraryChanged;
     }
 
-    /// <summary>Collect run-wide data once: the TMDb key and every TMDb id already on the server.</summary>
-    public PicksRunContext CreateRunContext()
+    /// <summary>Collect run-wide data once for the nightly run: the TMDb key and every TMDb id on the server, read afresh.</summary>
+    public PicksRunContext CreateRunContext() => CreateRunContext(reuseLibraryIds: false);
+
+    /// <summary>The same for one person's rebuild from the picks page, with the server's TMDb ids read lately if they still hold.</summary>
+    public PicksRunContext CreateRebuildContext() => CreateRunContext(reuseLibraryIds: true);
+
+    private PicksRunContext CreateRunContext(bool reuseLibraryIds)
     {
         var context = new PicksRunContext { TmdbKey = _store.GetTmdbKey() };
 
@@ -67,24 +88,66 @@ public class PicksEngine
             return context;
         }
 
-        var everything = _libraryManager.GetItemList(new InternalItemsQuery
-        {
-            IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series },
-            Recursive = true,
-            IsVirtualItem = false
-        });
-
-        foreach (var item in everything)
-        {
-            var tmdbId = item.GetProviderId(MetadataProvider.Tmdb);
-            if (!string.IsNullOrEmpty(tmdbId))
-            {
-                context.LibraryTmdbIds.Add((item is Series ? "tv:" : "movie:") + tmdbId);
-            }
-        }
-
+        // A copy, as each run's context is its own.
+        context.LibraryTmdbIds.UnionWith(LibraryTmdbIds(reuseLibraryIds));
         return context;
     }
+
+    private HashSet<string> LibraryTmdbIds(bool reuse)
+    {
+        // Held while reading, so rebuilds that start together read the library once between them.
+        lock (_libraryIdsLock)
+        {
+            int changes = Volatile.Read(ref _libraryChanges);
+            if (reuse && _libraryIds is not null && _libraryIdsChanges == changes && DateTime.UtcNow - _libraryIdsReadUtc < LibraryIdsReuse)
+            {
+                return _libraryIds;
+            }
+
+            // Every title on the server, not only this person's, so Discover doesn't offer what an admin keeps from them.
+            var everything = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series },
+                Recursive = true,
+                IsVirtualItem = false,
+                DtoOptions = Fields(providerIds: true)
+            });
+
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in everything)
+            {
+                var tmdbId = item.GetProviderId(MetadataProvider.Tmdb);
+                if (!string.IsNullOrEmpty(tmdbId))
+                {
+                    ids.Add((item is Series ? "tv:" : "movie:") + tmdbId);
+                }
+            }
+
+            _libraryIds = ids;
+            _libraryIdsChanges = changes;
+            _libraryIdsReadUtc = DateTime.UtcNow;
+            return ids;
+        }
+    }
+
+    private void OnLibraryChanged(object? sender, ItemChangeEventArgs e)
+    {
+        if (e.Item is Movie or Series)
+        {
+            Interlocked.Increment(ref _libraryChanges);
+        }
+    }
+
+    /// <summary>
+    /// What a library read loads besides each title's own columns: TMDb and other provider ids where they're used, and
+    /// play state only where it's read. Left to Jellyfin, every read would load all of them, with images and locked fields.
+    /// </summary>
+    private static DtoOptions Fields(bool providerIds, bool userData = false) => new(false)
+    {
+        Fields = providerIds ? new[] { ItemFields.ProviderIds } : Array.Empty<ItemFields>(),
+        EnableImages = false,
+        EnableUserData = userData
+    };
 
     // One build per person at a time: the nightly task and a preferences save could otherwise both
     // replace the playlist, leaving a duplicate behind.
@@ -120,7 +183,10 @@ public class PicksEngine
         var prefs = _store.LoadPreferences(userId);
         var language = AudioLanguage.FromTmdb(config.TmdbLanguage, _localization.FindLanguageInfo);
         var picks = new UserPicks { GeneratedUtc = DateTime.UtcNow, PlaylistId = previous?.PlaylistId };
-        picks.AvailableGenres = LibraryGenres(userQuery);
+
+        // The titles both kinds of library picks choose from, and the genres on the page, read once for this build.
+        var candidates = new Candidates(_libraryManager, userQuery);
+        picks.AvailableGenres = LibraryGenres(candidates);
 
         // 1. What has this user watched? Episodes roll up to their series.
         var watchedQuery = userQuery();
@@ -128,6 +194,7 @@ public class PicksEngine
         watchedQuery.IsPlayed = true;
         watchedQuery.Recursive = true;
         watchedQuery.IsVirtualItem = false;
+        watchedQuery.DtoOptions = Fields(providerIds: true, userData: true); // the last play comes from the user data
         var titles = RollUpWatched(
             _libraryManager.GetItemList(watchedQuery),
             id => _libraryManager.GetItemById(id),
@@ -151,9 +218,6 @@ public class PicksEngine
         }
 
         var ranked = titles.Values.OrderByDescending(t => t.Weight).ToList();
-
-        // The titles both kinds of library picks choose from, read once for this build.
-        var candidates = new Candidates(_libraryManager, userQuery);
 
         // 2. Library picks.
         if (config.EnableLibraryPicks)
@@ -401,6 +465,7 @@ public class PicksEngine
         var boxQuery = userQuery();
         boxQuery.IncludeItemTypes = new[] { BaseItemKind.BoxSet };
         boxQuery.Recursive = true;
+        boxQuery.DtoOptions = Fields(providerIds: false);
         foreach (var box in _libraryManager.GetItemList(boxQuery).OfType<Folder>())
         {
             List<BaseItem> members;
@@ -483,16 +548,30 @@ public class PicksEngine
 
     /// <summary>
     /// What library picks choose from, each read from the library once per build and only when first needed:
-    /// films the person hasn't watched or started, every series, and the series with an episode under way.
+    /// every film and series the person can see (for the genres on their page, and the series), the films they
+    /// haven't watched or started, and the series with an episode under way.
     /// </summary>
     private sealed class Candidates
     {
+        private readonly Lazy<List<BaseItem>> _titles;
         private readonly Lazy<List<BaseItem>> _movies;
         private readonly Lazy<List<BaseItem>> _series;
         private readonly Lazy<HashSet<Guid>> _started;
 
         public Candidates(ILibraryManager library, Func<InternalItemsQuery> userQuery)
         {
+            _titles = new Lazy<List<BaseItem>>(() =>
+            {
+                var q = userQuery();
+                q.IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series };
+                q.Recursive = true;
+                q.IsVirtualItem = false;
+                q.DtoOptions = Fields(providerIds: true);
+                return library.GetItemList(q).ToList();
+            });
+
+            // Which films are watched or started is the server's to judge (alternate versions, say), so they're
+            // asked for rather than worked out from every film above.
             _movies = new Lazy<List<BaseItem>>(() =>
             {
                 var q = userQuery();
@@ -501,16 +580,10 @@ public class PicksEngine
                 q.IsResumable = false; // not finished is not enough: started ones are left out too
                 q.Recursive = true;
                 q.IsVirtualItem = false;
+                q.DtoOptions = Fields(providerIds: true);
                 return library.GetItemList(q).ToList();
             });
-            _series = new Lazy<List<BaseItem>>(() =>
-            {
-                var q = userQuery();
-                q.IncludeItemTypes = new[] { BaseItemKind.Series };
-                q.Recursive = true;
-                q.IsVirtualItem = false;
-                return library.GetItemList(q).ToList();
-            });
+            _series = new Lazy<List<BaseItem>>(() => _titles.Value.Where(t => t is Series).ToList());
             _started = new Lazy<HashSet<Guid>>(() =>
             {
                 // A series with an episode under way has been started, even if no episode is finished yet.
@@ -519,9 +592,12 @@ public class PicksEngine
                 q.IsResumable = true;
                 q.Recursive = true;
                 q.IsVirtualItem = false;
+                q.DtoOptions = Fields(providerIds: false);
                 return library.GetItemList(q).OfType<Episode>().Select(e => e.SeriesId).ToHashSet();
             });
         }
+
+        public List<BaseItem> Titles => _titles.Value;
 
         public List<BaseItem> Movies => _movies.Value;
 
@@ -576,15 +652,11 @@ public class PicksEngine
     }
 
     /// <summary>Every genre among the films and series this person can see, for the choices on their page.</summary>
-    private List<string> LibraryGenres(Func<InternalItemsQuery> userQuery)
+    private List<string> LibraryGenres(Candidates candidates)
     {
         try
         {
-            var query = userQuery();
-            query.IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series };
-            query.Recursive = true;
-            query.IsVirtualItem = false;
-            return _libraryManager.GetItemList(query)
+            return candidates.Titles
                 .SelectMany(i => i.Genres ?? Array.Empty<string>())
                 .Where(g => !string.IsNullOrWhiteSpace(g))
                 .Select(g => g.Trim())
@@ -847,6 +919,7 @@ public class PicksEngine
         episodeQuery.AncestorIds = new[] { pick.ItemId };
         episodeQuery.Recursive = true;
         episodeQuery.IsVirtualItem = false;
+        episodeQuery.DtoOptions = Fields(providerIds: false);
         var episodes = _libraryManager.GetItemList(episodeQuery);
 
         var first = episodes
@@ -925,24 +998,42 @@ public class PicksEngine
         }
     }
 
+    // People with a playlist refresh waiting to start. A hide made while one waits is covered by it, because the
+    // waiting refresh reads the picks only after it leaves this set.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> PendingRefreshes = new();
+
+    /// <summary>How long a playlist refresh waits before it starts, so hides made meanwhile share it.</summary>
+    internal TimeSpan PlaylistRefreshDelay { get; init; } = TimeSpan.FromSeconds(2);
+
     /// <summary>
     /// Puts the person's saved library picks in their playlist again, without a build: after they hide a title, so it
-    /// leaves the playlist straight away rather than at the next build.
+    /// leaves the playlist within seconds rather than at the next build. The refresh starts after
+    /// <see cref="PlaylistRefreshDelay"/>, and one that is still waiting covers any hides made before it starts, so
+    /// several quick hides cost one playlist update.
     /// </summary>
     public async Task RefreshPlaylistAsync(Guid userId)
     {
-        var config = Plugin.Instance!.Configuration;
-        var user = _userManager.GetUserById(userId);
-        var picks = _store.Load(userId);
-        if (user is null || picks is null || !(config.EnableLibraryPicks && config.CreatePlaylists))
+        if (!PendingRefreshes.TryAdd(userId, 0))
         {
             return;
         }
 
+        await Task.Delay(PlaylistRefreshDelay).ConfigureAwait(false);
         var gate = UserLocks.GetOrAdd(userId, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync().ConfigureAwait(false);
         try
         {
+            // Read only now: a build that held the gate has saved its picks and playlist, and a hide from here on
+            // starts a refresh of its own.
+            PendingRefreshes.TryRemove(userId, out _);
+            var config = Plugin.Instance!.Configuration;
+            var user = _userManager.GetUserById(userId);
+            var picks = _store.Load(userId);
+            if (user is null || picks is null || !(config.EnableLibraryPicks && config.CreatePlaylists))
+            {
+                return;
+            }
+
             Func<InternalItemsQuery> userQuery = () => new InternalItemsQuery(user);
             var items = picks.InLibrary.Select(p => GetPlayableId(userQuery, p)).OfType<Guid>().ToList();
             Guid? before = picks.PlaylistId;

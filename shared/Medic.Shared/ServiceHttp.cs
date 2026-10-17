@@ -1,9 +1,12 @@
 using System;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Mime;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Controller;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Medic.Shared;
@@ -20,9 +23,23 @@ internal static class ServiceHttp
     /// </summary>
     public const string KeyClient = "Medic.KeyClient";
 
-    /// <summary>Registers <see cref="KeyClient"/>. Medic Picks and Medic Profiles each call this; registering it twice is harmless.</summary>
-    public static void AddKeyClient(IServiceCollection services) =>
-        services.AddHttpClient(KeyClient).ConfigurePrimaryHttpMessageHandler(() => NoRedirects());
+    /// <summary>
+    /// Registers <see cref="KeyClient"/>, with the User-Agent and Accept headers of Jellyfin's default client, which
+    /// these calls went through before. Medic Picks and Medic Profiles each call this; registering it twice is harmless.
+    /// </summary>
+    public static void AddKeyClient(IServiceCollection services, IServerApplicationHost host) =>
+        services.AddHttpClient(KeyClient, client =>
+            {
+                // Set, not added to: with both plugins installed this runs twice on each client.
+                var headers = client.DefaultRequestHeaders;
+                headers.UserAgent.Clear();
+                headers.Accept.Clear();
+                headers.UserAgent.Add(new ProductInfoHeaderValue(host.Name.Replace(' ', '-'), host.ApplicationVersionString));
+                headers.Accept.Add(new MediaTypeWithQualityHeaderValue(MediaTypeNames.Application.Json, 1.0));
+                headers.Accept.Add(new MediaTypeWithQualityHeaderValue(MediaTypeNames.Application.Xml, 0.9));
+                headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*", 0.8));
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => NoRedirects());
 
     /// <summary>A handler as Jellyfin's default one, but that hands redirects back instead of following them.</summary>
     public static HttpClientHandler NoRedirects() => new() { AllowAutoRedirect = false, AutomaticDecompression = DecompressionMethods.All };

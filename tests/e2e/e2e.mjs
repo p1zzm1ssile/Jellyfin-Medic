@@ -20,12 +20,22 @@ let passed = 0;
 let failed = 0;
 const only = process.argv.slice(2);
 
+// The most one call to Jellyfin may take. Jellyfin gives up on a server that never answers after 100 s
+// (HttpClient's default), and the slowest call here waits about 10 s on a silent Seerr, so only a hung request reaches it.
+const REQUEST_TIMEOUT_MS = 120000;
+
 async function api(method, path, body, raw) {
     const headers = { Authorization: AUTH + (token ? `, Token="${token}"` : '') };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
-    const res = await fetch(JF + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    // One signal covers both the answer and reading its body, so a body that stops halfway also ends here.
+    const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+    const named = (e) => {
+        if (e.name !== 'TimeoutError') throw e;
+        throw new Error(`${method} ${path} got no answer within ${REQUEST_TIMEOUT_MS / 1000} s`);
+    };
+    const res = await fetch(JF + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal }).catch(named);
     if (raw) return res;
-    const text = await res.text();
+    const text = await res.text().catch(named);
     let json = null;
     try { json = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
     return { status: res.status, json, text };
@@ -96,10 +106,10 @@ await check('library scanned', async () => {
     return `${ctx.films} films`;
 });
 
-await check('all four plugins loaded', async () => {
+await check('all three plugins loaded', async () => {
     const plugins = await ok('/Plugins');
     const names = plugins.map((p) => p.Name);
-    for (const want of ['Jellyfin Medic', 'Medic Picks', 'Medic Profiles', 'Medic Posters']) {
+    for (const want of ['Jellyfin Medic', 'Medic Picks', 'Medic Profiles']) {
         const p = plugins.find((x) => x.Name === want);
         expect(p, `${want} missing (have ${names.join(', ')})`);
         expect(p.Status === 'Active', `${want} is ${p.Status}`);
@@ -112,7 +122,7 @@ const medicGets = [
     '/JellyfinMedic/MedicSettings', '/JellyfinMedic/Plugins', '/JellyfinMedic/Usage', '/JellyfinMedic/TranscodeLog',
     '/JellyfinMedic/Weekly', '/JellyfinMedic/Cleanup', '/JellyfinMedic/JellyfinSettings',
     '/JellyfinMedic/Schedule/GetCalendar', '/JellyfinMedic/Schedule/GetRunHistory', '/JellyfinMedic/Schedule/PreviewScheduleDiff',
-    '/JellyfinMedic/Schedule/ListBackups', '/JellyfinMedic/Schedule/GetUntimedTasks', '/MedicPicks/Admin/Status', '/MedicProfiles/Status', '/MedicProfiles/History', '/MedicPosters/Status'
+    '/JellyfinMedic/Schedule/ListBackups', '/JellyfinMedic/Schedule/GetUntimedTasks', '/MedicPicks/Admin/Status', '/MedicProfiles/Status', '/MedicProfiles/History'
 ];
 for (const path of medicGets) {
     await check(`GET ${path}`, async () => { await ok(path); });
@@ -378,20 +388,32 @@ function adminRoutes() {
     const root = new URL('../../', import.meta.url);
     const files = [
         ['src/JellyfinMedic/MedicController.cs'], ['src/JellyfinMedic/ScheduleController.cs'], ['src/JellyfinMedic/MedicDashboardController.cs'],
-        ['Jellyfin.Plugin.MedicProfiles/Api/ProfilesController.cs'], ['Jellyfin.Plugin.MedicPosters/Api/PostersController.cs'],
+        ['Jellyfin.Plugin.MedicProfiles/Api/ProfilesController.cs'],
         ['Jellyfin.Plugin.MedicPicks/Api/PicksController.cs', (route) => route.startsWith('Admin/')]
     ];
     // Values that fit each route's parameters, so the request reaches the sign-in check rather than a 404.
-    const values = { app: 'sonarr', itemId: '00000000-0000-0000-0000-000000000000', requestId: '1', name: 'e2e' };
+    const values = { app: 'sonarr', requestId: '1', name: 'e2e' };
     const routes = [];
     for (const [file, include = () => true] of files) {
         const code = require('node:fs').readFileSync(new URL(file, root), 'utf8');
         const prefix = code.match(/^\[Route\("([^"]+)"\)\]/m)[1];
-        for (const m of code.matchAll(/\[Http(Get|Post|Put|Delete)(?:\("([^"]*)"\))?\]/g)) {
-            const route = m[2] || '';
-            if (!include(route)) continue;
-            const path = '/' + [prefix, route].filter(Boolean).join('/').replace(/\{(\w+)[^}]*\}/g, (_, p) => values[p] ?? '1');
-            routes.push([m[1].toUpperCase(), path]);
+        // Each public instance method of the controller is an action, routed by its [Http*] or [Route] templates, or
+        // at the controller's own route when it has neither.
+        for (const m of code.matchAll(/((?:^ {4}\[.*\]\s*\n)*)^ {4}public (?!static\b)[\w<>\[\],?. ]+? \w+\(/gm)) {
+            const attributes = m[1];
+            if (/\[NonAction\]/.test(attributes)) continue;
+            const verbs = [...attributes.matchAll(/\[Http(Get|Post|Put|Delete|Patch)(?:\("([^"]*)"\))?\]/g)];
+            const routed = [...attributes.matchAll(/\[Route\("([^"]*)"\)\]/g)].map((r) => r[1]);
+            // A verb with its own template answers there; a bare one takes the [Route] templates; a [Route] beside only
+            // templated verbs answers any verb, so GET stands in for it.
+            const pairs = verbs.flatMap(([, verb, template]) => (template !== undefined ? [template] : routed.length ? routed : ['']).map((t) => [verb, t]));
+            if (!verbs.some(([, , template]) => template === undefined)) pairs.push(...routed.map((t) => ['Get', t]));
+            if (!pairs.length) pairs.push(['Get', '']);
+            for (const [verb, route] of pairs) {
+                if (!include(route)) continue;
+                const path = '/' + [prefix, route].filter(Boolean).join('/').replace(/\{(\w+)[^}]*\}/g, (_, p) => values[p] ?? '1');
+                routes.push([verb.toUpperCase(), path]);
+            }
         }
     }
     return routes;
@@ -740,8 +762,8 @@ await check('track cleanup refuses a new copy that comes out shorter than the or
     return withTrackSettings({ TracksExclude: 'Two Tracks\nKeep Me Too', TracksReplaceInPlace: true }, async () => {
         const p = await runTracks();
         const notes = JSON.stringify(p.Recent);
-        expect(p.Changed === 0 && p.Skipped === 1 && p.Failed === 0, 'a short copy was accepted: ' + notes);
-        expect((p.Recent || []).some((r) => /Cut Short.*didn't come out right \(it lasts/.test(r)), 'not refused for its length: ' + notes);
+        expect(p.Changed === 0 && p.Skipped === 0 && p.Failed === 1, 'a short copy was accepted, or not counted as failed: ' + notes);
+        expect((p.Recent || []).some((r) => /Problem with Cut Short.*didn't come out right \(it lasts/.test(r)), 'not refused for its length: ' + notes);
         expect(fs.statSync(file).size === size && audioLanguages(file) === 'eng,fre', 'the original was changed');
         expect(!fs.existsSync(`${file}.medic-tmp.mkv`), 'the temp file was left behind');
         return 'short copy refused, original untouched';
@@ -805,20 +827,32 @@ await check('track cleanup keeps the original of a file replaced between runs', 
         // Paths as the server sees them, inside its container.
         expect(changes.some((c) => c.Path.endsWith('/Upgraded (2021)/Upgraded (2021).mkv') && c.KeptOriginal?.endsWith('/Upgraded (2021)/.medic-originals/Upgraded (2021).mkv')), 'the change was not recorded: ' + JSON.stringify(changes.slice(0, 3)));
 
+        const audioTracks = async () => {
+            const item = (await ok('/Items?Recursive=true&IncludeItemTypes=Movie&SearchTerm=Upgraded&Fields=MediaStreams')).Items[0];
+            return { id: item?.Id, audio: (item?.MediaStreams || []).filter((m) => m.Type === 'Audio').length };
+        };
+        // Medic has Jellyfin re-read a file it cleaned. Jellyfin reads the tracks first and the file's date only
+        // when it saves, so a file replaced while that refresh runs is recorded with the new date and the old
+        // tracks, and from then on no refresh in Default mode reads it again. Wait for that refresh to finish.
+        let now = await audioTracks();
+        for (let i = 0; i < 30 && now.audio !== 1; i++) {
+            await sleep(1000);
+            now = await audioTracks();
+        }
+        expect(now.audio === 1, `Jellyfin did not re-read the cleaned file: it lists ${now.audio} audio tracks`);
+
         const upgrade = `${process.env.WORK}/upgrade.mkv`;
         makeFilm(upgrade, ['eng', 'fre'], 6);
         fs.renameSync(upgrade, file);
         const size = fs.statSync(file).size;
-        // Jellyfin still lists the cleaned file's one track, so nothing would plan it: have Jellyfin read it, as a scan would.
-        const id = (await ok('/Items?Recursive=true&IncludeItemTypes=Movie&SearchTerm=Upgraded')).Items[0].Id;
-        await api('POST', `/Items/${id}/Refresh?metadataRefreshMode=Default&imageRefreshMode=None&replaceAllMetadata=false`);
-        let audio = 0;
-        for (let i = 0; i < 30 && audio < 2; i++) {
+        // Jellyfin still lists the cleaned file's one track, so nothing would plan it: have Jellyfin read it, as a
+        // scan would. A full refresh reads the tracks whatever date Jellyfin has, so the ordering above can't hide it.
+        await api('POST', `/Items/${now.id}/Refresh?metadataRefreshMode=FullRefresh&imageRefreshMode=None&replaceAllMetadata=false`);
+        for (let i = 0; i < 30 && now.audio !== 2; i++) {
             await sleep(2000);
-            const item = (await ok('/Items?Recursive=true&IncludeItemTypes=Movie&SearchTerm=Upgraded&Fields=MediaStreams')).Items[0];
-            audio = (item?.MediaStreams || []).filter((m) => m.Type === 'Audio').length;
+            now = await audioTracks();
         }
-        expect(audio === 2, 'Jellyfin did not read the new release');
+        expect(now.audio === 2, `Jellyfin did not read the new release: it lists ${now.audio} audio tracks`);
         const second = await runTracks();
         expect(second.Changed === 1, 'second clean: ' + JSON.stringify(second.Recent));
         const aside = fs.readdirSync(`${dir}/.medic-originals`).filter((f) => /^Upgraded \(2021\)\.replaced-\d{8}-\d{6}\.mkv$/.test(f));
@@ -852,6 +886,30 @@ await check('tidying earlier copies leaves a copy that doesn\'t check out', asyn
         expect(tidied.status === 200 && tidied.json?.Titles === 1 && tidied.json?.LeftTitles?.length === 0, 'second tidy: ' + tidied.status + ' ' + tidied.text);
         expect(audioLanguages(file) === 'eng' && audioLanguages(kept) === 'eng,fre' && !fs.existsSync(copy), 'the sound copy did not take the film\'s place');
         return 'copy without audio left with a warning, sound copy put in place';
+    } finally {
+        fs.rmSync(copy, { force: true });
+    }
+});
+
+await check('tidying earlier copies leaves a copy cut short that still gives the full length', async () => {
+    // A copy cut part way keeps its header, so FFprobe reads the film's full length and every track from it.
+    // Only its last packets show where it really stops.
+    const file = await addFilm('Cut Copy (2023)', ['eng', 'fre'], 60);
+    const copy = file.replace(/\.mkv$/, '.medic-stripped.mkv');
+    const kept = `${movies}/Cut Copy (2023)/.medic-originals/Cut Copy (2023).mkv`;
+    const size = fs.statSync(file).size;
+    const duration = (f) => Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString());
+    try {
+        execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-i', file, '-map', '0:v', '-map', '0:a:0', '-c', 'copy', copy]);
+        fs.truncateSync(copy, Math.floor(fs.statSync(copy).size / 2));
+        expect(Math.abs(duration(copy) - duration(file)) < 1 && audioLanguages(copy) === 'eng', `the cut copy reads as ${duration(copy)} s with ${audioLanguages(copy)}`);
+        const refused = await api('POST', '/JellyfinMedic/Tracks/TidyCopies');
+        const left = refused.json?.LeftTitles || [];
+        expect(refused.status === 200 && refused.json?.Titles === 0 && left.length === 1 && left[0].Name === 'Cut Copy (2023).mkv'
+            && /^it stops at \d+ s though it says it lasts 60 s$/.test(left[0].Reason), 'tidy: ' + refused.status + ' ' + refused.text);
+        expect(fs.statSync(file).size === size && audioLanguages(file) === 'eng,fre', 'the film was changed');
+        expect(fs.existsSync(copy) && !fs.existsSync(kept), 'the copy was moved');
+        return left[0].Reason;
     } finally {
         fs.rmSync(copy, { force: true });
     }
@@ -1132,6 +1190,58 @@ await check('Medic Picks shows only your own requests and keeps Discover-off acc
     }
 });
 
+await check('Medic Picks sends a person\'s request to Seerr as their own Seerr account', async () => {
+    // Without X-API-User, Seerr would make the request as its owner account, past that person's own limits.
+    const seerrServer = await fakeArr.startSeerr(P(18997));
+    const plugin = (await ok('/Plugins')).find((p) => p.Name === 'Medic Picks');
+    const cfg = await ok(`/Plugins/${plugin.Id}/Configuration`);
+    const name = 'e2e-seerr-requester';
+    const device = AUTH.replace('medic-e2e', name);
+    const made = await api('POST', '/Users/New', { Name: name, Password: 'e2e-pass' });
+    expect(made.status === 200, 'user not created: ' + made.text);
+    try {
+        await api('POST', `/Plugins/${plugin.Id}/Configuration`, {
+            ...cfg, JellyseerrUrl: `http://host.docker.internal:${P(18997)}`, ShowRequests: true, SeerrDirectRequests: true,
+            EnableDiscover: true, DiscoverDisabledUserIds: []
+        });
+        await api('POST', '/MedicPicks/Admin/SeerrKey', { Key: 'e2e-seerr-key' });
+        // This person is Seerr user 77; everyone else (the admin too) is 42.
+        fakeArr.seerr.accounts[made.json.Id.replace(/-/g, '').toLowerCase()] = 77;
+        const signIn = await fetch(JF + '/Users/AuthenticateByName', {
+            method: 'POST',
+            headers: { Authorization: device, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ Username: name, Pw: 'e2e-pass' })
+        });
+        expect(signIn.status === 200, 'sign-in: ' + signIn.status);
+        const userToken = (await signIn.json()).AccessToken;
+        const request = async (body) => {
+            const res = await fetch(JF + '/MedicPicks/Request', {
+                method: 'POST',
+                headers: { Authorization: `${device}, Token="${userToken}"`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const text = await res.text();
+            expect(res.status === 200, `request ${JSON.stringify(body)}: ${res.status} ${text.slice(0, 200)}`);
+            return JSON.parse(text);
+        };
+        const film = await request({ TmdbId: 603, MediaType: 'movie' });
+        const series = await request({ TmdbId: 1399, MediaType: 'tv' });
+        expect(film.status === 'requested' && series.status === 'requested', `answers: ${JSON.stringify(film)} ${JSON.stringify(series)}`);
+
+        const seen = fakeArr.seerr.created.map((c) => `${JSON.stringify(c.body)} as ${c.asUser}`).join(', ');
+        expect(seen === '{"mediaType":"movie","mediaId":603} as 77, {"mediaType":"tv","mediaId":1399,"seasons":"all"} as 77', 'Seerr saw: ' + seen);
+        expect(fakeArr.seerr.created.every((c) => (c.contentType || '').startsWith('application/json')), 'content types: ' + fakeArr.seerr.created.map((c) => c.contentType).join(', '));
+        return seen;
+    } finally {
+        fakeArr.seerr.created.length = 0;
+        fakeArr.seerr.accounts = {};
+        await api('DELETE', `/Users/${made.json.Id}`);
+        await api('POST', `/Plugins/${plugin.Id}/Configuration`, cfg);
+        await api('POST', '/MedicPicks/Admin/SeerrKey', { Key: '' });
+        seerrServer.close();
+    }
+});
+
 await check('Medic Profiles connects to Sonarr', async () => {
     const saved = await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, SonarrKey: 'test-key', RadarrUrl: '' });
     expect(saved.status === 200 || saved.status === 204, 'saving settings ' + saved.status);
@@ -1190,7 +1300,7 @@ await check('Medic Profiles says when the queue is cut short, and can remove a d
 });
 
 await check('Medic Profiles blocks program files in qBittorrent, keeping the owner\'s own entries', async () => {
-    const qbitServer = await fakeArr.startQbit(18080);
+    const qbitServer = await fakeArr.startQbit(P(18080));
     // The owner's own list, switched off on purpose, holding *.zip, which is also one of Medic Profiles' patterns.
     Object.assign(fakeArr.qbit.prefs, { excluded_file_names_enabled: false, excluded_file_names: '*.nfo\n*.zip' });
     try {
@@ -1286,7 +1396,7 @@ async function tryQbitAgain() {
 }
 
 await check('Medic Profiles signs in to qBittorrent 5.2, and tries a refused sign-in again only when asked', async () => {
-    const qbitServer = await fakeArr.startQbit(18080);
+    const qbitServer = await fakeArr.startQbit(P(18080));
     Object.assign(fakeArr.qbit, { v52: true, banned: true, logins: 0, failedLogins: 0 });
     try {
         const QB = ARR.replace(`:${P(18989)}`, `:${P(18080)}`);
@@ -1317,7 +1427,7 @@ await check('Medic Profiles signs in to qBittorrent 5.2, and tries a refused sig
 });
 
 await check('Medic Profiles spends no qBittorrent sign-in on save, Test or block after a refusal, and Try again spends one', async () => {
-    const qbitServer = await fakeArr.startQbit(18080);
+    const qbitServer = await fakeArr.startQbit(P(18080));
     Object.assign(fakeArr.qbit, { logins: 0, failedLogins: 0 });
     try {
         const QB = ARR.replace(`:${P(18989)}`, `:${P(18080)}`);
@@ -1388,226 +1498,6 @@ await check('exposure check says it tested from this server, and a failed TLS ha
     expect(!defaults.PublicIp, 'public IP looked up without being asked: ' + defaults.PublicIp);
 });
 
-const isGif = async (res) => Buffer.from(await res.arrayBuffer()).subarray(0, 6).toString('latin1') === 'GIF89a';
-
-await check('Medic Posters previews a poster without changing the film', async () => {
-    const preview = await api('POST', '/MedicPosters/Preview', {});
-    expect(preview.json?.ok, 'preview failed: ' + preview.text.slice(0, 300));
-    const img = await api('GET', '/MedicPosters/Preview/Image', undefined, true);
-    expect(img.status === 200 && await isGif(img), `preview image: ${img.status} ${img.headers.get('content-type')}`);
-    const film = await api('GET', `/Items/${preview.json.itemId}/Images/Primary`, undefined, true);
-    expect(film.status === 404, 'the previewed film was given a poster: ' + film.status);
-    return `${preview.json.title}, ${Math.round(preview.json.bytes / 1024)} KB`;
-});
-
-await check('Medic Posters previews a library cover, wide, without changing the library', async () => {
-    const preview = await api('POST', '/MedicPosters/Preview', { kind: 'cover' });
-    expect(preview.json?.ok && preview.json.kind === 'cover', 'preview failed: ' + preview.text.slice(0, 300));
-    const img = await api('GET', '/MedicPosters/Preview/Image', undefined, true);
-    const bytes = Buffer.from(await img.arrayBuffer());
-    expect(bytes.subarray(0, 6).toString('latin1') === 'GIF89a', 'the cover isn\'t a GIF');
-    const [w, h] = [bytes.readUInt16LE(6), bytes.readUInt16LE(8)];
-    expect(w === 480 && h === 270, `the cover is ${w} × ${h}`);
-    const library = await api('GET', `/Items/${preview.json.itemId}/Images/Primary`, undefined, true);
-    expect(library.status === 404, 'the previewed library was given a cover: ' + library.status);
-    return `${preview.json.title}, ${w} × ${h}, ${Math.round(preview.json.bytes / 1024)} KB`;
-});
-
-await check('Medic Posters previews with the settings on screen, uses a preview, makes only covers when asked, and leaves out an unticked library', async () => {
-    const gifSize = (bytes) => [bytes.readUInt16LE(6), bytes.readUInt16LE(8)];
-    try {
-        // Unsaved settings: a small one-moment poster, and the saved width stays as it was.
-        const found = await api('GET', '/MedicPosters/Titles?q=sample');
-        expect(found.status === 200 && found.json.length >= 1, 'no titles found for "sample": ' + found.text.slice(0, 200));
-        const preview = await api('POST', '/MedicPosters/Preview', { itemId: found.json[0].id, settings: { width: 160, moments: 1 } });
-        expect(preview.json?.ok && preview.json.itemId === found.json[0].id, 'preview: ' + preview.text.slice(0, 300));
-        const img = Buffer.from(await (await api('GET', '/MedicPosters/Preview/Image', undefined, true)).arrayBuffer());
-        const [w, h] = gifSize(img);
-        expect(w === 160 && h === 240, `the preview ignored the settings on screen: ${w} × ${h}`);
-        let s = (await api('GET', '/MedicPosters/Status')).json;
-        expect(s.settings.width === 240 && s.settings.moments === 3, 'previewing saved the settings: ' + JSON.stringify(s.settings));
-        const before = s.estimate;
-        expect(before.postersToMake >= 12 && before.posterRate === 0.05, 'estimate before any were made: ' + JSON.stringify(before));
-
-        // "Use this one" puts that preview on that film, and the estimate learns from it.
-        const use = await api('POST', '/MedicPosters/Preview/Use', {});
-        expect(use.json?.ok && use.json.itemId === found.json[0].id, 'use: ' + use.text);
-        const served = await api('GET', `/Items/${found.json[0].id}/Images/Primary?fillHeight=300`, undefined, true);
-        const servedBytes = Buffer.from(await served.arrayBuffer());
-        expect(served.status === 200 && gifSize(servedBytes)[0] === 160, 'the film didn\'t get the previewed poster: ' + served.status);
-        s = (await api('GET', '/MedicPosters/Status')).json;
-        expect(s.made === 1 && s.estimate.postersToMake === before.postersToMake - 1 && s.estimate.bytesNow > 0 && s.estimate.posterRate !== 0.05,
-            'after using the preview: ' + JSON.stringify(s.estimate));
-
-        // Library covers on their own: no posters are made.
-        const started = s.lastRun?.startedUtc;
-        const run = await api('POST', '/MedicPosters/Run?kind=cover');
-        expect(run.status === 202, 'Run?kind=cover returned ' + run.status);
-        for (let i = 0; i < 90; i++) {
-            await sleep(2000);
-            s = (await api('GET', '/MedicPosters/Status')).json;
-            if (!s.running && s.lastRun?.startedUtc !== started && s.lastRun?.finishedUtc) break;
-        }
-        expect(s.coversMade >= 1 && s.made === 1, `a covers-only run made ${s.coversMade} covers and left ${s.made} posters`);
-
-        // Unticking the library leaves it, and everything in it, alone.
-        const movies = s.libraries[0];
-        const filmsBefore = s.films;
-        await api('POST', '/MedicPosters/RestoreAll');
-        await api('POST', '/MedicPosters/Settings', { libraryIds: [], excludedLibraryIds: [movies.id] });
-        s = (await api('GET', '/MedicPosters/Status')).json;
-        expect(!s.chosenLibraries.some((l) => l.id === movies.id) && s.films < filmsBefore && s.estimate.covers === s.chosenLibraries.length,
-            'the left-out library is still used: ' + JSON.stringify({ chosen: s.chosenLibraries, films: s.films }));
-        return `preview ${w} × ${h}, then ${s.libraries.length - s.chosenLibraries.length} library left out`;
-    } finally {
-        await api('POST', '/MedicPosters/RestoreAll');
-        await api('POST', '/MedicPosters/Settings', { excludedLibraryIds: [] });
-    }
-});
-
-await check('Medic Posters makes an animated poster for each film, Jellyfin serves it still animated, and the originals come back', async () => {
-    const run = await api('POST', '/MedicPosters/Run');
-    expect(run.status === 202, 'Run returned ' + run.status + ' ' + run.text);
-    let s = null;
-    for (let i = 0; i < 150; i++) {
-        await sleep(2000);
-        s = (await api('GET', '/MedicPosters/Status')).json;
-        if (s && !s.running && s.lastRun?.finishedUtc) break;
-    }
-    expect(s && !s.running && s.lastRun?.finishedUtc, 'the run didn\'t finish: ' + JSON.stringify(s?.progress));
-    expect(s.made >= 12, `made ${s.made} of ${s.films}: ${JSON.stringify(s.failures).slice(0, 400)}`);
-    expect(s.failures.some((f) => /Stream Film/.test(f.title)), 'the .strm film wasn\'t listed as having no video file: ' + JSON.stringify(s.failures));
-
-    // Jellyfin is asked for a resized poster, as its apps do, and must still send the GIF.
-    const film = s.recent[0];
-    const served = await api('GET', `/Items/${film.itemId}/Images/Primary?fillHeight=300&fillWidth=200&quality=90`, undefined, true);
-    expect(served.status === 200 && await isGif(served), `Jellyfin sent ${served.status} ${served.headers.get('content-type')}`);
-
-    // The library gets an animated cover too, and Jellyfin sends it as a GIF however it's asked.
-    expect(s.coversMade >= 1, 'no library cover was made: ' + JSON.stringify(s.failures).slice(0, 300));
-    const cover = s.recent.find((p) => p.kind === 'cover');
-    expect(cover, 'the cover isn\'t listed with the latest posters');
-    const coverServed = await api('GET', `/Items/${cover.itemId}/Images/Primary?fillWidth=480&fillHeight=270&quality=90`, undefined, true);
-    expect(coverServed.status === 200 && await isGif(coverServed), `the library cover came back as ${coverServed.status} ${coverServed.headers.get('content-type')}`);
-
-    // A second run leaves the made ones alone.
-    await api('POST', '/MedicPosters/Run');
-    for (let i = 0; i < 60; i++) {
-        await sleep(1000);
-        const again = (await api('GET', '/MedicPosters/Status')).json;
-        if (!again.running && again.lastRun.startedUtc !== s.lastRun.startedUtc) { s.again = again.lastRun; break; }
-    }
-    expect(s.again && s.again.made === 0, 'a second run made posters again: ' + JSON.stringify(s.again));
-
-    const back = await api('POST', '/MedicPosters/RestoreAll');
-    expect(back.status === 200 && back.json.restored === s.made + s.coversMade, 'RestoreAll: ' + back.text);
-    const gone = await api('GET', `/Items/${film.itemId}/Images/Primary`, undefined, true);
-    expect(gone.status === 404, 'the film still has a poster after putting the originals back: ' + gone.status);
-    return `${s.made} posters, about ${Math.round(s.averageBytes / 1024)} KB each, and ${s.coversMade} library cover`;
-});
-
-await check('Medic Posters makes a series poster from its episodes, and a cover for a TV library', async () => {
-    const { execFileSync } = await import('node:child_process');
-    const dir = '/media/tv/Sample Show/Season 1';
-    const ff = (...args) => execFileSync('docker', ['exec', CONTAINER, '/usr/lib/jellyfin-ffmpeg/ffmpeg', '-loglevel', 'error', '-y', ...args]);
-    execFileSync('docker', ['exec', CONTAINER, 'mkdir', '-p', dir]);
-    try {
-        for (const [n, c] of [[1, 'testsrc'], [2, 'smptebars'], [3, 'rgbtestsrc']]) {
-            ff('-f', 'lavfi', '-i', `${c}=size=320x180:rate=10:duration=8`, '-c:v', 'libx264', '-preset', 'ultrafast', `${dir}/Sample Show S01E0${n}.mkv`);
-        }
-        const add = await api('POST', '/Library/VirtualFolders?name=Shows&collectionType=tvshows&refreshLibrary=true', { LibraryOptions: { PathInfos: [{ Path: '/media/tv' }] } });
-        expect(add.status === 204, 'adding the TV library returned ' + add.status + ' ' + add.text);
-        let series = null;
-        for (let i = 0; i < 60 && !series; i++) {
-            await sleep(2000);
-            const r = await api('GET', '/Items?Recursive=true&IncludeItemTypes=Series&SearchTerm=Sample%20Show');
-            series = r.json?.Items?.[0] || null;
-            if (series) {
-                const eps = await api('GET', `/Items?Recursive=true&IncludeItemTypes=Episode&ParentId=${series.Id}`);
-                if ((eps.json?.Items?.length || 0) < 3) series = null;
-            }
-        }
-        expect(series, 'the series and its episodes weren\'t found');
-
-        const libs = (await api('GET', '/MedicPosters/Status')).json.libraries;
-        expect(libs.some((l) => l.name === 'Shows'), 'the TV library isn\'t offered: ' + JSON.stringify(libs));
-        const preview = await api('POST', '/MedicPosters/Preview', { itemId: series.Id });
-        expect(preview.json?.ok && preview.json.title === 'Sample Show', 'series preview: ' + preview.text.slice(0, 300));
-
-        const before = (await api('GET', '/MedicPosters/Status')).json.lastRun?.startedUtc;
-        await api('POST', '/MedicPosters/Run');
-        let s = null;
-        for (let i = 0; i < 150; i++) {
-            await sleep(2000);
-            s = (await api('GET', '/MedicPosters/Status')).json;
-            if (!s.running && s.lastRun?.startedUtc !== before && s.lastRun?.finishedUtc) break;
-        }
-        const poster = await api('GET', `/Items/${series.Id}/Images/Primary?fillHeight=300`, undefined, true);
-        expect(poster.status === 200 && await isGif(poster), 'the series has no animated poster: ' + poster.status);
-        const showsId = libs.find((l) => l.name === 'Shows').id;
-        const cover = await api('GET', `/Items/${showsId}/Images/Primary?fillWidth=400`, undefined, true);
-        expect(cover.status === 200 && await isGif(cover), 'the TV library has no animated cover: ' + cover.status);
-        return `${s.made} posters and ${s.coversMade} covers`;
-    } finally {
-        await api('POST', '/MedicPosters/RestoreAll');
-        await api('DELETE', '/Library/VirtualFolders?name=Shows&refreshLibrary=false');
-        execFileSync('docker', ['exec', CONTAINER, 'rm', '-rf', '/media/tv']);
-        await sleep(2000);
-    }
-});
-
-await check('Medic Posters keeps its poster when a refresh reads the film\'s own poster.jpg again, but not over a new upload', async () => {
-    const { execFileSync } = await import('node:child_process');
-    const dir = '/media/movies/Poster Film (2003)';
-    const ff = (...args) => execFileSync('docker', ['exec', CONTAINER, '/usr/lib/jellyfin-ffmpeg/ffmpeg', '-loglevel', 'error', '-y', ...args]);
-    const image = async (id) => {
-        const r = await api('GET', `/Items/${id}/Images/Primary`, undefined, true);
-        if (r.status !== 200) return String(r.status);
-        return (await isGif(r)) ? 'gif' : 'still';
-    };
-    const settle = async (id, want) => {
-        let got = '';
-        for (let i = 0; i < 20; i++) { await sleep(1000); got = await image(id); if (got === want) break; }
-        return got;
-    };
-    execFileSync('docker', ['exec', CONTAINER, 'mkdir', '-p', dir]);
-    try {
-        // A film with its own poster.jpg beside it, and no locked metadata, so every refresh reads that poster again.
-        ff('-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=10:duration=6', '-c:v', 'libx264', '-preset', 'ultrafast', `${dir}/Poster Film (2003).mkv`);
-        ff('-f', 'lavfi', '-i', 'color=c=red:s=300x450', '-frames:v', '1', `${dir}/poster.jpg`);
-        await api('POST', '/Library/Refresh');
-        let id = null;
-        for (let i = 0; i < 60 && !id; i++) {
-            await sleep(2000);
-            const r = await api('GET', '/Items?Recursive=true&IncludeItemTypes=Movie&SearchTerm=Poster%20Film');
-            id = r.json?.Items?.find((x) => x.Name.startsWith('Poster Film'))?.Id || null;
-        }
-        expect(id, 'the new film wasn\'t found');
-        expect(await settle(id, 'still') === 'still', 'the film\'s own poster wasn\'t picked up');
-
-        await api('POST', '/MedicPosters/Run');
-        expect(await settle(id, 'gif') === 'gif', 'no animated poster was made');
-
-        await api('POST', `/Items/${id}/Refresh?metadataRefreshMode=FullRefresh&imageRefreshMode=FullRefresh&replaceAllMetadata=true`);
-        await sleep(3000);
-        expect(await settle(id, 'gif') === 'gif', 'a refresh left the film\'s own poster in place of the animated one');
-
-        // A poster uploaded under Edit Images is someone's choice, and stays.
-        const png = execFileSync('docker', ['exec', CONTAINER, '/usr/lib/jellyfin-ffmpeg/ffmpeg', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=200x300', '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', '-']);
-        const up = await fetch(`${JF}/Items/${id}/Images/Primary`, { method: 'POST', headers: { Authorization: AUTH + `, Token="${token}"`, 'Content-Type': 'image/png' }, body: png.toString('base64') });
-        expect(up.status === 204, 'upload returned ' + up.status);
-        await sleep(4000);
-        expect(await image(id) === 'still', 'the uploaded poster was replaced');
-        const s = (await api('GET', '/MedicPosters/Status')).json;
-        return `${s.made} posters`;
-    } finally {
-        await api('POST', '/MedicPosters/RestoreAll');
-        execFileSync('docker', ['exec', CONTAINER, 'rm', '-rf', dir]);
-        await api('POST', '/Library/Refresh');
-        await sleep(3000);
-    }
-});
-
 // ---------- Pages in a real browser ----------
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
@@ -1630,9 +1520,7 @@ async function openPage(name, hash, selector, tabs) {
         await page.goto(JF + '/web/index.html#' + hash);
         await page.waitForSelector(selector, { timeout: 30000 });
         await sleep(2000);
-        // Close Medic's "What's new" box if it's showing.
-        const gotIt = page.locator('#md-whatsnew-close');
-        if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
+        if (selector.startsWith('#JellyfinMedicPage')) await settleWhatsNew(page);
         let count = 0;
         if (tabs) {
             const buttons = await page.locator(selector.split(' ')[0] + ' ' + tabs).all();
@@ -1660,22 +1548,6 @@ await check('Jellyfin Medic page is styled by its stylesheet', async () => {
     return 'top bar laid out as a row';
 });
 await openPage('Medic Profiles', '/configurationpage?name=MedicProfiles', '#MedicProfilesPage .mp-tab', '.mp-tab');
-await openPage('Medic Posters', '/configurationpage?name=MedicPosters', '#MedicPostersPage #po-run');
-
-await check('Medic Posters page shows a preview poster and a library cover', async () => {
-    errors.length = 0;
-    await page.goto(JF + '/web/index.html#/configurationpage?name=MedicPosters');
-    await page.waitForSelector('#MedicPostersPage #po-preview', { timeout: 30000 });
-    await page.click('#MedicPostersPage #po-preview');
-    await page.waitForSelector('#MedicPostersPage #po-preview-img:not([hidden])', { timeout: 60000 });
-    const width = await page.locator('#MedicPostersPage #po-preview-img').evaluate((img) => img.naturalWidth);
-    expect(width === 240, 'preview is ' + width + ' px wide');
-    await page.click('#MedicPostersPage #po-preview-cover');
-    await page.waitForFunction(() => document.querySelector('#MedicPostersPage #po-preview-img').naturalWidth === 480, null, { timeout: 60000 });
-    const ours = errors.filter((e) => !/ResizeObserver|^CancelledError/i.test(e));
-    expect(ours.length === 0, ours.join(' | '));
-    return await page.locator('#MedicPostersPage #po-preview-info').textContent();
-});
 await openPage('Medic Picks settings', '/configurationpage?name=Medic%20Picks', '#MedicPicksConfigForm');
 
 await check('Medic Picks settings: the user boxes show, and a key that isn\'t saved says so', async () => {
@@ -1783,8 +1655,52 @@ await check('Medic Profiles says so when one of its lists can\'t be loaded', asy
     }
 });
 
+await check('Medic Profiles leaves a file Sonarr rejected unticked when importing by hand, and says why', async () => {
+    fakeArr.stuckImport.on = true;
+    try {
+        await page.goto(JF + '/web/index.html#/configurationpage?name=MedicProfiles');
+        await page.reload();
+        await page.waitForSelector('#MedicProfilesPage .mp-tab', { timeout: 30000 });
+        const card = page.locator('#mp-queue > li', { hasText: 'Fake.Show.S02E01.1080p' });
+        await card.getByRole('button', { name: 'Import manually' }).click({ timeout: 15000 });
+        const files = card.locator('.mp-file');
+        await files.nth(1).waitFor({ timeout: 15000 });
+        const seen = await files.evaluateAll((divs) => divs.map((d) => ({
+            name: d.querySelector('.mp-release').textContent, ticked: d.querySelector('input[type="checkbox"]').checked, text: d.textContent
+        })));
+        const fine = seen.find((f) => f.name === 'Fake.Show.S02E01.1080p.mkv');
+        const rejected = seen.find((f) => f.name === 'Fake.Show.S02E01.1080p.sample.mkv');
+        expect(fine?.ticked === true, 'the file Sonarr accepted: ' + JSON.stringify(fine));
+        // Sonarr matched it to the series, which used to tick it despite the rejection.
+        expect(rejected?.ticked === false, 'the rejected file: ' + JSON.stringify(rejected));
+        expect(rejected.text.includes('⚠ Sample') && rejected.text.includes('Left unticked because the app rejected it'), 'the rejected file says: ' + rejected.text);
+        return 'accepted file ticked, rejected file unticked with its reason';
+    } finally {
+        fakeArr.stuckImport.on = false;
+    }
+});
+
+await check('Medic Profiles Blocked tab says it shows only the newest 100 when Sonarr has more', async () => {
+    fakeArr.blocklist.total = 250;
+    try {
+        await page.goto(JF + '/web/index.html#/configurationpage?name=MedicProfiles');
+        await page.reload();
+        await page.waitForSelector('#MedicProfilesPage .mp-tab', { timeout: 30000 });
+        await page.click('#MedicProfilesPage .mp-tab[data-tab="blocked"]');
+        const note = page.locator('#mp-blocked-notes');
+        await note.waitFor({ state: 'visible', timeout: 10000 });
+        const text = await note.textContent();
+        expect(text.includes('Sonarr has 250 blocked releases; this shows the newest 100.'), 'note: ' + text);
+        const shown = await page.locator('#mp-blocked > li').count();
+        expect(shown === 100, `${shown} blocked releases listed`);
+        return 'note shown, 100 listed';
+    } finally {
+        fakeArr.blocklist.total = 0;
+    }
+});
+
 await check('Medic Profiles settings: Try qBittorrent again shows after a refusal and spends one sign-in a click', async () => {
-    const qbitServer = await fakeArr.startQbit(18080);
+    const qbitServer = await fakeArr.startQbit(P(18080));
     Object.assign(fakeArr.qbit, { logins: 0, failedLogins: 0 });
     try {
         await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, RadarrUrl: '', QbitUrl: ARR.replace(`:${P(18989)}`, `:${P(18080)}`), QbitUser: 'admin', QbitPassword: 'wrong' });
@@ -1805,6 +1721,84 @@ await check('Medic Profiles settings: Try qBittorrent again shows after a refusa
     }
 });
 
+await check('Medic Profiles can\'t save its settings: the old key stays with the old address, and the page says nothing was changed', async () => {
+    const status = () => ok('/MedicProfiles/Status');
+    const saved = await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, SonarrKey: 'test-key', RadarrUrl: '' });
+    expect(saved.status === 204, 'setting up: ' + saved.status);
+    // A folder where Jellyfin writes Medic Profiles' settings makes that write fail, as a full disk would.
+    const file = '/config/plugins/configurations/Jellyfin.Plugin.MedicProfiles.xml';
+    execFileSync('docker', ['exec', CONTAINER, 'sh', '-c', 'mv "$1" "$1.e2e-aside" && mkdir "$1"', 'sh', file]);
+    try {
+        const other = `http://host.docker.internal:${P(18994)}`;
+        const failed = await api('POST', '/MedicProfiles/Settings', { SonarrUrl: other, SonarrKey: 'other-key', RadarrUrl: '' });
+        expect(failed.status === 500 && /nothing was changed/.test(failed.json?.detail || ''), `failed save: ${failed.status} ${failed.text.slice(0, 200)}`);
+        const after = await status();
+        expect(after.sonarr.url === ARR && after.sonarr.keySet, 'settings after the failed save: ' + JSON.stringify(after.sonarr));
+        // The pretend Sonarr only takes test-key, so this passes only with the old key back.
+        const test = await api('POST', '/MedicProfiles/Test/sonarr');
+        expect(test.json?.ok, 'the old key was not put back: ' + test.text);
+
+        await page.goto(JF + '/web/index.html#/configurationpage?name=MedicProfiles');
+        await page.reload();
+        await page.waitForSelector('#MedicProfilesPage .mp-tab', { timeout: 30000 });
+        await page.click('#MedicProfilesPage .mp-tab[data-tab="settings"]');
+        await page.fill('#mp-sonarr-url', other);
+        await page.fill('#mp-sonarr-key', 'other-key');
+        await page.click('#mp-settings button[type="submit"]');
+        await page.locator('#mp-settings-note', { hasText: 'nothing was changed' }).waitFor({ timeout: 10000 });
+        return await page.locator('#mp-settings-note').textContent();
+    } finally {
+        execFileSync('docker', ['exec', CONTAINER, 'sh', '-c', 'rmdir "$1" && mv "$1.e2e-aside" "$1"', 'sh', file]);
+    }
+});
+
+await check('Medic Profiles import list: Change film on a rejected file imports only what the box shows', async () => {
+    const radarrServer = await fakeArr.startRadarr(P(18998));
+    fakeArr.radarr.commands.length = 0;
+    try {
+        const saved = await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, RadarrUrl: `http://host.docker.internal:${P(18998)}`, RadarrKey: 'test-key' });
+        expect(saved.status === 200 || saved.status === 204, `saving Radarr returned ${saved.status} ${saved.text.slice(0, 200)}`);
+        await page.goto(JF + '/web/index.html#/configurationpage?name=MedicProfiles');
+        await page.reload();
+        await page.waitForSelector('#MedicProfilesPage .mp-tab', { timeout: 30000 });
+        const card = page.locator('#mp-queue .mp-card', { hasText: 'Fake Film' });
+        await card.getByRole('button', { name: 'Import manually' }).click({ timeout: 15000 });
+        const file = card.locator('.mp-file');
+        await file.waitFor({ timeout: 15000 });
+        const box = file.locator('input[type="checkbox"]').first();
+        const untickedNote = file.getByText('Left unticked because the app rejected it');
+        expect(!(await box.isChecked()), 'a rejected file started ticked');
+
+        await file.getByRole('button', { name: 'Change film' }).click();
+        await file.locator('input[type="search"]').fill('fake');
+        await file.getByRole('button', { name: 'Fake Film (2001)' }).click({ timeout: 10000 });
+        await file.getByText('Is: Fake Film (2001)').waitFor({ timeout: 5000 });
+        const ticked = await box.isChecked();
+        const noteShown = await untickedNote.isVisible();
+        expect(noteShown === !ticked, `the box is ${ticked ? 'ticked' : 'unticked'} but the "left unticked" note is ${noteShown ? 'shown' : 'gone'}`);
+
+        await card.getByRole('button', { name: 'Import', exact: true }).click();
+        await card.locator('.mp-note.ok, .mp-note.bad').waitFor({ timeout: 10000 });
+        await sleep(500);
+        const sent = fakeArr.radarr.commands.flatMap((c) => c.files || []);
+        expect(sent.length === (ticked ? 1 : 0), `with the box ${ticked ? 'ticked' : 'unticked'}, Import sent ${sent.length} file(s)`);
+
+        // Ticking it by hand still imports it, as the film chosen.
+        if (!ticked) {
+            await box.check();
+            expect(!(await untickedNote.isVisible()), 'the "left unticked" note stayed after ticking the box');
+            await card.getByRole('button', { name: 'Import', exact: true }).click();
+            await card.locator('.mp-note.ok').waitFor({ timeout: 10000 });
+            const after = fakeArr.radarr.commands.flatMap((c) => c.files || []);
+            expect(after.length === 1 && after[0].movieId === 7, `ticked, Import sent ${JSON.stringify(after)}`);
+        }
+        return ticked ? 'picking the film ticked it' : 'stays unticked until ticked, then imported as film 7';
+    } finally {
+        await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, RadarrUrl: '' });
+        radarrServer.close();
+    }
+});
+
 await check('My picks page opens signed in', async () => {
     errors.length = 0;
     await page.goto(JF + '/MedicPicks/Page');
@@ -1817,8 +1811,7 @@ await check('schedule Preview: choosing per task updates the plan', async () => 
     errors.length = 0;
     await page.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
     await page.waitForSelector('#JellyfinMedicPage .so-tab', { timeout: 30000 });
-    const gotIt = page.locator('#md-whatsnew-close');
-    if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
+    await settleWhatsNew(page);
     await page.click('#JellyfinMedicPage .so-tab[data-tab="schedule"]');
     await page.click('#md-preview');
     await page.locator('#md-preview-box select').first().waitFor({ timeout: 30000 });
@@ -1833,6 +1826,36 @@ await check('schedule Preview: choosing per task updates the plan', async () => 
     await sleep(1500);
     const ours = errors.filter((e) => !/ResizeObserver|^CancelledError/i.test(e));
     expect(ours.length === 0, ours.join(' | '));
+});
+
+await check('schedule Apply refuses a plan that changed since the preview, and shows the new one', async () => {
+    const triggers = async () => JSON.stringify((await ok('/ScheduledTasks'))
+        .map((t) => [t.Id, t.Triggers])
+        .sort((a, b) => a[0].localeCompare(b[0])));
+    const scan = (await ok('/ScheduledTasks')).find((t) => t.Key === 'RefreshLibrary');
+    const same = (a, b) => a.replace(/-/g, '').toLowerCase() === b.replace(/-/g, '').toLowerCase();
+    const was = (await ok('/JellyfinMedic/Schedule/PreviewScheduleDiff')).SchedulePlan.find((p) => same(p.TaskId, scan.Id)).Choice;
+    const to = was === 'off' ? 'keep' : 'off';
+    await medicTab('schedule');
+    await page.click('#md-preview');
+    const scanChoice = page.locator('#md-preview-box tbody tr', { hasText: scan.Name }).locator('select');
+    await scanChoice.waitFor({ timeout: 30000 });
+    const before = await triggers();
+    const accept = (dialog) => dialog.accept();
+    page.on('dialog', accept);
+    try {
+        // Another tab changes a choice after this preview was shown.
+        expect((await api('POST', `/JellyfinMedic/Schedule/SetChoice?taskId=${scan.Id}&choice=${to}`)).status === 200, 'SetChoice failed');
+        await page.click('#md-preview-box button:has-text("Apply these changes")');
+        await page.waitForFunction(() => /Preview again/.test(document.querySelector('#JellyfinMedicPage .so-status')?.textContent || ''), null, { timeout: 30000 });
+        await page.waitForFunction(([n, v]) => Array.from(document.querySelectorAll('#md-preview-box tbody tr'))
+            .some((tr) => tr.cells[0].textContent === n && tr.querySelector('select').value === v), [scan.Name, to], { timeout: 30000 });
+        expect(await triggers() === before, 'triggers changed although the plan was stale');
+    } finally {
+        page.off('dialog', accept);
+        await api('POST', `/JellyfinMedic/Schedule/SetChoice?taskId=${scan.Id}&choice=${was}`);
+    }
+    return 'nothing applied, and the preview shows the new plan';
 });
 
 await check('schedule lists the tasks with no time set, with what each does and a recommendation', async () => {
@@ -1852,8 +1875,7 @@ await check('exposure check result says when it only tested from this server', a
     errors.length = 0;
     await page.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
     await page.waitForSelector('#JellyfinMedicPage .so-tab', { timeout: 30000 });
-    const gotIt = page.locator('#md-whatsnew-close');
-    if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
+    await settleWhatsNew(page);
     await page.click('#JellyfinMedicPage .so-tab[data-tab="dashboard"]');
     await sleep(2000); // the boxes fill in from Medic's suggestions first
     await page.fill('#md-expose-host', 'medic-e2e.invalid');
@@ -1936,23 +1958,36 @@ await check('Medic stops polling while its browser tab is hidden and after you l
     }
 });
 
-// Opens Medic's page on a tab, closing "What's new" if it's showing. Fresh reloads it, so nothing the
-// page kept from an earlier visit (the films it found, say) is reused.
-async function medicTab(name, fresh) {
-    await page.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
-    if (fresh) await page.reload();
-    await page.waitForSelector('#JellyfinMedicPage .so-tab', { timeout: 30000 });
-    // On a first visit "What's new" opens a moment after the page and covers the tabs: close it whenever it shows.
-    const gotIt = page.locator('#md-whatsnew-close');
-    for (let attempt = 1; ; attempt++) {
-        if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
-        try {
-            await page.click(`#JellyfinMedicPage .so-tab[data-tab="${name}"]`, { timeout: 5000 });
-            return;
-        } catch (e) {
-            if (attempt === 3) throw e;
-        }
+// Medic's page shows "What's new" once per person per version, a moment after it opens, and tells the server
+// once it's on screen. Call this on an open Medic page: while the server says this version isn't seen yet, it
+// waits for the box to open and closes it, so the box can't open later over what a check clicks. A box that
+// never opens for an unseen version fails here, as that is a regression of its own.
+async function settleWhatsNew(p) {
+    const info = await ok('/JellyfinMedic/Version');
+    if (info.SeenVersion !== info.Version) {
+        const opened = await p.waitForSelector('#md-whatsnew:not([hidden])', { timeout: 15000 }).then(() => true, () => false);
+        expect(opened, `"What's new" didn't open for ${info.Version}, which the server says this person hasn't seen (last seen: ${info.SeenVersion || 'none'})`);
     }
+    const close = p.locator('#md-whatsnew-close:visible');
+    if (await close.count()) await close.click();
+}
+
+// Opens Medic's page on a tab, closing "What's new" if it's showing. Fresh reloads it, so nothing the
+// page kept from an earlier visit (the films it found, say) is reused. p is another signed-in page, when given.
+async function medicTab(name, fresh, p = page) {
+    await p.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
+    if (fresh) {
+        // Coming from a page outside the web app (My picks, say), the goto is a full load, and the web app checks
+        // its saved sign-in with GET /System/Info as it starts. A reload that cuts that request off makes it
+        // fail, and the web app then drops the saved token for good (it clears it on any failure, not only on
+        // a 401), so this page and every later check land on the sign-in screen. The page showing means the
+        // check is done.
+        await p.waitForSelector('#JellyfinMedicPage .so-tab', { timeout: 30000 });
+        await p.reload();
+    }
+    await p.waitForSelector('#JellyfinMedicPage .so-tab', { timeout: 30000 });
+    await settleWhatsNew(p);
+    await p.click(`#JellyfinMedicPage .so-tab[data-tab="${name}"]`);
 }
 
 // Signs in as the test admin in a new browser context, for checks that need their own clock or time zone.
@@ -2138,8 +2173,7 @@ await check('Medic dashboard: Today moves with the clock in server time, and fet
         p.on('request', (r) => { if (/\/JellyfinMedic\/Dashboard(\?|$)/.test(r.url())) fetches++; });
         await p.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
         await p.waitForSelector('#JellyfinMedicPage #md-day .md-now-line', { timeout: 30000 });
-        const gotIt = p.locator('#md-whatsnew-close');
-        if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
+        await settleWhatsNew(p);
         const data = await ok('/JellyfinMedic/Dashboard');
         const left = () => p.evaluate(() => parseFloat(document.querySelector('#JellyfinMedicPage #md-day .md-now-line').style.left));
         const first = await left();
@@ -2170,6 +2204,115 @@ await check('Medic dashboard: Today moves with the clock in server time, and fet
         });
         expect(banner === '', 'a failed background fetch left this on the page: ' + banner);
         return `now line ${first.toFixed(2)}% to ${moved.toFixed(2)}% after 4 minutes, fetched again quietly after 6`;
+    } finally {
+        await ctx.close();
+    }
+});
+
+await check('Medic times: on the server\'s zone across a daylight saving change, before the report loads, in the finish estimate and a since date', async () => {
+    // The container runs in UTC, which has no daylight saving, so the answers say New York instead. The browser is in
+    // Tokyo, and its clock is fixed at 02:00 UTC on 17 Oct 2026: 22:00 on Friday 16 Oct in New York (UTC-4).
+    const zone = 'America/New_York', offset = -240;
+    const ctx = await browser.newContext({ locale: 'en-GB', timezoneId: 'Asia/Tokyo' });
+    await ctx.clock.setFixedTime(new Date('2026-10-17T02:00:00Z'));
+    try {
+        const p = await adminPage(ctx);
+        let release;
+        const held = new Promise((r) => { release = r; });
+        await p.route(REPORT, async (route) => {
+            const res = await route.fetch();
+            const json = await res.json();
+            await held;
+            await route.fulfill({ response: res, json: { ...json, TimeZoneId: zone, UtcOffsetMinutes: offset } });
+        });
+        await p.route('**/JellyfinMedic/Dashboard', async (route) => {
+            const res = await route.fetch();
+            await route.fulfill({ response: res, json: { ...(await res.json()), UtcOffsetMinutes: offset } });
+        });
+        // 12:00 UTC on 15 Jan is 07:00 in New York's winter time, an hour off at today's offset.
+        await p.route('**/JellyfinMedic/Schedule/GetRunHistory**', async (route) => {
+            const res = await route.fetch();
+            const json = await res.json();
+            const run = { TaskName: 'E2E winter run', Status: 'Completed', EndUtc: '2026-01-15T12:00:00Z', DurationSeconds: 5 };
+            await route.fulfill({ response: res, json: { ...json, Runs: [run, ...(json.Runs || [])] } });
+        });
+        // 03:30 UTC on 8 Mar is still 7 Mar in New York.
+        await p.route('**/JellyfinMedic/Weekly', async (route) => {
+            const res = await route.fetch();
+            await route.fulfill({ response: res, json: { ...(await res.json()), Since: '2026-03-08T03:30:00Z' } });
+        });
+        // An hour left: 23:00 in New York, 12:00 in Tokyo.
+        await p.route('**/JellyfinMedic/Tracks/Progress', (route) => route.fulfill({
+            json: { Running: true, DryRun: false, Total: 10, Done: 4, BytesTotal: 1e9, BytesDone: 4e8, SecondsLeft: 3600, Changed: 0, Recent: [] }
+        }));
+
+        await p.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
+        await p.waitForSelector('#JellyfinMedicPage .so-tab', { timeout: 30000 });
+        await settleWhatsNew(p);
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="history"]');
+        const winterCell = '#JellyfinMedicPage #md-hist-runs tr:first-child td:first-child';
+        await p.waitForFunction((sel) => /15 Jan/.test(document.querySelector(sel)?.textContent || ''), winterCell, { timeout: 30000 });
+        const early = await p.textContent(winterCell);
+        release();
+        await p.waitForFunction((sel) => /07:00/.test(document.querySelector(sel)?.textContent || ''), winterCell, { timeout: 30000 })
+            .catch(async () => { throw new Error(`the winter run shows ${await p.textContent(winterCell)}, not 07:00 New York time (before the report: ${early})`); });
+        const note = await p.textContent('#JellyfinMedicPage .so-tabpanel[data-panel="history"] .md-zone');
+        expect(note.includes(zone), 'the History note does not name the server\'s zone: ' + note);
+
+        // The banner asks every 4 seconds, so give it two rounds after the report.
+        const activityText = () => p.textContent('#JellyfinMedicPage #md-activity-text');
+        await p.waitForFunction(() => /done around 23:00\b/.test(document.querySelector('#JellyfinMedicPage #md-activity-text')?.textContent || ''), null, { timeout: 10000 })
+            .catch(async () => { throw new Error('the finish estimate is not on the server\'s clock: ' + await activityText()); });
+        const activity = await activityText();
+
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="dashboard"]');
+        await p.waitForFunction(() => /^Since /.test(document.querySelector('#JellyfinMedicPage #md-week p')?.textContent || ''), null, { timeout: 30000 });
+        const since = await p.textContent('#JellyfinMedicPage #md-week p');
+        expect(since === 'Since 7 Mar:', 'the week\'s since date is not the server\'s: ' + since);
+        const real = await ok('/JellyfinMedic/Report');
+        expect(typeof real.TimeZoneId === 'string' && real.TimeZoneId, 'the report does not say the server\'s zone: ' + real.TimeZoneId);
+        return `winter run ${early} before the report, then on New York time; ${activity.match(/done around [^·]*/)[0].trim()}; ${since}; the container says ${real.TimeZoneId}`;
+    } finally {
+        await ctx.close();
+    }
+});
+
+await check('Medic times: a page error while redrawing for the server\'s clock is not reported as the Dashboard or the checks failing', async () => {
+    // History's data makes it throw whenever it's drawn. The Dashboard and then the report are let through once History
+    // is on screen, and each moves the page to the server's clock, which draws History again.
+    const ctx = await browser.newContext({ locale: 'en-GB', timezoneId: 'Asia/Tokyo' });
+    try {
+        const p = await adminPage(ctx);
+        const gate = () => { let open; const shut = new Promise((r) => { open = r; }); return { open, shut }; };
+        const dashGate = gate(), reportGate = gate();
+        await p.route('**/JellyfinMedic/Dashboard', async (route) => { const res = await route.fetch(); await dashGate.shut; await route.fulfill({ response: res }); });
+        await p.route(REPORT, async (route) => { const res = await route.fetch(); await reportGate.shut; await route.fulfill({ response: res }); });
+        await p.route('**/JellyfinMedic/Schedule/GetRunHistory**', (route) => route.fulfill({ json: { Summary: [], Runs: 'not a list' } }));
+        await p.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
+        await p.waitForSelector('#JellyfinMedicPage .so-tab', { timeout: 30000 });
+        await p.evaluate(() => {
+            const s = document.querySelector('#JellyfinMedicPage #so-status');
+            window.e2eStatuses = [];
+            new MutationObserver(() => { if (!s.hidden) window.e2eStatuses.push(s.textContent); }).observe(s, { childList: true, characterData: true, subtree: true, attributes: true });
+        });
+        const historyRead = p.waitForResponse(/\/JellyfinMedic\/Schedule\/GetRunHistory/, { timeout: 30000 });
+        await settleWhatsNew(p);
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="history"]');
+        await historyRead;
+        await p.waitForTimeout(300);
+        const zoneNote = () => p.textContent('#JellyfinMedicPage .so-tabpanel[data-panel="history"] .md-zone');
+        dashGate.open();
+        await p.waitForFunction(() => /server's/.test(document.querySelector('#JellyfinMedicPage .so-tabpanel[data-panel="history"] .md-zone')?.textContent || ''), null, { timeout: 30000 })
+            .catch(async () => { throw new Error('the Dashboard\'s offset never reached the page: ' + await zoneNote()); });
+        await p.waitForTimeout(500);
+        reportGate.open();
+        await p.waitForFunction(() => /^Last checked/.test(document.querySelector('#JellyfinMedicPage #md-checked')?.textContent || '') ||
+            window.e2eStatuses.some((t) => /checks couldn't run|couldn't show their results/.test(t)), null, { timeout: 60000 });
+        const checked = await p.textContent('#JellyfinMedicPage #md-checked');
+        const statuses = await p.evaluate(() => window.e2eStatuses);
+        expect(!statuses.some((t) => /Couldn't load the Dashboard|checks couldn't run|couldn't show their results/.test(t)), 'a redraw error was reported as a failed load: ' + statuses.join(' | '));
+        expect(/^Last checked/.test(checked), 'the report was not shown: ' + checked);
+        return `${statuses.length} messages, none a failed load; ${checked}`;
     } finally {
         await ctx.close();
     }
@@ -2252,6 +2395,9 @@ await check('Dashboard panels: a panel that fails to draw says so, and the panel
     try {
         await medicTab('dashboard', true);
         await page.waitForFunction(() => /Couldn't show this panel/.test(document.getElementById('md-today-summary')?.textContent || ''), null, { timeout: 30000 });
+        // The answered Dashboard is drawn long before the report, which runs the checks, comes back: its "Checking your
+        // setup" is no error, so the banner is read once the report has come back.
+        await reportOutcome(page);
         const seen = await page.evaluate(() => ({
             later: ['md-net-big', 'md-busy-summary', 'md-people-big'].map((id) => document.getElementById(id).textContent),
             banner: (() => { const b = document.querySelector('#JellyfinMedicPage #so-status'); return b && !b.hidden ? b.textContent : ''; })()
@@ -2427,6 +2573,41 @@ await check('Dashboard panels: Today draws a cancelled run as cancelled, not as 
     }
 });
 
+await check('Dashboard panels: Today says a run started before midnight, and names a plan whose runs were all cancelled', async () => {
+    const data = await ok('/JellyfinMedic/Dashboard');
+    const runs = [
+        { TaskId: 'e2e-overnight', TaskName: 'Fixture overnight', StartMinutes: 0, EndMinutes: 45, StartedBeforeToday: true, Status: 'Completed', ErrorMessage: null },
+        { TaskId: 'e2e-overnight-running', TaskName: 'Fixture still going', StartMinutes: 0, EndMinutes: 60, StartedBeforeToday: true, Status: 'Running', ErrorMessage: null }
+    ];
+    const plan = { TaskId: 'e2e-plan-cancelled', TaskName: 'Fixture plan cancelled', StartMinutes: 200, DurationMinutes: 20, Category: 'upkeep', Kind: 'trigger', Status: 'cancelled' };
+    await page.route('**/JellyfinMedic/Dashboard', (route) => route.fulfill({ json: { ...data, Today: { ...data.Today, Planned: [...data.Today.Planned, plan], Actual: [...data.Today.Actual, ...runs] } } }));
+    try {
+        await medicTab('dashboard', true);
+        await page.waitForFunction(() => /Fixture plan cancelled/.test(Array.from(document.querySelectorAll('#md-day .md-planned')).map((b) => b.getAttribute('aria-label')).join('|')), null, { timeout: 30000 });
+        const seen = await page.evaluate(() => {
+            const label = (sel, name) => {
+                const b = Array.from(document.querySelectorAll(sel)).find((x) => (x.getAttribute('aria-label') || '').startsWith(name));
+                return b ? { label: b.getAttribute('aria-label'), classes: b.className, fill: getComputedStyle(b).backgroundColor } : null;
+            };
+            const legend = document.querySelector('.md-sw-stopped');
+            return {
+                overnight: label('#md-day .md-actual', 'Fixture overnight'),
+                running: label('#md-day .md-actual', 'Fixture still going'),
+                plan: label('#md-day .md-planned', 'Fixture plan cancelled'),
+                stoppedFill: legend ? getComputedStyle(legend).backgroundColor : null
+            };
+        });
+        expect(seen.overnight && /^Fixture overnight: completed, from before midnight to (00:45|12:45 am)$/.test(seen.overnight.label), 'the run from before midnight: ' + JSON.stringify(seen.overnight));
+        expect(seen.running && seen.running.label === 'Fixture still going: running since before midnight', 'the run still going since before midnight: ' + JSON.stringify(seen.running));
+        expect(seen.plan && /^Fixture plan cancelled, planned at (03:20|3:20 am): started but was cancelled$/.test(seen.plan.label), 'the cancelled plan: ' + JSON.stringify(seen.plan));
+        expect(/\bmd-plan-cancelled\b/.test(seen.plan.classes), 'the cancelled plan has no style of its own: ' + seen.plan.classes);
+        expect(seen.stoppedFill && seen.plan.fill === seen.stoppedFill, `the cancelled plan is filled ${seen.plan.fill}, the legend's "Stopped or cancelled" ${seen.stoppedFill}`);
+        return seen.overnight.label + '; ' + seen.plan.label;
+    } finally {
+        await page.unroute('**/JellyfinMedic/Dashboard');
+    }
+});
+
 await check('Dashboard panels: when the live readings stop updating, the Dashboard says so, and the note goes when they come back', async () => {
     await page.route('**/JellyfinMedic/Dashboard/Live', (route) => route.fulfill({ status: 500, body: '' }));
     let routed = true;
@@ -2499,8 +2680,7 @@ await check('Dashboard panels: the 5-minute refresh keeps the keyboard on the ru
         p.on('request', (r) => { if (/\/JellyfinMedic\/Dashboard(\?|$)/.test(r.url())) fetches++; });
         await p.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
         await p.waitForSelector('#JellyfinMedicPage #md-day .md-run-failed', { timeout: 30000 });
-        const gotIt = p.locator('#md-whatsnew-close');
-        if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
+        await settleWhatsNew(p);
         const refresh = async () => {
             const before = fetches;
             await p.clock.fastForward('05:30');
@@ -2538,8 +2718,7 @@ await check('Dashboard panels: at the server\'s midnight Today fetches the new d
         await p.route('**/JellyfinMedic/Dashboard', (route) => route.fulfill({ json: served++ === 0 ? late : next }));
         await p.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');
         await p.waitForSelector('#JellyfinMedicPage #md-day .md-now-line', { timeout: 30000 });
-        const gotIt = p.locator('#md-whatsnew-close');
-        if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
+        await settleWhatsNew(p);
         expect(served === 1, `the data was fetched ${served} times on opening`);
         // Three minutes is under the 5-minute refresh: only the end of the server's day can make the page fetch again.
         await p.clock.fastForward('03:00');
@@ -2673,6 +2852,27 @@ await check('Dashboard panels: Disk trend marks the days Medic freed space', asy
             .map((d) => ({ lines: d.querySelectorAll('.md-line-freed').length, label: d.querySelector('svg[role="img"]').getAttribute('aria-label') }))[0]);
         expect(marked && marked.lines === 1 && /freed space on 1 day/.test(marked.label), 'the freed day on the fixture drive: ' + JSON.stringify(marked));
         return 'marked ' + day;
+    } finally {
+        await page.unroute('**/JellyfinMedic/Dashboard');
+    }
+});
+
+await check('Dashboard panels: the Disks tile keeps the fullest drive in view while another is missing', async () => {
+    const data = await ok('/JellyfinMedic/Dashboard');
+    // No drive goes missing on the e2e server, nor fills this fast: serve one nearly full, beside one that didn't mount.
+    const series = [{ Day: new Date().toISOString().slice(0, 10), FreeGb: 10 }];
+    const full = { Key: '/mnt/films', Holds: 'Full films', Missing: false, Path: '', FreeGb: 10, TotalGb: 1000, GbPerDay: 20, DaysToFull: 0.5, Series: series };
+    const missing = { Key: '/mnt/gone', Holds: 'Gone shows', Missing: true, Path: '/mnt/gone/shows', FreeGb: 500, TotalGb: 0, GbPerDay: null, DaysToFull: null, Series: series };
+    await page.route('**/JellyfinMedic/Dashboard', (route) => route.fulfill({ json: { ...data, Disks: { ...data.Disks, Drives: [missing, full] } } }));
+    try {
+        await medicTab('dashboard', true);
+        await page.waitForFunction(() => /missing/.test(document.getElementById('md-disks-big')?.textContent || ''), null, { timeout: 30000 });
+        const big = (await page.textContent('#md-disks-big')).trim();
+        const text = (await page.textContent('#md-disks-text')).trim();
+        expect(big === '1 drive missing', 'the tile: ' + big);
+        expect(/Gone shows: its folder can't be found/.test(text), 'the missing drive is not named: ' + text);
+        expect(/Full films: 1% free, full in about 1 day/.test(text), 'the nearly full drive is not shown: ' + text);
+        return text;
     } finally {
         await page.unroute('**/JellyfinMedic/Dashboard');
     }
@@ -3070,6 +3270,229 @@ await check('Tracks: unsaved track settings are saved before a scan or a run sta
         page.off('request', watch);
         page.off('dialog', accept);
         await page.unroute('**/JellyfinMedic/Tracks/Run?*');
+        await api('POST', '/JellyfinMedic/MedicSettings', before);
+    }
+});
+
+// ---------- Medic page actions ----------
+
+// The page signed in on its own, with the report's findings replaced by these and Ignore answered without saving.
+async function pageWithFindings(ctx, findings) {
+    const p = await adminPage(ctx);
+    const real = await ok('/JellyfinMedic/Report');
+    await p.route(REPORT, (route) => route.fulfill({ json: { ...real, Findings: findings } }));
+    await p.route(/\/JellyfinMedic\/Ignore(\?|$)/, (route) => route.fulfill({ json: { Ok: true } }));
+    return p;
+}
+
+const fixtureFinding = (key, area, extra) => ({ Key: key, Severity: 'Problem', Area: area, Title: 'Fixture ' + key, Why: 'An e2e fixture.', ...extra });
+
+// Where the keyboard is: the key of the item it's in, the table row it's in, and the focused element's text.
+const focusedItem = (p) => p.evaluate(() => {
+    const a = document.activeElement;
+    const item = a && a.closest('[data-key]');
+    const row = a && a.closest('tr');
+    return { key: item && item.getAttribute('data-key'), row: row && row.textContent, text: (a && a.textContent || '').trim() };
+});
+
+// Waits for the page's status line to show something other than "Checking your setup", and returns it.
+async function settledStatus(p) {
+    await p.waitForFunction(() => {
+        const s = document.querySelector('#JellyfinMedicPage #so-status');
+        return s && !s.hidden && !/Checking your setup/.test(s.textContent);
+    }, null, { timeout: 30000 });
+    await p.waitForTimeout(500);
+    return p.evaluate(() => {
+        const s = document.querySelector('#JellyfinMedicPage #so-status');
+        return { text: s.hidden ? '' : s.textContent, error: s.classList.contains('error') };
+    });
+}
+
+await check('Medic page actions: Ignore on the last finding of an area moves the keyboard to the next finding, and on the last one to the one before', async () => {
+    const ctx = await browser.newContext({ locale: 'en-GB' });
+    try {
+        const p = await pageWithFindings(ctx, [
+            fixtureFinding('e2e-a1', 'Fixture Alpha'), fixtureFinding('e2e-a2', 'Fixture Alpha'),
+            fixtureFinding('e2e-b1', 'Fixture Beta'), fixtureFinding('e2e-b2', 'Fixture Beta')]);
+        await medicTab('recs', false, p);
+        await p.click('#so-recs .so-card[data-key="e2e-a2"] .so-ignore-btn', { timeout: 30000 });
+        await p.waitForSelector('#so-recs .so-card[data-key="e2e-a2"]', { state: 'detached' });
+        const first = await focusedItem(p);
+        expect(first.key === 'e2e-b1', `after ignoring the last of its area, focus is on "${first.key}", expected e2e-b1`);
+        await p.click('#so-recs .so-card[data-key="e2e-b2"] .so-ignore-btn');
+        await p.waitForSelector('#so-recs .so-card[data-key="e2e-b2"]', { state: 'detached' });
+        const second = await focusedItem(p);
+        expect(second.key === 'e2e-b1', `after ignoring the last finding, focus is on "${second.key}", expected e2e-b1`);
+        return 'next area, then back';
+    } finally {
+        await ctx.close();
+    }
+});
+
+await check('Medic page actions: Ignore in the Dashboard\'s top issues moves the keyboard to the next issue, and on the last one to the one before', async () => {
+    const ctx = await browser.newContext({ locale: 'en-GB' });
+    try {
+        const p = await pageWithFindings(ctx, ['e2e-p1', 'e2e-p2', 'e2e-p3', 'e2e-p4'].map((k) => fixtureFinding(k, 'Fixture')));
+        await medicTab('dashboard', false, p);
+        const ignore = (key) => p.click(`#md-issues li[data-key="${key}"] button:has-text("Ignore")`, { timeout: 30000 });
+        await ignore('e2e-p1');
+        await p.waitForSelector('#md-issues li[data-key="e2e-p1"]', { state: 'detached' });
+        const first = await focusedItem(p);
+        expect(first.key === 'e2e-p2' && first.text === 'Ignore', `after the first issue, focus is on ${JSON.stringify(first)}, expected e2e-p2's Ignore`);
+        await ignore('e2e-p4');
+        await p.waitForSelector('#md-issues li[data-key="e2e-p4"]', { state: 'detached' });
+        const second = await focusedItem(p);
+        expect(second.key === 'e2e-p3' && second.text === 'Ignore', `after the last issue, focus is on ${JSON.stringify(second)}, expected e2e-p3's Ignore`);
+        return 'next issue, then back';
+    } finally {
+        await ctx.close();
+    }
+});
+
+await check('Medic page actions: Dismiss on a setting\'s advice moves the keyboard to the next setting\'s advice', async () => {
+    const ctx = await browser.newContext({ locale: 'en-GB' });
+    try {
+        const names = ['E2eFixtureOne', 'E2eFixtureTwo', 'E2eFixtureThree'];
+        const p = await pageWithFindings(ctx, names.map((n, i) => fixtureFinding('e2e-s' + i, 'Fixture', { Setting: 'Fixture|' + n })));
+        await p.route(/\/JellyfinMedic\/JellyfinSettings(\?|$)/, (route) => route.fulfill({ json: names.map((n) => ({ Section: 'Fixture', Name: n, Value: '1' })) }));
+        await medicTab('settings', false, p);
+        const row = (n) => p.locator('#so-settings-body tr', { hasText: n });
+        await row('E2eFixtureOne').locator('button:has-text("Dismiss")').click({ timeout: 30000 });
+        await row('E2eFixtureOne').locator('button:has-text("Show again")').waitFor();
+        const focused = await focusedItem(p);
+        expect(/E2eFixtureTwo/.test(focused.row || '') && focused.text === 'Dismiss', `focus is on ${JSON.stringify(focused)}, expected the second setting's Dismiss`);
+        return 'on the next setting';
+    } finally {
+        await ctx.close();
+    }
+});
+
+await check('Medic page actions: "Fixed it" takes an empty answer as done, and says so only when the checks load again', async () => {
+    const ctx = await browser.newContext({ locale: 'en-GB' });
+    try {
+        const p = await pageWithFindings(ctx, [fixtureFinding('e2e-log', 'Logs')]);
+        let reportDown = false;
+        const real = await ok('/JellyfinMedic/Report');
+        // An empty 204, as an endpoint with nothing to say answers.
+        await p.route(/\/JellyfinMedic\/Logs\/ResetCount(\?|$)/, (route) => route.fulfill({ status: 204, body: '' }));
+        await p.route(REPORT, (route) => (reportDown
+            ? route.fulfill({ status: 500, json: { detail: 'E2E report down' } })
+            : route.fulfill({ json: { ...real, Findings: [fixtureFinding('e2e-log', 'Logs')] } })));
+        await medicTab('recs', false, p);
+        const fixed = p.locator('#so-recs .so-card[data-key="e2e-log"] button:has-text("Fixed it")');
+        await fixed.click({ timeout: 30000 });
+        const done = await settledStatus(p);
+        expect(!done.error && /counts repeated log errors again/.test(done.text), 'after an empty answer: ' + JSON.stringify(done));
+        // The next reload fails: its error stays, with no word that it worked.
+        reportDown = true;
+        await fixed.click();
+        const failed = await settledStatus(p);
+        expect(failed.error && /checks couldn't run/.test(failed.text), 'after a failed reload: ' + JSON.stringify(failed));
+        return 'empty answer done; failed reload left its error';
+    } finally {
+        await ctx.close();
+    }
+});
+
+await check('Medic page actions: Ignore, the schedule, the settings file, a tab, the changelog and a track\'s language show the server\'s reason when they fail', async () => {
+    const ctx = await browser.newContext({ locale: 'en-GB' });
+    const missing = [];
+    const refuse = (reason) => (route) => route.fulfill({ status: 400, json: { title: 'Bad Request', status: 400, detail: reason } });
+    try {
+        const p = await pageWithFindings(ctx, [fixtureFinding('e2e-r1', 'Fixture')]);
+        await p.unroute(/\/JellyfinMedic\/Ignore(\?|$)/);
+        await p.route(/\/JellyfinMedic\/Ignore(\?|$)/, refuse('E2E reason ignore'));
+        await p.route(/\/JellyfinMedic\/Schedule\/GetCalendar(\?|$)/, refuse('E2E reason schedule'));
+        await p.route(/\/JellyfinMedic\/Export(\?|$)/, refuse('E2E reason export'));
+        await p.route(/\/JellyfinMedic\/Iptv(\?|$)/, refuse('E2E reason tab'));
+        await p.route(/\/JellyfinMedic\/Version\?all=true/, refuse('E2E reason changelog'));
+        await p.route(/\/JellyfinMedic\/Tracks\/RenameSubtitle(\?|$)/, refuse('E2E reason rename'));
+        await p.route(/\/JellyfinMedic\/Tracks\/SetLanguage(\?|$)/, refuse('E2E reason language'));
+        await p.route(/\/JellyfinMedic\/Tracks\/Scan\/Untagged(\?|$)/, (route) => route.fulfill({ json: { Total: 2, Page: 1, Pages: 1, Items: [
+            { Title: 'E2E external', FileName: 'E2E external.mkv', External: true, ExternalPath: '/media/movies/E2E external.srt', Kind: 'subtitle', Codec: 'subrip' },
+            { Title: 'E2E embedded', FileName: 'E2E embedded.mkv', Path: '/media/movies/E2E embedded.mkv', Index: 1, Kind: 'audio', Codec: 'aac', Channels: 2 }] } }));
+        const statusShows = async (reason) => {
+            try {
+                await p.waitForFunction((r) => (document.querySelector('#JellyfinMedicPage #so-status')?.textContent || '').includes(r), reason, { timeout: 15000 });
+            } catch { missing.push(reason + ' (status: ' + await p.textContent('#JellyfinMedicPage #so-status') + ')'); }
+        };
+
+        await medicTab('recs', false, p);
+        await p.click('#so-recs .so-card[data-key="e2e-r1"] .so-ignore-btn', { timeout: 30000 });
+        await statusShows('E2E reason ignore');
+
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="schedule"]');
+        await statusShows('E2E reason schedule');
+
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="plugins"]');
+        await p.click('#md-export');
+        await statusShows('E2E reason export');
+
+        // A tab whose data doesn't load, IPTV here.
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="iptv"]');
+        await statusShows('E2E reason tab');
+
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="settings"]');
+        await p.click('#md-changelog-all');
+        await statusShows('E2E reason changelog');
+
+        // The list of untagged tracks, drawn from the answer above; the panel may stay hidden, so the buttons are
+        // pressed by their click event.
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="tracks"]');
+        await p.evaluate(() => document.getElementById('md-untag-kind').dispatchEvent(new Event('change')));
+        const note = (title) => p.locator('#md-untag-body tr', { hasText: title }).locator('td:last-child > div:last-child');
+        await p.locator('#md-untag-body tr', { hasText: 'E2E external' }).locator('button').dispatchEvent('click', {}, { timeout: 15000 });
+        await p.locator('#md-untag-body tr', { hasText: 'E2E embedded' }).locator('button').dispatchEvent('click');
+        for (const [title, reason] of [['E2E external', 'E2E reason rename'], ['E2E embedded', 'E2E reason language']]) {
+            try {
+                await p.waitForFunction(([t, r]) => Array.from(document.querySelectorAll('#md-untag-body tr'))
+                    .some((tr) => tr.textContent.includes(t) && tr.lastElementChild.lastElementChild.textContent.includes(r)), [title, reason], { timeout: 15000 });
+            } catch { missing.push(reason + ' (note: ' + await note(title).textContent() + ')'); }
+        }
+        expect(missing.length === 0, 'reasons not shown: ' + missing.join(' | '));
+        return 'all seven name the server\'s reason';
+    } finally {
+        await ctx.close();
+    }
+});
+
+await check('Medic page actions: a track setting changed while a save is on its way stays on screen, unsaved', async () => {
+    const before = await ok('/JellyfinMedic/MedicSettings');
+    const ctx = await browser.newContext({ locale: 'en-GB' });
+    try {
+        const p = await adminPage(ctx);
+        let release;
+        const held = new Promise((r) => { release = r; });
+        const posts = [];
+        await p.route(/\/JellyfinMedic\/MedicSettings(\?|$)/, async (route) => {
+            if (route.request().method() === 'POST') {
+                posts.push(JSON.parse(route.request().postData() || '{}').TracksExclude);
+                if (posts.length === 1) await held;
+            }
+            await route.continue();
+        });
+        await medicTab('tracks', false, p);
+        await p.waitForSelector('#md-tracks-save:not([disabled])', { timeout: 30000 });
+        await p.fill('#md-tracks-exclude-in', 'E2E first');
+        await p.click('#md-tracks-save');
+        for (let i = 0; i < 50 && posts.length === 0; i++) await sleep(100);
+        expect(posts.length === 1, 'the save wasn\'t sent');
+        await p.fill('#md-tracks-exclude-in', 'E2E first\nE2E later');
+        release();
+        await p.waitForFunction(() => /Saved/.test(document.getElementById('md-tracks-saved')?.textContent || ''), null, { timeout: 30000 });
+        const shown = await p.inputValue('#md-tracks-exclude-in');
+        expect(shown === 'E2E first\nE2E later', 'after the save the box shows ' + JSON.stringify(shown));
+        const saved = await ok('/JellyfinMedic/MedicSettings');
+        expect(saved.TracksExclude === 'E2E first', 'saved: ' + JSON.stringify(saved.TracksExclude));
+        expect(/isn't saved yet/.test(await p.textContent('#md-tracks-saved')), 'the note doesn\'t say the later change is unsaved');
+        // Still counted as a change: a scan saves it first.
+        await p.route(/\/JellyfinMedic\/Tracks\/Scan\/Start(\?|$)/, (route) => route.fulfill({ json: {} }));
+        await p.click('#md-tracks-scan');
+        for (let i = 0; i < 50 && posts.length < 2; i++) await sleep(100);
+        expect(posts[1] === 'E2E first\nE2E later', 'the scan didn\'t save the later change first: ' + JSON.stringify(posts));
+        return 'kept, and saved before the scan';
+    } finally {
+        await ctx.close();
         await api('POST', '/JellyfinMedic/MedicSettings', before);
     }
 });

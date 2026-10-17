@@ -52,7 +52,9 @@ public sealed class ServiceHttpTests
         Assert.Equal(expected, ServiceHttp.ErrorMessage(body));
 
     [Theory]
+    [InlineData(301)]
     [InlineData(302)]
+    [InlineData(303)]
     [InlineData(307)]
     [InlineData(308)]
     public async Task The_key_client_sends_the_key_and_body_only_to_the_address_asked(int status)
@@ -61,7 +63,7 @@ public sealed class ServiceHttpTests
         // same host just as it does to another one, X-Api-Key and (for a 307 or 308) the body included.
         using var server = new Recorder(status);
         var services = new ServiceCollection();
-        ServiceHttp.AddKeyClient(services);
+        ServiceHttp.AddKeyClient(services, JellyfinHost.Create());
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(ServiceHttp.KeyClient);
         using var request = new HttpRequestMessage(HttpMethod.Post, server.Address + "from") { Content = new StringContent("password=hunter2") };
@@ -71,6 +73,25 @@ public sealed class ServiceHttpTests
 
         Assert.Equal(new Uri(server.Address + "to"), ex.Target);
         Assert.Equal(new[] { "/from secret-key password=hunter2" }, server.Received);
+    }
+
+    [Fact]
+    public async Task The_key_client_sends_the_headers_Jellyfin_s_default_client_sends()
+    {
+        // Calls with a key went through Jellyfin's default client before, which names the server and asks for JSON first.
+        // Medic Picks and Medic Profiles each register the client, so the headers must not add up.
+        using var server = new LocalServer(_ => (200, null, string.Empty));
+        var services = new ServiceCollection();
+        ServiceHttp.AddKeyClient(services, JellyfinHost.Create());
+        ServiceHttp.AddKeyClient(services, JellyfinHost.Create());
+        using var provider = services.BuildServiceProvider();
+        using var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(ServiceHttp.KeyClient);
+
+        using var response = await client.GetAsync(new Uri(server.Url + "/"));
+
+        var request = Assert.Single(server.Received);
+        Assert.Equal("Jellyfin-Server/12.2.0", request.UserAgent);
+        Assert.Equal("application/json; q=1.0, application/xml; q=0.9, */*; q=0.8", request.Accept);
     }
 
     [Theory]

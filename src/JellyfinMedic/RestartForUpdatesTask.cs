@@ -21,6 +21,10 @@ public static class SafeRestart
     // Between two episodes nothing is playing for a moment, so a quiet check is confirmed this much later.
     private static readonly TimeSpan ConfirmAfter = TimeSpan.FromMinutes(2);
 
+    // Set once Jellyfin has been asked to restart. Neither restart task waits for the other, so both can get here at
+    // once, and a second request would count a second restart and ask a server that is already shutting down.
+    private static int _restartAsked;
+
     public static async Task<bool> WhenSafeAsync(
         string why,
         string ownKey,
@@ -59,6 +63,18 @@ public static class SafeRestart
         }
 
         progress.Report(100);
+        return Restart(why, host, services, logger);
+    }
+
+    /// <summary>Asks Jellyfin to restart, once per process. True when this call asked it.</summary>
+    internal static bool Restart(string why, IServerApplicationHost host, IServiceProvider services, ILogger logger)
+    {
+        if (Interlocked.Exchange(ref _restartAsked, 1) == 1)
+        {
+            logger.LogInformation("Jellyfin Medic: didn't restart ({Why}) because Medic has already asked Jellyfin to restart.", why);
+            return false;
+        }
+
         logger.LogWarning("Jellyfin Medic: restarting Jellyfin ({Why}); nobody is watching and nothing else is running", why);
         if (services.GetService(typeof(MediaBrowser.Common.Configuration.IApplicationPaths)) is MediaBrowser.Common.Configuration.IApplicationPaths paths)
         {
@@ -66,9 +82,15 @@ public static class SafeRestart
             WeeklyLedger.AddRestart();
         }
 
+        if (LoadGuard.HeldNames(LoadGuard.Paused) is { } held)
+        {
+            logger.LogInformation("Jellyfin Medic: LoadGuard is holding back {Tasks} until memory recovers; they're saved, and while LoadGuard is on it starts them again after the restart.", held);
+        }
+
         if (!RestartNow(host, services, logger))
         {
             logger.LogWarning("Jellyfin Medic: couldn't ask Jellyfin to restart on this version. Restart it from the Dashboard instead.");
+            Volatile.Write(ref _restartAsked, 0); // nothing was asked, so a later run may try again
             return false;
         }
 

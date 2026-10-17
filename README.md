@@ -6,7 +6,7 @@ Health checks, performance tests and usage-aware task scheduling for your Jellyf
 
 [![Build and Release](https://github.com/P1zzm1ssile/Jellyfin-Medic/actions/workflows/release.yml/badge.svg)](https://github.com/P1zzm1ssile/Jellyfin-Medic/actions/workflows/release.yml) [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE) ![Jellyfin 12.1+](https://img.shields.io/badge/Jellyfin-12.1%2B-00a4dc.svg)
 
-This repository has four plugins: **Jellyfin Medic**, for the person who runs the server; **[Medic Picks](#medic-picks)**, personal viewing suggestions for everyone who uses it; **[Medic Profiles](#medic-profiles)**, Sonarr and Radarr from your Jellyfin dashboard; and **[Medic Posters](#medic-posters)**, an animated poster for every film.
+This repository has three plugins: **Jellyfin Medic**, for the person who runs the server; **[Medic Picks](#medic-picks)**, personal viewing suggestions for everyone who uses it; and **[Medic Profiles](#medic-profiles)**, Sonarr and Radarr from your Jellyfin dashboard.
 
 ---
 
@@ -67,7 +67,7 @@ Change Medic's own options, browse every Jellyfin setting with a red, yellow or 
 
 ## Requirements
 
-- **Jellyfin 12.1 or later** for Jellyfin Medic, **12.0 or later** for Medic Picks, Medic Profiles and Medic Posters.
+- **Jellyfin 12.1 or later** for Jellyfin Medic, **12.0 or later** for Medic Picks and Medic Profiles.
 - **Any server language.** Jellyfin's own tasks are recognised by their keys whatever language the server uses; tasks added by plugins are recognised by their names, which plugins rarely translate.
 - Runs wherever Jellyfin does: **Unraid, TrueNAS SCALE, Proxmox, Docker, Kubernetes, Linux, Windows and macOS**. Medic works out which one it's on and words its advice and directions to match. A few checks depend on the platform: GPU device checks need Linux (containers included), and disk health uses Unraid's own disk data.
 - Developed and tested on **Unraid**, with both the **binhex-Jellyfin** and **linuxserver.io Jellyfin** containers. Reports from other platforms are very welcome. GPU checks cover NVIDIA, Intel and AMD.
@@ -80,7 +80,7 @@ Change Medic's own options, browse every Jellyfin setting with a red, yellow or 
 2. Enter:
    - **Name:** `Jellyfin Medic`
    - **URL:** `https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/manifest.json`
-3. Save, open the **Catalog** tab, install **Jellyfin Medic**, **Medic Picks**, **Medic Profiles** and/or **Medic Posters**, and restart Jellyfin.
+3. Save, open the **Catalog** tab, install **Jellyfin Medic**, **Medic Picks** and/or **Medic Profiles**, and restart Jellyfin.
 
 ### Manual install
 
@@ -89,7 +89,6 @@ Download the latest zip from [Releases](https://github.com/P1zzm1ssile/Jellyfin-
 - Jellyfin Medic: a `JellyfinMedic` folder containing `JellyfinMedic.dll`
 - Medic Picks: a `MedicPicks` folder containing `Jellyfin.Plugin.MedicPicks.dll`
 - Medic Profiles: a `MedicProfiles` folder containing `Jellyfin.Plugin.MedicProfiles.dll`
-- Medic Posters: a `MedicPosters` folder containing `Jellyfin.Plugin.MedicPosters.dll`
 
 Plugin images only appear when a plugin is installed from the repository.
 
@@ -119,7 +118,7 @@ Picks are rebuilt every night by the **Build personal picks** scheduled task. Pi
 1. Install **Medic Picks** from the catalogue and restart Jellyfin.
 2. Optional: for titles that aren't on your server yet, add a free TMDb API key in Medic Picks' settings, press **Save key**, and tick **Suggest titles that aren't on the server**.
 3. Optional: add your Seerr address (one your users can reach) and your Seerr API key, then press **Test Seerr**. Each person needs to have signed in to Seerr once with their Jellyfin login before their requests can go through.
-4. Untick children's accounts under **Who gets Discover picks**.
+4. Untick children's accounts under **Who gets Discover picks**. TMDb suggestions can't be filtered by parental controls, so accounts with any (a maximum rating, or blocked or allowed tags) start unticked and only get Discover once you tick them.
 5. Press **Build picks now**, or wait for the nightly run.
 6. Optional: the **My picks** menu link is on by default. You can rename it or turn it off in the same settings.
 
@@ -129,6 +128,7 @@ Each person needs a few watched titles before their picks appear.
 
 - Picks are built and stored on your server. Each user only sees their own, and their choices (genres, ignored titles and so on) are stored on the server with them.
 - Suggestions from outside your library are off by default. When an admin turns them on, the server sends TMDb the TMDb IDs of titles people have watched. No names or account details are sent.
+- Posters for suggestions from outside your library and for My requests are loaded by each person's browser straight from TMDb's image server (image.tmdb.org), so TMDb sees that person's IP address and which posters they load.
 - My requests is read from Seerr on the server, asking only for the signed-in person's own Seerr account, so nobody sees anyone else's requests. Only admins see everyone's requests waiting for approval, and who asked.
 - The TMDb and Seerr keys are stored separately from the plugin's other settings, only admins can read them, and they never reach anyone's browser. Requests are made on the server, as the person who pressed Request.
 
@@ -155,31 +155,6 @@ The keys are kept on the server in their own file, only admins can use them, and
 
 ---
 
-## Medic Posters
-
-An animated poster for every film and series, and an animated cover for every library, in the style of the [Library Cover Maker](https://github.com/p1zzm1ssile/Library-Cover-Maker)'s library covers. Set up under **Plugins → Medic Posters** (admins only); everyone sees the posters.
-
-- **Made from the video itself.** Each poster cuts between a few moments of the film, spread from 15% to 75% of the way through so it skips the opening titles and the credits (for a series, a moment from each of a few episodes), with the title in capitals in a big serif font (Bodoni Moda) and a rounded white frame. HDR films are converted to normal colour first. It uses Jellyfin's own FFmpeg, so there's nothing else to install.
-- **They stay animated.** Jellyfin resizes posters before sending them to an app, which turns an animated WebP into a still picture, but it never resizes a GIF. So the posters are small GIFs, and they move in the Jellyfin website, Jellyfin Desktop and the apps that can play a GIF poster. Apps that can't show the first frame.
-- **Library covers too.** Each library with videos in it (films, TV, home videos, music videos) gets a wide cover, the shape of Jellyfin's library cards, cut from moments of a few random things in it with the library's name on it. It's a GIF as well, so it moves on the home screen. Covers have their own settings, separate from the posters'.
-- **Your own posters are kept.** Nothing in your media folders is changed or deleted: the GIFs live in the server's data folder, and each film's own poster is remembered. **Put back** under any poster, or **Put back the original posters**, brings them back.
-- **New films get one each night** from the **Make animated posters** scheduled task. A poster you change yourself, or that a metadata refresh replaces, is left alone. **Make all posters again** and **Make all covers again** redo them all.
-- **A preview** shows a poster or a cover with the settings on screen, saved or not, and its size, without changing anything. Pick the film, series or library, or let it choose one. **Use this one** puts that preview on it, so you can do them one at a time.
-- **Posters and covers separately.** **Make posters now** and **Make library covers now** each make only their own kind, and each says how many there are to make and roughly how much space they'll take, worked out from the settings on screen and the ones made so far.
-- **Leave libraries out**, such as IPTV ones, by unticking them. Libraries you add later are included.
-
-### Size
-
-Because Jellyfin sends GIF posters at their full size, every poster on a page is downloaded whole. The default, 240 × 360 with three one-second moments at 8 frames a second and 96 colours, comes to anything from under 100 KB for a plain picture to about 750 KB for a busy one, such as a field of grass. The settings page has smaller sizes, fewer moments and colours, and the preview shows what each choice comes to. What's new in each version is in [Medic Posters' changelog](Jellyfin.Plugin.MedicPosters/CHANGELOG.md).
-
-### Setting it up
-
-1. Install **Medic Posters** from the catalogue and restart Jellyfin.
-2. Open **Plugins → Medic Posters**, untick any library to leave alone, and press **Preview a poster** or **Preview a library cover** to try the settings.
-3. Press **Make posters now**, or wait for the nightly run.
-
----
-
 ## Privacy
 
 - **Admin only.** Every part of Jellyfin Medic requires an administrator account.
@@ -188,12 +163,13 @@ Because Jellyfin sends GIF posters at their full size, every poster on a page is
 - **Server load is totals only.** On Linux, Medic notes how busy the whole machine is every 5 minutes (CPU, memory and disk, from the totals in /proc) and keeps them as averages by hour of the week. It never looks at which program, container or app is using them.
 - **No passwords are ever read, stored or sent.** Medic deliberately does not test password strength, because that can't be done without handling real passwords.
 - **What reaches the internet, and when:**
-  - Each time Medic's page builds its checks (when you open it, and after "Check again"), it checks that the addresses your server already uses still answer: each enabled plugin repository, the outside `.js` and `.css` files that JavaScript Injector scripts load, and the `@import`s in your theme's custom CSS. The results are kept for 10 minutes. It also asks Jellyfin which plugin updates are waiting, which Jellyfin looks up in those same repositories.
+  - Each time Medic's page builds its checks (when you open it, and after **Run checks**), it checks that the addresses your server already uses still answer: each enabled plugin repository, the outside `.js` and `.css` files that JavaScript Injector scripts load, and the `@import`s in your theme's custom CSS. The results are kept for 10 minutes.
+  - Your plugin repositories are also contacted through Jellyfin's own plugin catalogue: the checks and the Dashboard's Updates tile ask Jellyfin which plugin updates are waiting, and opening the Plugin directory tab (or its "Check again") asks which plugins your catalogue offers. Each answer is kept for an hour.
   - The speed test (Cloudflare) and the "Is your server open to the internet?" check run only when you press their buttons. That check connects to the address you give; for an IP address it may ask portchecker.io instead, which gets only that address and port.
   - "Use my IP + 8096" asks a public IP service for your address: ipify, or if it doesn't answer, icanhazip.com and then checkip.amazonaws.com. The answer is kept for an hour.
   - Opening the Plugin directory tab fetches the public awesome-jellyfin plugin list.
   - None of these send your settings, files or accounts.
-  - Medic Picks contacts TMDb and Seerr only when an admin has set them up (see its own privacy notes). Medic Profiles contacts only the Sonarr, Radarr and qBittorrent addresses you give it.
+  - Medic Picks contacts TMDb and Seerr only when an admin has set them up, and each person's browser loads its outside-library posters from image.tmdb.org (see its own privacy notes). Medic Profiles contacts only the Sonarr, Radarr and qBittorrent addresses you give it.
 - **The "help improve Medic" export** masks passwords, keys, tokens, usernames and credentials in links before you ever see the file, and asks you to read it before sending. Sending it is always your choice. If anything personal reaches the maintainer, it's deleted and not used.
 
 ---
@@ -206,20 +182,18 @@ Requires the .NET 10 SDK.
 dotnet publish src/JellyfinMedic/JellyfinMedic.csproj -c Release -o publish/JellyfinMedic
 dotnet publish Jellyfin.Plugin.MedicPicks/Jellyfin.Plugin.MedicPicks.csproj -c Release -o publish/MedicPicks
 dotnet publish Jellyfin.Plugin.MedicProfiles/Jellyfin.Plugin.MedicProfiles.csproj -c Release -o publish/MedicProfiles
-dotnet publish Jellyfin.Plugin.MedicPosters/Jellyfin.Plugin.MedicPosters.csproj -c Release -o publish/MedicPosters
 ```
 
-Medic Picks, Medic Profiles and Medic Posters can also be built for Jellyfin 10.11, where they target .NET 9 (the .NET 10 SDK builds that too). Releases are only built for Jellyfin 12, so a 10.11 server needs one built by hand:
+Medic Picks and Medic Profiles can also be built for Jellyfin 10.11, where they target .NET 9 (the .NET 10 SDK builds that too). Releases are only built for Jellyfin 12, so a 10.11 server needs one built by hand:
 
 ```
 dotnet publish Jellyfin.Plugin.MedicPicks/Jellyfin.Plugin.MedicPicks.csproj -c Release -o publish/MedicPicks-10.11 -p:JellyfinTarget=10.11
 dotnet publish Jellyfin.Plugin.MedicProfiles/Jellyfin.Plugin.MedicProfiles.csproj -c Release -o publish/MedicProfiles-10.11 -p:JellyfinTarget=10.11
-dotnet publish Jellyfin.Plugin.MedicPosters/Jellyfin.Plugin.MedicPosters.csproj -c Release -o publish/MedicPosters-10.11 -p:JellyfinTarget=10.11
 ```
 
-The end-to-end tests start a real Jellyfin in Docker with the four plugins and click through their pages: `tests/e2e/run.sh` (needs Docker, ffmpeg, and Node with Playwright; see the top of the script).
+The end-to-end tests start a real Jellyfin in Docker with the three plugins and click through their pages: `tests/e2e/run.sh` (needs Docker, ffmpeg, and Node with Playwright; see the top of the script).
 
-Releases are automatic: push a tag like `v1.0.6` for Jellyfin Medic, `picks-v1.0.1` for Medic Picks, `profiles-v1.0.0` for Medic Profiles, or `film-posters-v1.0.0` for Medic Posters, and GitHub Actions builds the plugin, creates the release, and adds it to `manifest.json`.
+Releases are automatic: push a tag like `v1.0.6` for Jellyfin Medic, `picks-v1.0.1` for Medic Picks, or `profiles-v1.0.0` for Medic Profiles, and GitHub Actions builds the plugin, creates the release, and adds it to `manifest.json`.
 
 ---
 

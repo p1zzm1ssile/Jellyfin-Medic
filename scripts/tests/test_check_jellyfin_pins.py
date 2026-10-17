@@ -126,12 +126,69 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(pins.check(self.empty()), (
             [], ["No workflow in .github/workflows runs scripts/update_manifest.py, so there is nothing to check"]))
 
+    def shared_code(self, other_target="12", shared_tests="12.0.0") -> pathlib.Path:
+        """The repository with a second released plugin, Other, and shared/Lib, which both plugins compile in
+        and tests/Lib.Tests tests on its own, as Medic Picks, Medic Profiles and tests/MedicShared.Tests do."""
+        root = self.repository()
+        compile_lib = '  <ItemGroup>\n    <Compile Include="..\\shared\\Lib\\*.cs" />\n  </ItemGroup>\n</Project>'
+        plugin = PLUGIN.format(model="$(JellyfinPackageVersion)").replace("</Project>", compile_lib)
+        files = {
+            "Plugin/Plugin.csproj": plugin,
+            "Other/Other.csproj": plugin,
+            ".github/workflows/release-other.yml": WORKFLOW.format(
+                abi="10.11.11.0" if other_target == "10.11" else "12.0.0.0",
+                target=other_target).replace("Plugin/Plugin.csproj", "Other/Other.csproj"),
+            "tests/Lib.Tests/Lib.Tests.csproj": TESTS.format(tests=shared_tests).replace(
+                '<ProjectReference Include="../../Plugin/Plugin.csproj" />',
+                '<Compile Include="../../shared/Lib/*.cs" />'),
+        }
+        for path, text in files.items():
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_text(text, encoding="utf-8")
+        return root
+
+    def test_shared_code_tests_are_compared_with_the_plugins_that_compile_it(self):
+        self.assertEqual(pins.check(self.shared_code()), (
+            ["release-other.yml: TARGET_ABI 12.0.0.0 matches Jellyfin 12.0.0 in Other/Other.csproj"
+             " and tests/Lib.Tests/Lib.Tests.csproj",
+             "release-plugin.yml: TARGET_ABI 12.0.0.0 matches Jellyfin 12.0.0 in Plugin/Plugin.csproj,"
+             " tests/Lib.Tests/Lib.Tests.csproj and tests/Plugin.Tests/Plugin.Tests.csproj"],
+            [],
+        ))
+
+    def test_shared_code_tests_must_pin_the_same_version(self):
+        _, problems = pins.check(self.shared_code(shared_tests="12.1.0"))
+        self.assertEqual(problems, [
+            f"{workflow}: tests/Lib.Tests/Lib.Tests.csproj has {package} 12.1.0, but {plugin}, which compiles"
+            " the shared/Lib it tests, builds against 12.0.0"
+            for workflow, plugin in (("release-other.yml", "Other/Other.csproj"),
+                                     ("release-plugin.yml", "Plugin/Plugin.csproj"))
+            for package in pins.PACKAGES
+        ])
+
+    def test_plugins_that_compile_the_same_code_must_agree(self):
+        _, problems = pins.check(self.shared_code(other_target="10.11"))
+        self.assertIn("shared/Lib is compiled into Other/Other.csproj, which builds against Jellyfin 10.11.11,"
+                      " and Plugin/Plugin.csproj, which builds against 12.0.0", problems)
+
 
 # The unit test job runs this, which is what checks the repository on every pull request and release.
 class RepositoryTests(unittest.TestCase):
     def test_releases_and_unit_tests_agree_on_jellyfin(self):
         _, problems = pins.check(REPOSITORY)
         self.assertEqual(problems, [])
+
+    def test_the_shared_code_tests_are_compared(self):
+        report, _ = pins.check(REPOSITORY)
+        self.assertEqual([line for line in report if "MedicShared.Tests" in line], [
+            "release-picks.yml: TARGET_ABI 12.0.0.0 matches Jellyfin 12.0.0 in"
+            " Jellyfin.Plugin.MedicPicks/Jellyfin.Plugin.MedicPicks.csproj,"
+            " tests/MedicPicks.Tests/MedicPicks.Tests.csproj and tests/MedicShared.Tests/MedicShared.Tests.csproj",
+            "release-profiles.yml: TARGET_ABI 12.0.0.0 matches Jellyfin 12.0.0 in"
+            " Jellyfin.Plugin.MedicProfiles/Jellyfin.Plugin.MedicProfiles.csproj,"
+            " tests/MedicProfiles.Tests/MedicProfiles.Tests.csproj and"
+            " tests/MedicShared.Tests/MedicShared.Tests.csproj",
+        ])
 
 
 if __name__ == "__main__":

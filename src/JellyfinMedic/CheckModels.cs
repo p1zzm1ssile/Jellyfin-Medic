@@ -83,12 +83,30 @@ public class PluginReport
     public List<Finding> Findings { get; set; } = new();
 }
 
+/// <summary>The server's time zone by the IANA name browsers know, as Windows names its zones its own way.</summary>
+public static class ServerTimeZone
+{
+    public static string? IanaId(TimeZoneInfo zone)
+    {
+        if (zone.HasIanaId)
+        {
+            return zone.Id;
+        }
+
+        return TimeZoneInfo.TryConvertWindowsIdToIanaId(zone.Id, out var iana) ? iana : null;
+    }
+}
+
 public class DiagnosticReport
 {
     public DateTime GeneratedUtc { get; set; } = DateTime.UtcNow;
 
     // The server's offset from UTC now, so the page shows every time on the server's clock, as the schedule is.
     public int UtcOffsetMinutes { get; set; } = (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow).TotalMinutes;
+
+    // The server's zone, so a past time on the other side of a daylight saving change gets that day's offset, not today's.
+    // Null when it has no name a browser knows; the page then falls back to the offset above.
+    public string? TimeZoneId { get; set; } = ServerTimeZone.IanaId(TimeZoneInfo.Local);
 
     public List<SpecItem> Specs { get; set; } = new();
 

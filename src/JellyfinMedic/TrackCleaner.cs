@@ -264,8 +264,8 @@ public static class TrackCleaner
     private static readonly TrackRunProgress Progress = new();
     private static CancellationTokenSource? _cancel;
     private static long _bytesFreed; // space freed by this run right away (not held in kept originals)
-    private static long _writing; // bytes the files being cleaned right now may still write
-    private static readonly object SpaceSync = new(); // the space check and the reservation are one step
+    private static readonly SpaceReservations Writing = new(); // bytes the files being cleaned right now may still write
+    private static readonly object SpaceSync = new(); // the record of cleaned files and the changes file
 
     /// <summary>Where each changed file is recorded (one JSON line per file), set by the controller. Null records nothing.</summary>
     public static string? ChangesFile { get; set; }
@@ -940,6 +940,7 @@ public static class TrackCleaner
             Progress.BytesSaved = 0;
             Progress.BytesKept = 0;
             _bytesFreed = 0;
+            Writing.Reset();
             Progress.Current = null;
             Progress.StartedUtc = DateTime.UtcNow;
             Progress.FinishedUtc = null;
@@ -1080,6 +1081,8 @@ public static class TrackCleaner
                         _lastScan.Stale = true;
                     }
                 }
+
+                KeptOriginalsWalk.Clear();
             }
         }
     }
@@ -1097,17 +1100,17 @@ public static class TrackCleaner
 
         // The plan comes from the tracks Jellyfin read at its last scan. If the file has changed since
         // (cleaned before, or replaced by Sonarr or Radarr), mapping by those numbers keeps the wrong tracks.
-        ProbedFile? source = ffprobe is null ? null : await ProbeFile(ffprobe, plan.Path, ct).ConfigureAwait(false);
+        ProbedFile? source = ffprobe is null ? null : await ProbeFile(ffprobe, plan.Path, readEnd: false, ct).ConfigureAwait(false);
         if (source is null)
         {
-            Skipped(plan, "FFprobe couldn't read the file, so it was left alone");
+            NotChanged(plan, Unchanged.Unreadable, "FFprobe couldn't read the file, so it was left alone");
             return;
         }
 
         if (DescribeMismatch(plan, source) is { } mismatch)
         {
             item.ChangedExternally();
-            Skipped(plan, $"Jellyfin's list of its tracks is out of date ({mismatch}). Jellyfin has been asked to read the file again; run track cleanup again once it has.");
+            NotChanged(plan, Unchanged.StalePlan, $"Jellyfin's list of its tracks is out of date ({mismatch}). Jellyfin has been asked to read the file again; run track cleanup again once it has.");
             return;
         }
 
@@ -1115,7 +1118,7 @@ public static class TrackCleaner
         var facts = await FileFacts(plan.Path, ct).ConfigureAwait(false);
         if (LinkSkipReason(facts, IsSymlink(plan.Path), countLinks: !OperatingSystem.IsWindows()) is { } why)
         {
-            Skipped(plan, why);
+            NotChanged(plan, Unchanged.Linked, why);
             return;
         }
 
@@ -1123,15 +1126,10 @@ public static class TrackCleaner
         // on top of what other files being cleaned right now are still writing, and the run leaves a floor free
         // for everything else on the drive. Checked and reserved in one step, so two files can't both pass.
         long size = Size(plan.Path);
-        var (free, total) = DriveSpace(plan.Path);
-        long needed;
-        lock (SpaceSync)
+        if (!Writing.TryReserve(size, () => DriveSpace(plan.Path), out long free, out long total, out long needed))
         {
-            if (!Reserve(free, total, size, ref _writing, out needed))
-            {
-                Skipped(plan, $"its drive has {Gb(free)} free and the new copy needs about {Gb(needed)}, keeping {Gb(SpaceFloor(total))} free for everything else, so it was left alone");
-                return;
-            }
+            NotChanged(plan, Unchanged.NoSpace, $"its drive has {Gb(free)} free and the new copy needs about {Gb(needed)}, keeping {Gb(SpaceFloor(total))} free for everything else, so it was left alone");
+            return;
         }
 
         // To tell whether Sonarr or Radarr replaces the file while it's being cleaned.
@@ -1186,11 +1184,11 @@ public static class TrackCleaner
             // Verify the new file is real and sound before touching the original.
             string? problem = exit != 0 ? "FFmpeg failed" + (errors.Length > 0 ? ": " + errors : string.Empty)
                 : !File.Exists(temp) ? "FFmpeg wrote no file"
-                : CheckOutput(source, await ProbeFile(ffprobe!, temp, ct).ConfigureAwait(false), outAudio, outSub, before, Size(temp));
+                : CheckOutput(source, await ProbeFile(ffprobe!, temp, readEnd: true, ct).ConfigureAwait(false), outAudio, outSub, before, Size(temp));
             if (problem is not null)
             {
                 SafeDelete(temp);
-                Skipped(plan, $"the new copy didn't come out right ({problem}), so the original was left alone");
+                NotChanged(plan, Unchanged.BadCopy, $"the new copy didn't come out right ({problem}), so the original was left alone");
                 return;
             }
 
@@ -1206,7 +1204,7 @@ public static class TrackCleaner
             {
                 SafeDelete(temp);
                 item.ChangedExternally();
-                Skipped(plan, "it changed while it was being cleaned (replaced by Sonarr or Radarr?), so the new file was kept as it is");
+                NotChanged(plan, Unchanged.ReplacedMeanwhile, "it changed while it was being cleaned (replaced by Sonarr or Radarr?), so the new file was kept as it is");
                 return;
             }
 
@@ -1218,47 +1216,7 @@ public static class TrackCleaner
             }
             else
             {
-                // A kept original that the current file isn't Medic's cleaned copy of belongs to an earlier
-                // release (Sonarr or Radarr replaced the file between runs). It's moved aside under a dated name, so
-                // the current file is kept as this file's original and nothing is lost.
-                string kept = OriginalPath(plan.Path);
-                if (File.Exists(kept) && !MadeByMedic(plan.Path))
-                {
-                    string aside = ReplacedPath(kept, DateTime.Now);
-                    File.Move(kept, aside);
-                    Note($"Kept {Path.GetFileName(aside)}: the original of an earlier release of {plan.Title}, replaced since it was cleaned");
-                }
-
-                // Safe default: move the original into the hidden .medic-originals folder beside it, then put
-                // the cleaned file in its place under the same name. The library keeps one file per title, and
-                // Jellyfin keeps the same item, artwork and watched status. If a kept original is already there
-                // (this file was cleaned before), that one is the true original, so it's left alone.
-                if (File.Exists(kept))
-                {
-                    File.Move(temp, plan.Path, overwrite: true);
-                    freedNow = saved; // the earlier cleaned copy is replaced, not kept
-                }
-                else
-                {
-                    // Two moves: if Jellyfin stops between them, the next run (or "Tidy copies") puts the original
-                    // back, as the temp file beside the empty path shows the swap didn't finish.
-                    await EnsureOriginalsFolder(plan.Path, ct).ConfigureAwait(false);
-                    File.Move(plan.Path, kept);
-                    try
-                    {
-                        File.Move(temp, plan.Path);
-                    }
-                    catch
-                    {
-                        File.Move(kept, plan.Path); // put the original back
-                        throw;
-                    }
-
-                    keptNow = before;
-                    keptAs = kept;
-                }
-
-                RecordCleaned(plan.Path);
+                (freedNow, keptNow, keptAs) = await SwapKeepingOriginal(plan.Path, temp, plan.Title, before, saved, ct).ConfigureAwait(false);
             }
 
             // Languages set by hand are in the file now, and its track numbers have changed.
@@ -1284,15 +1242,97 @@ public static class TrackCleaner
         }
         finally
         {
-            Interlocked.Add(ref _writing, -size);
+            Writing.Release(size);
         }
     }
 
-    /// <summary>Counts a file as left alone on purpose (not a failure), with the reason in the run's notes.</summary>
-    private static void Skipped(FilePlan plan, string why)
+    /// <summary>
+    /// The safe default's swap: the cleaned copy at temp takes the file's place and the file's original is kept in
+    /// .medic-originals. Returns the space freed now, the space the kept original holds, and where it's kept.
+    /// </summary>
+    internal static async Task<(long FreedNow, long KeptNow, string? KeptAs)> SwapKeepingOriginal(string path, string temp, string title, long before, long saved, CancellationToken ct)
     {
-        lock (Sync) { Progress.Skipped++; Progress.Done++; Progress.BytesDone += plan.SizeBytes; }
-        Note($"Skipped {plan.Title}: {why}");
+        long freedNow = 0;
+        long keptNow = 0;
+        string? keptAs = null;
+
+        // A kept original whose file Medic recorded, and which isn't that file any more, belongs to an earlier
+        // release (Sonarr or Radarr replaced the file between runs). It's moved aside under a dated name, so
+        // the current file is kept as this file's original and nothing is lost.
+        string kept = OriginalPath(path);
+        if (File.Exists(kept) && ReplacedSinceCleaned(path))
+        {
+            string aside = ReplacedPath(kept, DateTime.Now);
+            File.Move(kept, aside);
+            Note($"Kept {Path.GetFileName(aside)}: the original of an earlier release of {title}, replaced since it was cleaned");
+        }
+
+        // Safe default: move the original into the hidden .medic-originals folder beside it, then put
+        // the cleaned file in its place under the same name. The library keeps one file per title, and
+        // Jellyfin keeps the same item, artwork and watched status. If a kept original is already there
+        // (this file was cleaned before), that one is the true original, so it's left alone.
+        if (File.Exists(kept))
+        {
+            File.Move(temp, path, overwrite: true);
+            freedNow = saved; // the earlier cleaned copy is replaced, not kept
+            keptAs = kept;
+        }
+        else
+        {
+            // Two moves: if Jellyfin stops between them, the next run (or "Tidy copies") puts the original
+            // back, as the temp file beside the empty path shows the swap didn't finish.
+            await EnsureOriginalsFolder(path, ct).ConfigureAwait(false);
+            File.Move(path, kept);
+            try
+            {
+                File.Move(temp, path);
+            }
+            catch
+            {
+                File.Move(kept, path); // put the original back
+                throw;
+            }
+
+            keptNow = before;
+            keptAs = kept;
+        }
+
+        RecordCleaned(path);
+
+        return (freedNow, keptNow, keptAs);
+    }
+
+    /// <summary>Why a run didn't change a file it planned to clean.</summary>
+    internal enum Unchanged
+    {
+        Unreadable,
+        StalePlan,
+        Linked,
+        NoSpace,
+        BadCopy,
+        ReplacedMeanwhile,
+    }
+
+    /// <summary>Counts a file the run didn't change, with the reason in the run's notes.</summary>
+    private static void NotChanged(FilePlan plan, Unchanged reason, string why)
+    {
+        bool failed;
+        lock (Sync) { failed = Tally(Progress, reason, plan.SizeBytes); }
+        Note(failed ? $"Problem with {plan.Title}: {why}" : $"Skipped {plan.Title}: {why}");
+    }
+
+    /// <summary>
+    /// Counts a file the run didn't change; true when it failed. A file Medic chose not to touch is left alone, but one
+    /// it tried and couldn't clean (the original unreadable, or the new copy not right) failed, so a run where FFmpeg
+    /// fails on every file doesn't look like one that had nothing to do.
+    /// </summary>
+    internal static bool Tally(TrackRunProgress progress, Unchanged reason, long bytes)
+    {
+        bool failed = reason is Unchanged.Unreadable or Unchanged.BadCopy;
+        if (failed) progress.Failed++; else progress.Skipped++;
+        progress.Done++;
+        progress.BytesDone += bytes;
+        return failed;
     }
 
     /// <summary>
@@ -1319,12 +1359,60 @@ public static class TrackCleaner
         return true;
     }
 
+    /// <summary>What the files being cleaned right now may still write, for the space check each file makes before it starts.</summary>
+    internal sealed class SpaceReservations
+    {
+        private readonly object _sync = new();
+        private long _bytes;
+
+        internal long Bytes
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _bytes;
+                }
+            }
+        }
+
+        /// <summary>Reads the drive's free space and size, checks and reserves the copy's size as <see cref="Reserve"/> does.</summary>
+        internal bool TryReserve(long size, Func<(long Free, long Total)> driveSpace, out long free, out long total, out long needed)
+        {
+            // Read under the lock too: a figure read before another file's reservation doesn't count that file's copy.
+            lock (_sync)
+            {
+                (free, total) = driveSpace();
+                return Reserve(free, total, size, ref _bytes, out needed);
+            }
+        }
+
+        /// <summary>Takes a reservation off again once its file is done.</summary>
+        internal void Release(long size)
+        {
+            lock (_sync)
+            {
+                _bytes -= size;
+            }
+        }
+
+        /// <summary>Starts a run from nothing reserved, so a count gone wrong can't hold files back past the run.</summary>
+        internal void Reset()
+        {
+            lock (_sync)
+            {
+                _bytes = 0;
+            }
+        }
+    }
+
     /// <summary>Where an earlier release's kept original goes when the file has been replaced since it was cleaned.</summary>
     internal static string ReplacedPath(string kept, DateTime when) =>
         Path.Combine(Path.GetDirectoryName(kept) ?? string.Empty,
             Path.GetFileNameWithoutExtension(kept) + ".replaced-" + when.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + Path.GetExtension(kept));
 
-    private sealed record CleanedFile(long Length, DateTime WrittenUtc);
+    // The time is kept for older records; only the length tells a replacement (see ReplacedSinceCleaned).
+    private sealed record CleanedFile(long? Length, DateTime WrittenUtc);
 
     private static string CleanedRecordPath(string mediaPath) =>
         Path.Combine(Path.GetDirectoryName(mediaPath) ?? string.Empty, OriginalsFolder, CleanedRecord);
@@ -1363,10 +1451,13 @@ public static class TrackCleaner
     }
 
     /// <summary>
-    /// Whether the file at this path is still the cleaned copy Medic made. Without a record (files cleaned before Medic
-    /// kept one) it isn't taken to be, so the current file is kept rather than lost.
+    /// Whether the file at this path has been replaced since Medic put it in place: its length differs from the record.
+    /// The time alone isn't enough, as a copy without -t, a restore or a tag edit that keeps the size changes it while
+    /// the file is still Medic's. Without a record of the length (cleaned by 1.0.22 or earlier) a replacement can't be
+    /// told apart, so it's taken to be unchanged. Either way the kept original then stays the title's, instead of being
+    /// moved aside on a guess and counted as an orphan that "Delete those with no file too" deletes.
     /// </summary>
-    private static bool MadeByMedic(string mediaPath)
+    private static bool ReplacedSinceCleaned(string mediaPath)
     {
         Dictionary<string, CleanedFile> files;
         lock (SpaceSync)
@@ -1375,7 +1466,7 @@ public static class TrackCleaner
         }
 
         return files.TryGetValue(Path.GetFileName(mediaPath), out var made)
-            && made.Length == Size(mediaPath) && made.WrittenUtc == File.GetLastWriteTimeUtc(mediaPath);
+            && made.Length is { } length && length != Size(mediaPath);
     }
 
     /// <summary>One file a run changed.</summary>
@@ -1422,8 +1513,19 @@ public static class TrackCleaner
 
         lock (SpaceSync)
         {
+            var lines = new List<string>();
+            try
+            {
+                lines.AddRange(File.ReadLines(file));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The lines read before the failure are still listed; the tab shouldn't fail over the rest.
+                NoteOnce($"Couldn't read the record of changed files: {ex.Message}");
+            }
+
             var list = new List<TrackChange>();
-            foreach (var line in File.ReadLines(file).Reverse().Take(count))
+            foreach (var line in Enumerable.Reverse(lines).Take(count))
             {
                 try
                 {
@@ -1604,42 +1706,51 @@ public static class TrackCleaner
 
     /// <summary>
     /// Deletes kept originals whose cleaned file is still in place under the same name. With orphans, also those with
-    /// no file of that name any more (Sonarr or Radarr renamed or replaced it), unless a swap of it was cut short.
+    /// no file of that name any more (Sonarr or Radarr renamed or replaced it). Never one whose swap was cut short.
     /// </summary>
     public static (int Deleted, long Freed) DeleteOriginals(ILibraryManager library, IEnumerable<LibraryFacts> libraries, bool orphans = false)
     {
         int deleted = 0;
         long freed = 0;
-        foreach (var dir in LibraryFolders(library, libraries))
+        try
         {
-            string folder = Path.Combine(dir, OriginalsFolder);
-            if (!Directory.Exists(folder))
+            foreach (var dir in LibraryFolders(library, libraries))
             {
-                continue;
-            }
-
-            foreach (var kept in SafeFiles(folder).Where(IsKeptOriginal))
-            {
-                // Only delete an original whose cleaned version is still in place, or, when asked, one with no twin.
-                if (!orphans && IsOrphan(dir, kept))
+                string folder = Path.Combine(dir, OriginalsFolder);
+                if (!Directory.Exists(folder))
                 {
                     continue;
                 }
 
-                try
+                foreach (var kept in SafeFiles(folder).Where(IsKeptOriginal))
                 {
-                    long size = Size(kept);
-                    File.Delete(kept);
-                    freed += size;
-                    deleted++;
-                }
-                catch
-                {
-                    // Skip anything locked.
-                }
-            }
+                    // A swap cut short leaves the path empty too, and its original is the title's only untouched copy:
+                    // the next run (or "Tidy copies") puts it back.
+                    string twin = Path.Combine(dir, Path.GetFileName(kept));
+                    if (File.Exists(TempPath(twin)) || (!orphans && !File.Exists(twin)))
+                    {
+                        continue;
+                    }
 
-            RemoveIfEmpty(folder);
+                    try
+                    {
+                        long size = Size(kept);
+                        File.Delete(kept);
+                        freed += size;
+                        deleted++;
+                    }
+                    catch
+                    {
+                        // Skip anything locked.
+                    }
+                }
+
+                RemoveIfEmpty(folder);
+            }
+        }
+        finally
+        {
+            KeptOriginalsWalk.Clear();
         }
 
         return (deleted, freed);
@@ -1664,13 +1775,22 @@ public static class TrackCleaner
         int titles = 0, deletedCopies = 0;
         var left = new List<TidyLeft>();
         long freed = 0;
-        foreach (var dir in LibraryFolders(library, libraries))
+        try
         {
-            var (t, d, f, l) = await TidyFolder(dir, path => ProbeFile(ffprobe, path, CancellationToken.None), deleteOriginals, CancellationToken.None).ConfigureAwait(false);
-            titles += t;
-            deletedCopies += d;
-            freed += f;
-            left.AddRange(l);
+            foreach (var dir in LibraryFolders(library, libraries))
+            {
+                // Only a copy's end is read: the original it's compared with is only read for its header.
+                var (t, d, f, l) = await TidyFolder(dir, path => ProbeFile(ffprobe, path, readEnd: Path.GetFileName(path).Contains(StrippedSuffix, StringComparison.OrdinalIgnoreCase), CancellationToken.None), deleteOriginals, CancellationToken.None).ConfigureAwait(false);
+                titles += t;
+                deletedCopies += d;
+                freed += f;
+                left.AddRange(l);
+            }
+        }
+        finally
+        {
+            // Tidying moves originals into .medic-originals, and can delete them.
+            KeptOriginalsWalk.Clear();
         }
 
         return (titles, deletedCopies, freed, left);
@@ -1730,6 +1850,12 @@ public static class TrackCleaner
                 File.Move(best, original, overwrite: true);
                 titles++;
 
+                // The copy in place is Medic's own, so a later release under this name can be told from it.
+                if (!deleteOriginals && File.Exists(keptOriginal))
+                {
+                    RecordCleaned(original);
+                }
+
                 if (deleteOriginals && File.Exists(keptOriginal))
                 {
                     freed += Size(keptOriginal);
@@ -1765,8 +1891,8 @@ public static class TrackCleaner
     private static bool IsKeptOriginal(string path) => !Path.GetFileName(path).StartsWith('.');
 
     /// <summary>
-    /// A kept original with no file of its name in the library folder any more. One whose swap was cut short (the
-    /// temp file is still there) isn't: the next run puts it back.
+    /// A kept original with no file of its name in the library folder any more, which "Delete those with no file too"
+    /// deletes. One whose swap was cut short (the temp file is still there) isn't: the next run puts it back.
     /// </summary>
     internal static bool IsOrphan(string dir, string kept)
     {
@@ -1774,13 +1900,20 @@ public static class TrackCleaner
         return !File.Exists(twin) && !File.Exists(TempPath(twin));
     }
 
+    // Cleared by whatever keeps, moves or deletes originals: a track run, tidying, and deleting them.
+    internal static readonly LibraryWalkCache<(int Files, long Bytes, int Orphans, long OrphanBytes)> KeptOriginalsWalk = new(TimeProvider.System);
+
     /// <summary>How many originals Medic is keeping in .medic-originals folders and their total size, and how many of them are orphans.</summary>
-    public static (int Files, long Bytes, int Orphans, long OrphanBytes) KeptOriginals(ILibraryManager library, IEnumerable<LibraryFacts> libraries)
+    public static (int Files, long Bytes, int Orphans, long OrphanBytes) KeptOriginals(ILibraryManager library, IEnumerable<LibraryFacts> libraries, CancellationToken ct = default) =>
+        KeptOriginalsWalk.Get(c => CountKeptOriginals(library, libraries, c), ct);
+
+    private static (int Files, long Bytes, int Orphans, long OrphanBytes) CountKeptOriginals(ILibraryManager library, IEnumerable<LibraryFacts> libraries, CancellationToken ct)
     {
         int files = 0, orphans = 0;
         long bytes = 0, orphanBytes = 0;
-        foreach (var dir in LibraryFolders(library, libraries))
+        foreach (var dir in LibraryFolders(library, libraries, ct))
         {
+            ct.ThrowIfCancellationRequested();
             string folder = Path.Combine(dir, OriginalsFolder);
             if (!Directory.Exists(folder))
             {
@@ -1844,6 +1977,7 @@ public static class TrackCleaner
             {
                 foreach (var item in library.GetItemList(new InternalItemsQuery { ParentId = id, Recursive = true, IsFolder = false }))
                 {
+                    ct.ThrowIfCancellationRequested();
                     string path = item.Path ?? string.Empty;
                     if (path.Length > 0 && LooksLocal(path) && !path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase))
                     {
@@ -1855,7 +1989,7 @@ public static class TrackCleaner
                     }
                 }
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Skip a library that can't be read.
             }
@@ -1869,12 +2003,15 @@ public static class TrackCleaner
         try { return Directory.GetFiles(dir); } catch { return Array.Empty<string>(); }
     }
 
+    // What Medic itself writes in a .medic-originals folder; with only these left, no original is kept there.
+    private static readonly HashSet<string> MedicsOwn = new(StringComparer.Ordinal) { ".ignore", CleanedRecord, CleanedRecord + ".tmp" };
+
     private static void RemoveIfEmpty(string folder)
     {
         try
         {
             var left = Directory.GetFileSystemEntries(folder);
-            if (left.All(e => Path.GetFileName(e) == ".ignore"))
+            if (left.All(e => MedicsOwn.Contains(Path.GetFileName(e))))
             {
                 foreach (var e in left) { File.Delete(e); }
                 Directory.Delete(folder);
@@ -2030,17 +2167,67 @@ public static class TrackCleaner
         return File.Exists(path) ? path : null;
     }
 
-    /// <summary>What FFprobe reports about a file: every stream in order (kind is video, audio, subtitle, attachment...) and the duration when known.</summary>
-    internal sealed record ProbedFile(List<(int Index, string Kind, string Language)> Streams, double? DurationSeconds)
+    /// <summary>
+    /// What FFprobe reports about a file: every stream in order (kind is video, audio, subtitle, attachment...) and the
+    /// duration when known. EndProblem is why its last packets don't reach that duration, when they were read.
+    /// </summary>
+    internal sealed record ProbedFile(List<(int Index, string Kind, string Language)> Streams, double? DurationSeconds, string? EndProblem = null)
     {
         public int Count(string kind) => Streams.Count(s => s.Kind == kind);
     }
 
-    /// <summary>The file's own streams and duration, or null if FFprobe couldn't read it.</summary>
-    private static async Task<ProbedFile?> ProbeFile(string ffprobe, string path, CancellationToken ct)
+    /// <summary>
+    /// The file's own streams and duration, or null if FFprobe couldn't read it. With readEnd, also where its last
+    /// packets stop, for a copy about to take a file's place.
+    /// </summary>
+    private static async Task<ProbedFile?> ProbeFile(string ffprobe, string path, bool readEnd, CancellationToken ct)
+    {
+        string? json = await RunFfprobe(ffprobe, ["-v", "error", "-show_entries", "format=start_time,duration:stream=index,codec_type:stream_tags=language", "-of", "json", path], ct).ConfigureAwait(false);
+        if (json is null)
+        {
+            return null;
+        }
+
+        List<(int, string, string)> streams;
+        double start;
+        double? duration;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            streams = new List<(int, string, string)>();
+            foreach (var s in doc.RootElement.GetProperty("streams").EnumerateArray())
+            {
+                string kind = s.TryGetProperty("codec_type", out var k) ? k.GetString() ?? string.Empty : string.Empty;
+                string language = s.TryGetProperty("tags", out var tags) && tags.TryGetProperty("language", out var l) ? l.GetString() ?? "und" : "und";
+                streams.Add((s.GetProperty("index").GetInt32(), kind, language.Trim().ToLowerInvariant()));
+            }
+
+            double? Seconds(string name) => doc.RootElement.TryGetProperty("format", out var format)
+                && format.TryGetProperty(name, out var d)
+                && double.TryParse(d.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+                ? seconds
+                : null;
+            duration = Seconds("duration") is > 0 and var known ? known : null;
+            start = Seconds("start_time") ?? 0;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return null;
+        }
+
+        // A file cut part way keeps its header, so the duration above is still the film's whole length. Without a
+        // duration there's no end to look for, and LengthProblem falls back on the file's size.
+        string? endProblem = readEnd && duration is { } stated
+            ? EndProblem(await RunFfprobe(ffprobe, ["-v", "error", "-read_intervals", EndInterval(start, stated), "-show_entries", "packet=pts_time,duration_time", "-of", "csv=p=0", path], ct).ConfigureAwait(false), start, stated)
+            : null;
+        return new ProbedFile(streams, duration, endProblem);
+    }
+
+    /// <summary>What FFprobe printed, or null if it failed or took over 2 minutes.</summary>
+    private static async Task<string?> RunFfprobe(string ffprobe, string[] args, CancellationToken ct)
     {
         var psi = new ProcessStartInfo(ffprobe) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
-        foreach (var a in new[] { "-v", "error", "-show_entries", "format=duration:stream=index,codec_type:stream_tags=language", "-of", "json", path })
+        foreach (var a in args)
         {
             psi.ArgumentList.Add(a);
         }
@@ -2062,33 +2249,49 @@ public static class TrackCleaner
             return null;
         }
 
-        if (p.ExitCode != 0)
-        {
-            return null;
-        }
+        return p.ExitCode == 0 ? await stdout.ConfigureAwait(false) : null;
+    }
 
-        try
+    // The last packets are read from this long before the stated end. A seek lands on the keyframe before that
+    // point, or on the last data a cut file has, and reading stops at its end of file, well before the window closes.
+    private const double EndWindowSeconds = 10;
+
+    /// <summary>FFprobe's -read_intervals for the last packets: from shortly before the stated end to a minute past it.</summary>
+    internal static string EndInterval(double start, double duration) =>
+        Math.Max(0, start + duration - EndWindowSeconds).ToString("0.###", CultureInfo.InvariantCulture)
+        + "%+" + (EndWindowSeconds + 60).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>When the last packet ends, from FFprobe's "pts_time,duration_time" lines in any stream order; null when none has a timestamp.</summary>
+    internal static double? LastPacketEnd(string packets)
+    {
+        double? last = null;
+        foreach (var line in packets.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(await stdout.ConfigureAwait(false));
-            var streams = new List<(int, string, string)>();
-            foreach (var s in doc.RootElement.GetProperty("streams").EnumerateArray())
+            var fields = line.Split(',');
+            if (!double.TryParse(fields[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var pts))
             {
-                string kind = s.TryGetProperty("codec_type", out var k) ? k.GetString() ?? string.Empty : string.Empty;
-                string language = s.TryGetProperty("tags", out var tags) && tags.TryGetProperty("language", out var l) ? l.GetString() ?? "und" : "und";
-                streams.Add((s.GetProperty("index").GetInt32(), kind, language.Trim().ToLowerInvariant()));
+                continue;
             }
 
-            double? duration = doc.RootElement.TryGetProperty("format", out var format)
-                && format.TryGetProperty("duration", out var d)
-                && double.TryParse(d.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) && seconds > 0
-                ? seconds
-                : null;
-            return new ProbedFile(streams, duration);
+            double length = fields.Length > 1 && double.TryParse(fields[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0;
+            last = Math.Max(last ?? double.MinValue, pts + length);
         }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException)
+
+        return last;
+    }
+
+    /// <summary>
+    /// Why a copy's last packets don't reach its stated length, or null when they do. packets is null when FFprobe
+    /// couldn't read them; a copy whose end can't be read isn't trusted with a file's place.
+    /// </summary>
+    internal static string? EndProblem(string? packets, double start, double duration)
+    {
+        if (packets is null || LastPacketEnd(packets) is not { } last)
         {
-            return null;
+            return "FFprobe couldn't read its end";
         }
+
+        return start + duration - last > LengthTolerance(duration) ? $"it stops at {last - start:0} s though it says it lasts {duration:0} s" : null;
     }
 
     /// <summary>
@@ -2133,9 +2336,9 @@ public static class TrackCleaner
     /// <summary>
     /// Why the new file can't replace the original, or null when it's sound: FFprobe reads it, it has the same video
     /// and attachments, exactly the audio and subtitle tracks that were kept, and the same length. When either length
-    /// is unknown, a file much smaller than the original fails instead.
+    /// is unknown, a file much smaller than the original fails instead. Its last packets have to reach that length too.
     /// </summary>
-    private static string? CheckOutput(ProbedFile source, ProbedFile? output, int audio, int subtitles, long sourceBytes, long outputBytes)
+    internal static string? CheckOutput(ProbedFile source, ProbedFile? output, int audio, int subtitles, long sourceBytes, long outputBytes)
     {
         if (output is null)
         {
@@ -2150,13 +2353,14 @@ public static class TrackCleaner
             }
         }
 
-        return LengthProblem(source, output, sourceBytes, outputBytes);
+        return LengthProblem(source, output, sourceBytes, outputBytes) ?? output.EndProblem;
     }
 
     /// <summary>
     /// Why an earlier copy can't take the original's place, or null when it can. Lighter than CheckOutput, as the
     /// tracks those versions kept aren't known and they dropped attachments: FFprobe reads it, it has the original's
-    /// video, some audio, and the same length. Without an original to compare, video and audio are enough.
+    /// video, some audio, and the same length, which its last packets reach. Without an original to compare, video,
+    /// audio and an end that reaches its own stated length are enough.
     /// </summary>
     internal static string? CheckLeftover(ProbedFile? reference, ProbedFile? leftover, long referenceBytes, long leftoverBytes)
     {
@@ -2167,7 +2371,7 @@ public static class TrackCleaner
 
         if (reference is null)
         {
-            return leftover.Count("video") == 0 ? "it has no video" : leftover.Count("audio") == 0 ? "it has no audio" : null;
+            return leftover.Count("video") == 0 ? "it has no video" : leftover.Count("audio") == 0 ? "it has no audio" : leftover.EndProblem;
         }
 
         if (leftover.Count("video") != reference.Count("video"))
@@ -2175,7 +2379,7 @@ public static class TrackCleaner
             return $"it has {leftover.Count("video")} video streams instead of {reference.Count("video")}";
         }
 
-        return leftover.Count("audio") == 0 ? "it has no audio" : LengthProblem(reference, leftover, referenceBytes, leftoverBytes);
+        return leftover.Count("audio") == 0 ? "it has no audio" : LengthProblem(reference, leftover, referenceBytes, leftoverBytes) ?? leftover.EndProblem;
     }
 
     /// <summary>Why the copy isn't as long as the original, or null. When either length is unknown, a copy much smaller than the original fails instead.</summary>
@@ -2183,12 +2387,14 @@ public static class TrackCleaner
     {
         if (source.DurationSeconds is { } want && copy.DurationSeconds is { } got)
         {
-            double tolerance = Math.Max(2, want * 0.01);
-            return Math.Abs(want - got) > tolerance ? $"it lasts {got:0} s instead of {want:0} s" : null;
+            return Math.Abs(want - got) > LengthTolerance(want) ? $"it lasts {got:0} s instead of {want:0} s" : null;
         }
 
         return sourceBytes > 0 && copyBytes < sourceBytes / 3 ? "it's much smaller than the original and its length can't be read" : null;
     }
+
+    /// <summary>How far a copy's length may be off, by its header or by its last packets: 2 s, or 1% of a long film.</summary>
+    private static double LengthTolerance(double seconds) => Math.Max(2, seconds * 0.01);
 
     /// <summary>Makes sure the new file is on the disk before it takes the original's place, so a power cut can't leave an empty file.</summary>
     private static void FlushToDisk(string path)
@@ -2456,6 +2662,18 @@ public static class TrackCleaner
             if (Progress.Recent.Count > 30)
             {
                 Progress.Recent.RemoveAt(Progress.Recent.Count - 1);
+            }
+        }
+    }
+
+    // For a note made each time the page looks, not once per run: a second one would push run notes out.
+    private static void NoteOnce(string line)
+    {
+        lock (Sync)
+        {
+            if (!Progress.Recent.Any(l => l.EndsWith(" " + line, StringComparison.Ordinal)))
+            {
+                Note(line);
             }
         }
     }

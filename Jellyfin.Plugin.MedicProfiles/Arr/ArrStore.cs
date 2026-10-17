@@ -63,7 +63,7 @@ public class ArrStore
         return app == ArrApp.Sonarr ? secrets.SonarrKey : secrets.RadarrKey;
     }
 
-    public void SetKey(ArrApp app, string? key)
+    public virtual void SetKey(ArrApp app, string? key)
     {
         string? clean = string.IsNullOrWhiteSpace(key) ? null : key.Trim();
         _secrets.Update(secrets =>
@@ -81,7 +81,7 @@ public class ArrStore
 
     public string? GetQbitPassword() => _secrets.Read().QbitPassword;
 
-    public void SetQbitPassword(string? password) =>
+    public virtual void SetQbitPassword(string? password) =>
         _secrets.Update(secrets => secrets.QbitPassword = string.IsNullOrEmpty(password) ? null : password);
 
     public List<ActionRecord> LoadHistory()

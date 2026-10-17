@@ -1,6 +1,7 @@
 using System.Reflection;
 using Jellyfin.Plugin.MedicPicks.Api;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 
 namespace MedicPicks.Tests;
@@ -11,11 +12,25 @@ namespace MedicPicks.Tests;
 /// </summary>
 public class PicksAccessTests
 {
+    private static readonly string Prefix = typeof(PicksController).GetCustomAttribute<RouteAttribute>()!.Template;
+
+    // Every public method is an action unless marked [NonAction]; one with no template of its own answers at the
+    // controller's route, so it counts too.
     private static IEnumerable<(MethodInfo Action, string Route)> Actions() =>
         typeof(PicksController).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-            .Select(m => (m, m.GetCustomAttribute<HttpMethodAttribute>()?.Template))
-            .Where(a => a.Template is not null)
-            .Select(a => (a.m, a.Template!));
+            .Where(m => !m.IsSpecialName && m.GetCustomAttribute<NonActionAttribute>() is null)
+            .SelectMany(m => Templates(m).Select(t => (m, Route(t))));
+
+    private static IEnumerable<string> Templates(MethodInfo action)
+    {
+        var templates = action.GetCustomAttributes().OfType<IRouteTemplateProvider>().Select(a => a.Template).OfType<string>().ToArray();
+        return templates.Length > 0 ? templates : new[] { string.Empty };
+    }
+
+    private static string Route(string template) =>
+        template.StartsWith('/') || template.StartsWith("~/", StringComparison.Ordinal) ? template.TrimStart('~', '/')
+        : template.Length == 0 ? Prefix
+        : $"{Prefix}/{template}";
 
     [Fact]
     public void Every_action_says_who_may_call_it()
@@ -33,7 +48,7 @@ public class PicksAccessTests
         foreach (var (action, route) in Actions())
         {
             bool admin = action.GetCustomAttribute<AuthorizeAttribute>()?.Policy == "RequiresElevation";
-            Assert.True(admin == route.StartsWith("Admin/", StringComparison.Ordinal), $"{route} is {(admin ? string.Empty : "not ")}admin-only");
+            Assert.True(admin == route.StartsWith(Prefix + "/Admin/", StringComparison.Ordinal), $"{route} is {(admin ? string.Empty : "not ")}admin-only");
         }
     }
 
@@ -42,6 +57,6 @@ public class PicksAccessTests
     {
         var open = Actions().Where(a => a.Action.GetCustomAttribute<AllowAnonymousAttribute>() is not null).Select(a => a.Route);
 
-        Assert.Equal(new[] { "Page" }, open);
+        Assert.Equal(new[] { Prefix + "/Page" }, open);
     }
 }

@@ -42,26 +42,29 @@ public sealed class UsageSampler : IHostedService, IDisposable
 
     public void Dispose() => _timer?.Dispose();
 
-    private void Sample()
+    internal void Sample()
     {
-        try
+        // Each on its own, so one that fails doesn't stop the others.
+        List<object>? playing = null;
+        (int Streams, int Transcodes) counts = default;
+        Run("who is watching", () =>
         {
-            var playing = _sessions.Sessions
+            playing = _sessions.Sessions
                 .Cast<object>()
                 .Where(s => SettingsReader.Get(s, "NowPlayingItem") is not null)
                 .ToList();
+            counts = Count(playing);
+        });
 
-            var (streams, transcodes) = Count(playing);
-            // Each on its own, so one that fails doesn't stop the others.
-            Run("busy hours", () => UsageStore.Record(_paths, DateTime.Now, streams, transcodes));
-            Run("transcodes", () => TranscodeLog.Record(_paths, playing));
-            Run("the live readings", ServerNow.Record);
-            Run("disk space", () => StorageWatch.RecordKnown(_paths.PluginConfigurationsPath));
-        }
-        catch (Exception ex)
+        // Without the sessions these would record an empty hour, and the planner would take it as a quiet one.
+        if (playing is { } watching)
         {
-            Failed("who is watching", ex);
+            Run("busy hours", () => UsageStore.Record(_paths, DateTime.Now, counts.Streams, counts.Transcodes));
+            Run("transcodes", () => TranscodeLog.Record(_paths, watching));
         }
+
+        Run("the live readings", ServerNow.Record);
+        Run("disk space", () => StorageWatch.RecordKnown(_paths.PluginConfigurationsPath));
     }
 
     // What failed last time, so a failure that repeats every 5 minutes is a warning once, not every time.
@@ -125,7 +128,7 @@ public static class UsageStore
     {
         lock (Sync)
         {
-            return LoadUnlocked(paths);
+            return LoadUnlocked(paths, forReading: true);
         }
     }
 
@@ -133,7 +136,7 @@ public static class UsageStore
     {
         lock (Sync)
         {
-            var profile = LoadUnlocked(paths);
+            var profile = LoadUnlocked(paths, forReading: false);
             int index = (((int)localNow.DayOfWeek + 6) % 7) * 24 + localNow.Hour;
             var bucket = profile.Buckets[index];
 
@@ -157,7 +160,7 @@ public static class UsageStore
         }
     }
 
-    private static UsageProfile LoadUnlocked(IApplicationPaths paths)
+    private static UsageProfile LoadUnlocked(IApplicationPaths paths, bool forReading)
     {
         string path = FilePath(paths);
         UsageProfile? profile = null;
@@ -170,7 +173,17 @@ public static class UsageStore
         }
         catch (JsonException ex)
         {
-            ScheduleStorage.SetAside(path, ex);
+            try
+            {
+                ScheduleStorage.SetAside(path, ex);
+            }
+            catch (Exception moveFailed) when (forReading && moveFailed is IOException or UnauthorizedAccessException)
+            {
+                // Reading only shows the profile, so the report, the usage page and the planner get an empty one and
+                // carry on. Recording still fails, so nothing writes over the damaged file before it's set aside.
+                ScheduleStorage.Logger?.LogWarning(moveFailed, "Jellyfin Medic: {File} couldn't be read or kept aside as .bad, so it reads as empty", Path.GetFileName(path));
+            }
+
             profile = null;
         }
 

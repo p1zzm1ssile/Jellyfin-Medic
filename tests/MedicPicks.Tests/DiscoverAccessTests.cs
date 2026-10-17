@@ -1,3 +1,6 @@
+using Jellyfin.Data;
+using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Plugin.MedicPicks.Api;
 using Jellyfin.Plugin.MedicPicks.Configuration;
 using Jellyfin.Plugin.MedicPicks.Picks;
@@ -30,28 +33,39 @@ public sealed class DiscoverAccessTests
         Assert.False(DiscoverAccess.Allowed(config, Child, parentalLimits: false));
     }
 
-    private enum PreferenceKind { BlockedTags, AllowedTags, OrderedViews }
-
-    private sealed class FakeUser
+    [Fact]
+    public void A_maximum_rating_counts_as_a_parental_limit()
     {
-        public int? MaxParentalRatingScore { get; set; }
+        Assert.False(DiscoverAccess.HasParentalLimits(new User("kid", "provider", "reset")));
+        Assert.True(DiscoverAccess.HasParentalLimits(new User("kid", "provider", "reset") { MaxParentalRatingScore = 12 }));
+    }
 
-        public Dictionary<PreferenceKind, string[]> Preferences { get; } = new();
+    [Theory]
+    [InlineData(PreferenceKind.BlockedTags)]
+    [InlineData(PreferenceKind.AllowedTags)]
+    public void Tag_rules_count_as_parental_limits(PreferenceKind kind)
+    {
+        var tagged = new User("kid", "provider", "reset");
+        tagged.SetPreference(kind, new[] { "horror" });
+        Assert.True(DiscoverAccess.HasParentalLimits(tagged));
 
-        public string[] GetPreference(PreferenceKind kind) => Preferences.GetValueOrDefault(kind) ?? Array.Empty<string>();
+        var empty = new User("kid", "provider", "reset");
+        empty.SetPreference(kind, new[] { string.Empty });
+        Assert.False(DiscoverAccess.HasParentalLimits(empty));
+    }
+
+    // Older servers named the rating limit MaxParentalAgeRating; only properties are read by name.
+    private sealed class LegacyUser
+    {
+        public int? MaxParentalAgeRating { get; set; }
     }
 
     [Fact]
-    public void A_maximum_rating_or_tag_rules_count_as_parental_limits()
+    public void A_maximum_rating_under_its_older_name_counts_as_a_parental_limit()
     {
-        Assert.False(DiscoverAccess.HasParentalLimits(new FakeUser()));
-        Assert.True(DiscoverAccess.HasParentalLimits(new FakeUser { MaxParentalRatingScore = 12 }));
-        var tagged = new FakeUser();
-        tagged.Preferences[PreferenceKind.BlockedTags] = new[] { "horror" };
-        Assert.True(DiscoverAccess.HasParentalLimits(tagged));
-        var empty = new FakeUser();
-        empty.Preferences[PreferenceKind.AllowedTags] = new[] { string.Empty };
-        Assert.False(DiscoverAccess.HasParentalLimits(empty));
+        Assert.False(DiscoverAccess.HasParentalLimits(new LegacyUser()));
+        Assert.True(DiscoverAccess.HasParentalLimits(new LegacyUser { MaxParentalAgeRating = 12 }));
+        Assert.False(DiscoverAccess.HasParentalLimits(null));
     }
 
     [Fact]

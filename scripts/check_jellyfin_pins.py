@@ -9,7 +9,10 @@ checks that:
   $(JellyfinPackageVersion) for the -p:JellyfinTarget the workflow builds with;
 - Jellyfin.Model is at the same version as Jellyfin.Controller;
 - each tests/*/*.Tests.csproj that references the plugin pins that same version, so its unit tests run on the
-  Jellyfin the release is built against.
+  Jellyfin the release is built against;
+- each test project that compiles in a directory of code the plugin also compiles in (as tests/MedicShared.Tests
+  does shared/Medic.Shared, which Medic Picks and Medic Profiles both ship) pins that same version too, and the
+  plugins that compile in the same directory build against the same Jellyfin.
 
   python3 scripts/check_jellyfin_pins.py [repository]
 
@@ -18,12 +21,14 @@ matches and, to stderr, each thing that doesn't, then exits 1 if there is any. I
 projects use ($(Name), and conditions like '$(Name)' == 'value'), and reports anything else rather than guess.
 """
 import argparse
+import itertools
 import os
 import pathlib
 import re
 import shlex
 import sys
 import xml.etree.ElementTree as ET
+from typing import NamedTuple
 
 PACKAGES = ("Jellyfin.Controller", "Jellyfin.Model")
 # Jellyfin's packages carry the server's three-number version. A pattern like 12.1.* would follow every new patch.
@@ -122,9 +127,24 @@ def holds(element: ET.Element, properties: dict[str, str]) -> bool:
     return (expand(m[1], properties).lower() == expand(m[3], properties).lower()) == (m[2] == "==")
 
 
-def evaluate(path: pathlib.Path, name: str,
-             global_properties: dict[str, str]) -> tuple[dict[str, str], list[pathlib.Path]]:
-    """The Jellyfin package versions a project references, and the projects it references."""
+def source_directory(project: pathlib.Path, include: str) -> pathlib.Path:
+    """The directory a Compile item takes its files from: the part of the path before any wildcard."""
+    parts = pathlib.PurePosixPath(include.replace("\\", "/")).parts
+    plain = list(itertools.takewhile(lambda part: not any(c in part for c in "*?"), parts))
+    if len(plain) == len(parts):
+        plain = plain[:-1]
+    return project.parent.joinpath(*plain).resolve()
+
+
+class Project(NamedTuple):
+    """What the check reads from a .csproj."""
+    packages: dict[str, str]  # Jellyfin package name to the version it references
+    references: list[pathlib.Path]  # the projects it references
+    compiles: set[pathlib.Path]  # the directories its Compile items take source files from
+
+
+def evaluate(path: pathlib.Path, name: str, global_properties: dict[str, str]) -> Project:
+    """The Jellyfin package versions a project references, the projects it references and the source it compiles in."""
     try:
         project = ET.parse(path).getroot()
         properties = dict(global_properties)
@@ -139,6 +159,7 @@ def evaluate(path: pathlib.Path, name: str,
 
         packages: dict[str, str] = {}
         references: list[pathlib.Path] = []
+        compiles: set[pathlib.Path] = set()
         for group in project:
             if local(group) != "ItemGroup":
                 continue
@@ -150,15 +171,18 @@ def evaluate(path: pathlib.Path, name: str,
                     packages[package] = expand(version, properties)
                 elif kind == "ProjectReference" and holds(group, properties) and holds(item, properties):
                     references.append((path.parent / expand(include, properties).replace("\\", "/")).resolve())
+                elif kind == "Compile" and include and holds(group, properties) and holds(item, properties):
+                    compiles.update(source_directory(path, part.strip())
+                                    for part in expand(include, properties).split(";") if part.strip())
     except OSError as e:
         raise Unreadable(f"{name}: {e.strerror}") from None
     except (ET.ParseError, Unreadable) as e:
         raise Unreadable(f"{name}: {e}") from None
-    return packages, references
+    return Project(packages, references, compiles)
 
 
-def release(text: str, root: pathlib.Path) -> tuple[str, pathlib.Path, dict[str, str]]:
-    """A release workflow's TARGET_ABI, the project it builds, and that build's Jellyfin package versions."""
+def release(text: str, root: pathlib.Path) -> tuple[str, pathlib.Path, Project]:
+    """A release workflow's TARGET_ABI, the project it builds, and what that build references and compiles in."""
     env = workflow_env(text)
     if "TARGET_ABI" not in env:
         raise Unreadable("has no TARGET_ABI in its env")
@@ -166,8 +190,7 @@ def release(text: str, root: pathlib.Path) -> tuple[str, pathlib.Path, dict[str,
         raise Unreadable("doesn't pass TARGET_ABI to scripts/update_manifest.py --abi")
     project, properties = build(publish_command(text), env)
     plugin = (root / project).resolve()
-    packages, _ = evaluate(plugin, project, properties)
-    return env["TARGET_ABI"], plugin, packages
+    return env["TARGET_ABI"], plugin, evaluate(plugin, project, properties)
 
 
 def check(root: pathlib.Path) -> tuple[list[str], list[str]]:
@@ -179,7 +202,7 @@ def check(root: pathlib.Path) -> tuple[list[str], list[str]]:
     def name(path: pathlib.Path) -> str:
         return pathlib.Path(os.path.relpath(path, root)).as_posix()
 
-    tests: dict[pathlib.Path, tuple[dict[str, str], list[pathlib.Path]]] = {}
+    tests: dict[pathlib.Path, Project] = {}
     for path in sorted(root.glob("tests/*/*.Tests.csproj")):
         try:
             tests[path] = evaluate(path, name(path), {})
@@ -194,14 +217,20 @@ def check(root: pathlib.Path) -> tuple[list[str], list[str]]:
                         " so there is nothing to check")
 
     compared: set[pathlib.Path] = set()
+    # Each directory of source a released plugin compiles in, with the plugins and the Jellyfin they build against.
+    compiled_by: dict[pathlib.Path, dict[pathlib.Path, str]] = {}
     for workflow, text in workflows.items():
         try:
-            abi, plugin, packages = release(text, root)
+            abi, plugin, built = release(text, root)
         except Unreadable as e:
             problems.append(f"{workflow.name}: {e}")
             continue
-        tested = [test for test, (_, references) in tests.items() if plugin in references]
-        compared.update(tested)
+        packages = built.packages
+        tested = [test for test, project in tests.items() if plugin in project.references]
+        # Test projects that compile in code this plugin compiles in too, and the directory each shares with it.
+        sharing = {test: min(project.compiles & built.compiles) for test, project in tests.items()
+                   if test not in tested and project.compiles & built.compiles}
+        compared.update(tested, sharing)
 
         found: list[str] = []
         version = packages.get("Jellyfin.Controller")
@@ -223,13 +252,28 @@ def check(root: pathlib.Path) -> tuple[list[str], list[str]]:
                     if pinned != version:
                         found.append(f"{name(test)} has {package} {pinned}, but {name(plugin)}, which it tests,"
                                      f" builds against {version}")
+            for test, directory in sharing.items():
+                for package, pinned in tests[test].packages.items():
+                    if pinned != version:
+                        found.append(f"{name(test)} has {package} {pinned}, but {name(plugin)}, which compiles"
+                                     f" the {name(directory)} it tests, builds against {version}")
+            for directory in built.compiles:
+                compiled_by.setdefault(directory, {})[plugin] = version
 
         if found:
             problems.extend(f"{workflow.name}: {problem}" for problem in found)
         else:
-            files = [name(path) for path in (plugin, *tested)]
+            files = [name(plugin), *sorted(name(path) for path in (*tested, *sharing))]
             listed = files[0] if len(files) == 1 else ", ".join(files[:-1]) + " and " + files[-1]
             report.append(f"{workflow.name}: TARGET_ABI {abi} matches Jellyfin {version} in {listed}")
+
+    for directory, plugins in sorted(compiled_by.items()):
+        if len(set(plugins.values())) > 1:
+            (first, version), *others = sorted(plugins.items())
+            rest = [f"{name(plugin)}, which builds against {other}" for plugin, other in others]
+            builds = rest[0] if len(rest) == 1 else ", ".join(rest[:-1]) + " and " + rest[-1]
+            problems.append(f"{name(directory)} is compiled into {name(first)}, which builds against Jellyfin"
+                            f" {version}, and {builds}")
 
     for test in tests:
         if test not in compared:

@@ -16,6 +16,10 @@ namespace JellyfinMedic.Services;
 /// Viewing is recorded per hour and per quarter hour. Each quarter hour starts from a smooth curve
 /// through the hourly averages, and leans on its own samples as they build up. Without that the
 /// cost is flat within each hour, so the quietest start always lands on the hour.
+///
+/// An hour of the day with no viewing readings on any day, once Medic has learned the pattern, is
+/// taken as one when the server is switched off, and is never planned into: Jellyfin doesn't catch
+/// up a run it missed while it was off.
 /// </summary>
 public sealed class BusyProfile
 {
@@ -42,6 +46,7 @@ public sealed class BusyProfile
     private readonly double[] _load = new double[SlotsPerWeek]; // index = Monday-first day * 96 + quarter hour
     private readonly double[] _server = new double[SlotsPerWeek]; // 0 to 1, same index; all 0 until learned
     private readonly bool[] _avoid = new bool[SlotsPerDay];
+    private readonly bool[] _unseen = new bool[SlotsPerDay];
 
     public bool FromViewing { get; private set; }
 
@@ -50,6 +55,8 @@ public sealed class BusyProfile
     public string Summary { get; private set; } = string.Empty;
 
     public bool HasAvoidedTimes => _avoid.Any(a => a);
+
+    public bool HasUnseenTimes => _unseen.Any(u => u);
 
     public string PlacementNote => (FromViewing, FromServerLoad) switch
     {
@@ -100,6 +107,16 @@ public sealed class BusyProfile
             {
                 var seen = Enumerable.Range(0, 7).Where(d => samples[d * 24 + h] > 0).Select(d => usage.AverageStreams[d * 24 + h]).ToList();
                 hourAverage[h] = seen.Count > 0 ? seen.Average() : Typical[h];
+
+                // Viewing is sampled whenever Jellyfin is up, so an hour no day has a sample of is one
+                // when the server is off. Server load is no guide here: it isn't read while tasks run.
+                if (seen.Count == 0)
+                {
+                    for (int q = 0; q < 60 / SlotMinutes; q++)
+                    {
+                        profile._unseen[(h * 60 / SlotMinutes) + q] = true;
+                    }
+                }
             }
 
             for (int i = 0; i < 168; i++)
@@ -264,6 +281,20 @@ public sealed class BusyProfile
                 }
             }
         }
+    }
+
+    /// <summary>True when a run of <paramref name="length"/> planner cells from <paramref name="start"/> touches an hour Medic has never seen.</summary>
+    internal bool TouchesUnseen(int start, int length)
+    {
+        for (int cell = start; cell < start + length; cell++)
+        {
+            if (_unseen[((cell * WeekGrid.CellMinutes / SlotMinutes) % SlotsPerDay + SlotsPerDay) % SlotsPerDay])
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The 96 quarter-hour values for one day, scaled 0 to 1 for shading the timeline.</summary>

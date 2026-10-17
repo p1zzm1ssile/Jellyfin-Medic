@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.MedicProfiles.Arr;
+using Jellyfin.Plugin.MedicProfiles.Configuration;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -74,8 +75,12 @@ public class ProfilesController : ControllerBase
         bool newRadarrHost = HostChanged(plugin.Configuration.RadarrUrl, radarrUrl);
         bool newQbitHost = request.QbitUrl is not null && HostChanged(plugin.Configuration.QbitUrl, CleanUrl(request.QbitUrl));
 
-        // The keys and password are written before the new addresses are saved: if a write fails, the settings stay
-        // as they were, and a secret for a server that changed is removed rather than left paired with the old one.
+        // Kept so a failed write, of a secret or of the addresses, can put back everything this request changed.
+        var secretsBefore = (Sonarr: _store.GetKey(ArrApp.Sonarr), Radarr: _store.GetKey(ArrApp.Radarr), Qbit: _store.GetQbitPassword());
+        var settingsBefore = SavedSettings.Of(plugin.Configuration);
+
+        // The keys and password are written before the new addresses are saved: if a write fails, the ones already
+        // written are put back and the settings stay as they were, so no secret is left paired with the wrong server.
         try
         {
             if (request.ClearQbitPassword || (newQbitHost && string.IsNullOrEmpty(request.QbitPassword)))
@@ -109,8 +114,9 @@ public class ProfilesController : ControllerBase
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
         {
             _logger.LogWarning(ex, "Medic Profiles: couldn't save a key or password, so the settings weren't changed");
-            ForgetSecretsFor(newSonarrHost, newRadarrHost, newQbitHost);
-            return Problem("Couldn't save the key or password, so nothing was changed. Check the Jellyfin log for Medic Profiles errors.");
+            return PutBackSecrets(secretsBefore, newSonarrHost, newRadarrHost, newQbitHost)
+                ? Problem("Couldn't save the key or password, so nothing was changed. Check the Jellyfin log for Medic Profiles errors.")
+                : NotPutBack();
         }
 
         plugin.Configuration.SonarrUrl = sonarrUrl;
@@ -131,7 +137,20 @@ public class ProfilesController : ControllerBase
             plugin.Configuration.QbitPatternsHost = Authority(plugin.Configuration.QbitUrl);
         }
 
-        plugin.SaveConfiguration();
+        try
+        {
+            plugin.SaveConfiguration();
+        }
+        catch (Exception ex)
+        {
+            // Whatever stopped the save, a key written above must not stay paired with the old address.
+            _logger.LogWarning(ex, "Medic Profiles: couldn't save the settings, so the keys and password are put back as they were");
+            settingsBefore.PutBack(plugin.Configuration);
+            return PutBackSecrets(secretsBefore, newSonarrHost, newRadarrHost, newQbitHost)
+                ? Problem("Couldn't save the settings, so nothing was changed. Check the Jellyfin log for Medic Profiles errors.")
+                : NotPutBack();
+        }
+
         _advisor.Forget();
 
         return NoContent();
@@ -311,33 +330,57 @@ public class ProfilesController : ControllerBase
         _ => null
     };
 
-    // A different scheme, host or port; a first address (nothing saved before) isn't a change.
-    // Best effort, after a failed write: a secret is never left for a server other than the one it was typed for.
-    private void ForgetSecretsFor(bool sonarr, bool radarr, bool qbit)
+    // Puts back each key and the password this request changed. One that can't be put back is removed when it was
+    // typed for a new server, as the old address stays. False when any couldn't be put back.
+    private bool PutBackSecrets((string? Sonarr, string? Radarr, string? Qbit) before, bool newSonarrHost, bool newRadarrHost, bool newQbitHost)
     {
-        foreach (var (changed, forget) in new (bool, Action)[]
+        bool all = true;
+        foreach (var (now, was, newHost, set) in new (string?, string?, bool, Action<string?>)[]
         {
-            (sonarr, () => _store.SetKey(ArrApp.Sonarr, null)),
-            (radarr, () => _store.SetKey(ArrApp.Radarr, null)),
-            (qbit, () => _store.SetQbitPassword(null))
+            (_store.GetKey(ArrApp.Sonarr), before.Sonarr, newSonarrHost, key => _store.SetKey(ArrApp.Sonarr, key)),
+            (_store.GetKey(ArrApp.Radarr), before.Radarr, newRadarrHost, key => _store.SetKey(ArrApp.Radarr, key)),
+            (_store.GetQbitPassword(), before.Qbit, newQbitHost, _store.SetQbitPassword)
         })
         {
-            if (!changed)
+            if (string.Equals(now, was, StringComparison.Ordinal))
             {
                 continue;
             }
 
             try
             {
-                forget();
+                set(was);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Medic Profiles: couldn't remove a key saved for the old server");
+                all = false;
+                _logger.LogWarning(ex, "Medic Profiles: couldn't put back a key or password after a failed save");
+                if (newHost)
+                {
+                    ForgetSecret(set);
+                }
             }
+        }
+
+        return all;
+    }
+
+    private ObjectResult NotPutBack() =>
+        Problem("Couldn't save the settings, and a key or password couldn't be put back as it was: type the keys and password again. Check the Jellyfin log for Medic Profiles errors.");
+
+    private void ForgetSecret(Action<string?> set)
+    {
+        try
+        {
+            set(null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Medic Profiles: couldn't remove a key typed for a new server");
         }
     }
 
+    // A different scheme, host or port; a first address (nothing saved before) isn't a change.
     private static bool HostChanged(string? oldUrl, string newUrl) =>
         !string.IsNullOrWhiteSpace(oldUrl) && !string.Equals(Authority(oldUrl), Authority(newUrl), StringComparison.OrdinalIgnoreCase);
 
@@ -357,6 +400,25 @@ public class ProfilesController : ControllerBase
 
     private ContentResult Json(object body) =>
         Content(JsonSerializer.Serialize(body, ArrStore.JsonOptions), MediaTypeNames.Application.Json);
+
+    // What SaveSettings changes in the configuration, to put back when it can't be saved.
+    private sealed record SavedSettings(string SonarrUrl, string RadarrUrl, int StuckAfterHours, string QbitUrl, string QbitUser, string[] QbitPatternsAdded, bool? QbitListWasOn, string QbitPatternsHost)
+    {
+        public static SavedSettings Of(PluginConfiguration c) =>
+            new(c.SonarrUrl, c.RadarrUrl, c.StuckAfterHours, c.QbitUrl, c.QbitUser, c.QbitPatternsAdded, c.QbitListWasOn, c.QbitPatternsHost);
+
+        public void PutBack(PluginConfiguration c)
+        {
+            c.SonarrUrl = SonarrUrl;
+            c.RadarrUrl = RadarrUrl;
+            c.StuckAfterHours = StuckAfterHours;
+            c.QbitUrl = QbitUrl;
+            c.QbitUser = QbitUser;
+            c.QbitPatternsAdded = QbitPatternsAdded;
+            c.QbitListWasOn = QbitListWasOn;
+            c.QbitPatternsHost = QbitPatternsHost;
+        }
+    }
 
     public class SettingsRequest
     {

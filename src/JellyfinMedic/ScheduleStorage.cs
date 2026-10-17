@@ -17,14 +17,25 @@ public static class ScheduleStorage
 {
     public static readonly object SyncRoot = new();
 
-    private const int MaxRunHistory = 4000;
+    // Every run of the last week is kept, since the Dashboard's Busy hours counts a week of runs.
+    private static readonly TimeSpan RunHistoryWeek = TimeSpan.FromDays(7);
 
-    // Per task, so one that runs every few minutes can't push every other task's runs out. A day of
-    // runs every 5 minutes is 288.
-    internal const int MaxRunsPerTask = 300;
+    // A task's newest runs are kept however old, so one that runs once a day or less still has a history.
+    internal const int KeptRunsPerTask = 300;
+
+    // Per task, so one that runs every minute can't push every other task's runs out. A week of runs
+    // every 5 minutes is 2,016; the rest leaves room for runs started by hand.
+    internal const int MaxRunsPerTask = 2100;
+
+    // In all, oldest first, so a week of five tasks that run every 5 minutes still fits. A run takes about
+    // 320 bytes, so under 4 MB; only if every run failed with the longest error details would it reach about 55 MB.
+    internal const int MaxRunHistory = 12000;
 
     // Runs that finish this close together are written to disk together.
     private static readonly TimeSpan RunWriteDelay = TimeSpan.FromSeconds(5);
+
+    // Runs kept in memory while the history can't be written (a full disk, a locked file). The oldest go first.
+    internal const int MaxPendingRuns = 4000;
     private const int MaxAuditEntries = 1000; // the page shows the newest 200
     private const int MaxBackups = 50;
     private const int MaxErrorDetailsLength = 4000;
@@ -227,6 +238,12 @@ public static class ScheduleStorage
     // Finished runs not written to disk yet, by history file. Readers see them through ReadRuns.
     private static readonly Dictionary<string, List<RunRecord>> PendingRuns = new(StringComparer.Ordinal);
 
+    // History files with a write already on its way, so a run that finishes meanwhile joins it.
+    private static readonly HashSet<string> FlushScheduled = new(StringComparer.Ordinal);
+
+    // History files whose last write failed, so the failure is logged once and its recovery once.
+    private static readonly HashSet<string> FailingRunWrites = new(StringComparer.Ordinal);
+
     /// <summary>
     /// Records a finished run. It's written a few seconds later, together with any other run that finishes
     /// meanwhile, so a burst of runs (the night's tasks, say) rewrites the history once, not once per run.
@@ -237,13 +254,19 @@ public static class ScheduleStorage
         bool schedule;
         lock (SyncRoot)
         {
-            schedule = !PendingRuns.ContainsKey(path);
-            if (schedule)
+            if (!PendingRuns.TryGetValue(path, out var pending))
             {
-                PendingRuns[path] = new List<RunRecord>();
+                pending = new List<RunRecord>();
+                PendingRuns[path] = pending;
             }
 
-            PendingRuns[path].Add(run);
+            pending.Add(run);
+            if (pending.Count > MaxPendingRuns)
+            {
+                pending.RemoveRange(0, pending.Count - MaxPendingRuns);
+            }
+
+            schedule = FlushScheduled.Add(path);
         }
 
         if (schedule)
@@ -252,27 +275,42 @@ public static class ScheduleStorage
         }
     }
 
-    /// <summary>Writes the runs still waiting to be written. Also called when the plugin stops.</summary>
+    /// <summary>
+    /// Writes the runs still waiting to be written. Also called when the plugin stops. If the write fails they
+    /// stay waiting, and the next run's write or the plugin stopping tries them again.
+    /// </summary>
     public static void FlushRuns(IApplicationPaths paths)
     {
         string path = RunHistoryPath(paths);
-        try
+        lock (SyncRoot)
         {
-            lock (SyncRoot)
+            FlushScheduled.Remove(path);
+            if (!PendingRuns.TryGetValue(path, out var pending) || pending.Count == 0)
             {
-                if (!PendingRuns.Remove(path, out var pending) || pending.Count == 0)
-                {
-                    return;
-                }
+                return;
+            }
 
+            try
+            {
                 var runs = ReadList<RunRecord>(path);
                 runs.AddRange(pending);
-                WriteJson(path, Trim(runs));
+                WriteJson(path, Trim(runs, DateTime.UtcNow));
             }
-        }
-        catch (Exception ex)
-        {
-            Logger?.LogWarning(ex, "Jellyfin Medic: couldn't save the latest task runs to the run history");
+            catch (Exception ex)
+            {
+                if (FailingRunWrites.Add(path))
+                {
+                    Logger?.LogWarning(ex, "Jellyfin Medic: couldn't save the latest task runs to the run history; they're kept and saved with the next run");
+                }
+
+                return;
+            }
+
+            PendingRuns.Remove(path);
+            if (FailingRunWrites.Remove(path))
+            {
+                Logger?.LogInformation("Jellyfin Medic: the run history is being saved again");
+            }
         }
     }
 
@@ -292,14 +330,22 @@ public static class ScheduleStorage
         }
     }
 
-    /// <summary>Keeps the newest runs: up to MaxRunsPerTask of each task, and MaxRunHistory in all. Oldest first.</summary>
-    internal static List<RunRecord> Trim(IEnumerable<RunRecord> runs) =>
-        runs.GroupBy(r => r.TaskId, StringComparer.OrdinalIgnoreCase)
-            .SelectMany(g => g.OrderByDescending(r => r.EndUtc).Take(MaxRunsPerTask))
+    /// <summary>
+    /// Keeps of each task its newest KeptRunsPerTask runs and every run of the last week, up to MaxRunsPerTask,
+    /// then the newest MaxRunHistory in all. Oldest first.
+    /// </summary>
+    internal static List<RunRecord> Trim(IEnumerable<RunRecord> runs, DateTime nowUtc)
+    {
+        var weekAgo = AsUtc(nowUtc) - RunHistoryWeek;
+        return runs.GroupBy(r => r.TaskId, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(g => g.OrderByDescending(r => r.EndUtc)
+                .Where((r, i) => i < KeptRunsPerTask || AsUtc(r.EndUtc) >= weekAgo)
+                .Take(MaxRunsPerTask))
             .OrderByDescending(r => r.EndUtc)
             .Take(MaxRunHistory)
             .OrderBy(r => r.EndUtc)
             .ToList();
+    }
 
     /// <summary>
     /// Forgets any pending back-off for these tasks, so a later successful run

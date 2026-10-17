@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
+using Jellyfin.Plugin.MedicPicks;
 using Jellyfin.Plugin.MedicPicks.Picks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace MedicPicks.Tests;
@@ -82,10 +84,76 @@ public sealed class SeerrClientTests : IDisposable
         Assert.All(sent, url => Assert.StartsWith("http://seerr-a:5055/", url, StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(301)]
+    [InlineData(302)]
+    [InlineData(303)]
+    [InlineData(307)]
+    [InlineData(308)]
+    public async Task Test_through_the_registered_client_never_sends_the_key_on_to_where_a_redirect_points(int status)
+    {
+        // Real servers and the client the plugin registers: .NET drops Authorization on a redirect but sends X-Api-Key on.
+        using var target = new LocalServer(_ => (200, null, "{}"));
+        using var seerr = new LocalServer(request => (status, target.Url + "/seerr" + request.Url!.PathAndQuery, string.Empty));
+
+        var (ok, message) = await RegisteredClient().TestAsync(seerr.Url, CancellationToken.None);
+
+        Assert.Empty(target.Received);
+        Assert.Equal("seerr-key", Assert.Single(seerr.Received).ApiKey);
+        Assert.False(ok);
+        Assert.Contains($"{seerr.Url} sent the request on to {target.Url}/seerr/api/v1/auth/me", message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(301)]
+    [InlineData(302)]
+    [InlineData(303)]
+    [InlineData(307)]
+    [InlineData(308)]
+    public async Task A_request_through_the_registered_client_never_sends_the_key_on_to_where_a_redirect_points(int status)
+    {
+        // The account lookup answers; the request itself, a POST that a 307 or 308 would send again body and all, is sent on.
+        using var target = new LocalServer(_ => (201, null, """{"id":7}"""));
+        using var seerr = new LocalServer(request => request.HttpMethod == "GET"
+            ? (200, null, """{"id":42}""")
+            : (status, target.Url + request.Url!.PathAndQuery, string.Empty));
+
+        var result = await RegisteredClient().RequestAsync(seerr.Url, Person, 603, "movie", CancellationToken.None);
+
+        Assert.Empty(target.Received);
+        Assert.Equal(new (string, string?)[] { ("GET", "seerr-key"), ("POST", "seerr-key") }, seerr.Received.Select(sent => (sent.Method, sent.ApiKey)));
+        Assert.Equal("error", result.Status);
+    }
+
+    [Fact]
+    public async Task The_registered_client_talks_to_Seerr_as_Jellyfin_does()
+    {
+        // Jellyfin's default client, which these calls went through before, names the server and asks for JSON first.
+        using var seerr = new LocalServer(_ => (200, null, "{}"));
+
+        var (ok, message) = await RegisteredClient().TestAsync(seerr.Url, CancellationToken.None);
+
+        Assert.True(ok, message);
+        var request = Assert.Single(seerr.Received);
+        Assert.Equal("Jellyfin-Server/12.2.0", request.UserAgent);
+        Assert.Equal("application/json; q=1.0, application/xml; q=0.9, */*; q=0.8", request.Accept);
+    }
+
     public void Dispose()
     {
         _http.Dispose();
         Directory.Delete(_root, recursive: true);
+    }
+
+    // SeerrClient as Jellyfin builds it: the host's factory, then the plugin's registrator.
+    private SeerrClient RegisteredClient()
+    {
+        var services = new ServiceCollection();
+        services.AddHttpClient();
+        new PluginServiceRegistrator().RegisterServices(services, JellyfinHost.Create());
+        var store = new PicksStore(new TestPaths(_root), NullLogger<PicksStore>.Instance);
+        store.SetSeerrKey("seerr-key");
+        return new SeerrClient(services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>(), store, NullLogger<SeerrClient>.Instance);
     }
 
     private (SeerrClient Client, List<string> Sent) Redirecting(HttpStatusCode status, string location)

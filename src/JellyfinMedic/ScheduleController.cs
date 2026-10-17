@@ -1,9 +1,12 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Model.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using JellyfinMedic.Services;
@@ -190,7 +193,14 @@ public class ScheduleController : ControllerBase
             Changes = p.Changes
         }).ToList();
 
-        return Ok(new { TotalAuditedTasks = rows.Count, Changing = rows.Count(r => r.Changes), BusySummary = Busy().Summary, SchedulePlan = rows });
+        return Ok(new
+        {
+            TotalAuditedTasks = rows.Count,
+            Changing = rows.Count(r => r.Changes),
+            BusySummary = Busy().Summary,
+            PlanHash = PlanHash(plan),
+            SchedulePlan = rows
+        });
     }
 
     /// <summary>Tasks with no time to run at, what each does, and whether Medic recommends turning it on.</summary>
@@ -212,10 +222,19 @@ public class ScheduleController : ControllerBase
         return Ok(new { Success = true });
     }
 
+    /// <param name="planHash">The PlanHash from the preview the owner saw. Without it (an older page), the plan as it is now is applied.</param>
     [HttpPost("ApplyRecommendedSchedule")]
-    public ActionResult<object> ApplyRecommendedSchedule()
+    public ActionResult<object> ApplyRecommendedSchedule([FromQuery] string? planHash = null)
     {
-        var changing = BuildPlan().Where(p => p.Changes).ToList();
+        var plan = BuildPlan();
+
+        // Usage, settings, choices or tasks may have changed since the preview: never apply a plan the owner didn't see.
+        if (!string.IsNullOrEmpty(planHash) && !string.Equals(planHash, PlanHash(plan), StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(StatusCodes.Status409Conflict, "The plan changed since you previewed it. Preview again.");
+        }
+
+        var changing = plan.Where(p => p.Changes).ToList();
         if (changing.Count == 0)
         {
             return Ok(new { Success = true, AppliedTasks = 0, Message = "Your tasks already match the recommended schedule, so nothing was changed." });
@@ -475,6 +494,36 @@ public class ScheduleController : ControllerBase
 
     private List<PlannedTask> BuildPlan() =>
         SchedulePlanner.Build(VisibleTasks(), ScheduleStorage.LoadProfile(_appPaths), ScheduleStorage.LoadManaged(_appPaths), Busy(), ScheduleStorage.LoadChoices(_appPaths));
+
+    // Covers what Apply would do: each task's choice and whether it changes, and for a task that changes, its cadence,
+    // new triggers and monthly day and time. Wording, reasons and the current schedule are left out, so only a
+    // different outcome changes the hash. Ordered by task id and written with the invariant culture, so the same plan
+    // always gives the same hash.
+    internal static string PlanHash(IEnumerable<PlannedTask> plan)
+    {
+        var text = new StringBuilder();
+        foreach (var task in plan.OrderBy(p => p.Worker.Id.ToString(), StringComparer.OrdinalIgnoreCase))
+        {
+            text.Append(CultureInfo.InvariantCulture, $"{task.Worker.Id.ToString().ToLowerInvariant()}|{task.Choice}|{task.Changes}");
+            if (task.Changes)
+            {
+                text.Append(CultureInfo.InvariantCulture, $"|{task.Cadence}");
+                foreach (var t in task.Triggers ?? Array.Empty<TaskTriggerInfo>())
+                {
+                    text.Append(CultureInfo.InvariantCulture, $"|{t.Type},{t.TimeOfDayTicks},{t.IntervalTicks},{t.DayOfWeek},{t.MaxRuntimeTicks}");
+                }
+
+                if (task.Managed is { } managed)
+                {
+                    text.Append(CultureInfo.InvariantCulture, $"|monthly,{managed.Weekday},{managed.TimeOfDayTicks}");
+                }
+            }
+
+            text.Append('\n');
+        }
+
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
+    }
 
     private BusyProfile Busy() =>
         BusyProfile.Create(UsageAnalyzer.Summarise(UsageStore.Load(_appPaths)), Plugin.Instance?.Configuration,

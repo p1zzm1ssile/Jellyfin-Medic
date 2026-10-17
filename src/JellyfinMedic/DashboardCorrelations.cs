@@ -258,12 +258,13 @@ internal static class DashboardCorrelations
     /// drive; the last reading stands in when it can't), how fast it's filling and when it will be full (the
     /// rules StorageWatch and DriveStatus use), what it holds from its latest reading that recorded it, and its
     /// daily readings. Soonest full first, with the days Medic freed space. A drive not read for a week (by
-    /// <paramref name="today"/>, server local) is left out. A library drive whose folder is gone (<paramref name="present"/>,
-    /// Directory.Exists by default) is marked missing rather than read, as reading it would measure the parent's drive.
+    /// <paramref name="today"/>, server local) is left out. A library drive whose folder is gone or empty (<paramref name="present"/>,
+    /// StorageWatch.HasEntries by default, the test StorageWatch.Drives uses) is marked missing rather than read, as
+    /// reading it would measure the parent's drive.
     /// </summary>
     internal static DisksSection Disks(IEnumerable<DiskSample> history, Func<string, (double FreeGb, double TotalGb)?> space, IEnumerable<FreedDay> freed, DateTime today, Func<string, bool>? present = null)
     {
-        present ??= Directory.Exists;
+        present ??= StorageWatch.HasEntries;
         string stale = today.AddDays(-StaleDriveDays).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var drives = new List<DiskOutlook>();
         foreach (var drive in history.GroupBy(h => h.Key, StringComparer.Ordinal))

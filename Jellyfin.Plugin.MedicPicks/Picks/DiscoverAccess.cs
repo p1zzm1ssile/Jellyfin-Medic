@@ -1,6 +1,8 @@
 using System;
-using System.Collections;
 using System.Linq;
+using Jellyfin.Data;
+using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Plugin.MedicPicks.Configuration;
 
 namespace Jellyfin.Plugin.MedicPicks.Picks;
@@ -21,8 +23,8 @@ public static class DiscoverAccess
         (ids ?? Array.Empty<string>()).Any(id => Guid.TryParse(id, out var g) && g == userId);
 
     /// <summary>
-    /// Whether a Jellyfin user has a maximum rating, blocked tags or allowed tags. Read by name, as the user type and
-    /// its rating property changed between Jellyfin versions; false when none can be read.
+    /// Whether a Jellyfin user has a maximum rating, blocked tags or allowed tags. The rating is read by name, as its
+    /// property was renamed between Jellyfin versions; false when none can be read.
     /// </summary>
     public static bool HasParentalLimits(object? user)
     {
@@ -40,23 +42,10 @@ public static class DiscoverAccess
             }
         }
 
-        var getPreference = type.GetMethods().FirstOrDefault(m => m.Name == "GetPreference" && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType.IsEnum);
-        if (getPreference is null)
-        {
-            return false;
-        }
-
-        var kind = getPreference.GetParameters()[0].ParameterType;
-        foreach (string name in new[] { "BlockedTags", "AllowedTags" })
-        {
-            if (Enum.IsDefined(kind, name)
-                && getPreference.Invoke(user, new[] { Enum.Parse(kind, name) }) is IEnumerable values
-                && values.Cast<object?>().Any(v => v is string s ? s.Length > 0 : v is not null))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        // GetPreference is an extension method, so it's called on the User type rather than found on the instance.
+        return user is User jellyfinUser
+            && (HasTags(jellyfinUser, PreferenceKind.BlockedTags) || HasTags(jellyfinUser, PreferenceKind.AllowedTags));
     }
+
+    private static bool HasTags(User user, PreferenceKind kind) => user.GetPreference(kind).Length > 0;
 }

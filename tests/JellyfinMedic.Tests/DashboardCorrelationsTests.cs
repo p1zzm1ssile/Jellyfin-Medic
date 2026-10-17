@@ -397,12 +397,22 @@ public sealed class TranscodeReasonsTests
     }
 }
 
-public sealed class DiskOutlookTests
+public sealed class DiskOutlookTests : IDisposable
 {
     private static readonly DateTime Today = new(2026, 10, 14);
 
+    private readonly string _folder = Directory.CreateTempSubdirectory("medic-disks-").FullName;
+
+    public void Dispose() => Directory.Delete(_folder, recursive: true);
+
     private static DiskSample Reading(string key, string day, double freeGb, string holds = "") =>
         new() { Key = key, Day = day, FreeGb = freeGb, Holds = holds, Path = key + "/media" };
+
+    private DiskSample[] ReadThroughFolder() => new[]
+    {
+        new DiskSample { Key = "/mnt/usb", Day = "2026-10-13", FreeGb = 300, Holds = "Films", Path = _folder },
+        new DiskSample { Key = "/mnt/usb", Day = "2026-10-14", FreeGb = 290, Holds = "Films", Path = _folder }
+    };
 
     private static (double FreeGb, double TotalGb)? Unreadable(string path) => null;
 
@@ -487,6 +497,31 @@ public sealed class DiskOutlookTests
         Assert.Equal(0.0, drive.TotalGb);
         Assert.Null(drive.GbPerDay);
         Assert.Null(drive.DaysToFull);
+    }
+
+    [Fact]
+    public void An_empty_library_folder_is_missing_and_shows_no_live_space()
+    {
+        // A drive that didn't mount often leaves its mount point behind, empty, on the drive above it.
+        var drive = Assert.Single(DashboardCorrelations.Disks(ReadThroughFolder(), _ => (40.0, 100.0), Array.Empty<FreedDay>(), Today).Drives);
+
+        Assert.True(drive.Missing);
+        Assert.Equal(_folder, drive.Path);
+        Assert.Equal(290.0, drive.FreeGb);
+        Assert.Equal(0.0, drive.TotalGb);
+        Assert.Null(drive.GbPerDay);
+    }
+
+    [Fact]
+    public void A_library_folder_with_entries_is_read()
+    {
+        File.WriteAllText(Path.Combine(_folder, "Film (2020).mkv"), string.Empty);
+
+        var drive = Assert.Single(DashboardCorrelations.Disks(ReadThroughFolder(), _ => (280.0, 1000.0), Array.Empty<FreedDay>(), Today).Drives);
+
+        Assert.False(drive.Missing);
+        Assert.Equal(280.0, drive.FreeGb);
+        Assert.Equal(1000.0, drive.TotalGb);
     }
 
     [Fact]

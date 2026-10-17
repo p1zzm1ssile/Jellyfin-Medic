@@ -6,9 +6,10 @@ changelog credit contributors without anyone having to remember:
 
   python3 scripts/release_credits.py v1.0.20 [--changes CHANGES.md]
 
-It finds the pull requests merged after the previous release of the same plugin (v*, picks-v*,
-profiles-v* or film-posters-v*) was published and up to this one, that change that plugin's files. Whoever opened one, other than the
-repository owner and bots, is thanked with their pull requests:
+It finds the pull requests merged after the previous release of the same plugin (v*, picks-v* or
+profiles-v*) was published and up to this one, that change that plugin's files or its
+tests (the shared code in shared/ and its tests count for both Medic Picks and Medic Profiles, which compile
+it). Whoever opened one, other than the repository owner and bots, is thanked with their pull requests:
 
   Thanks @someone (#117, #121) for their work on this release.
 
@@ -35,18 +36,20 @@ import github_http
 
 PICKS = "Jellyfin.Plugin.MedicPicks/"
 PROFILES = "Jellyfin.Plugin.MedicProfiles/"
-FILM_POSTERS = "Jellyfin.Plugin.MedicPosters/"
 PICKS_TESTS = "tests/MedicPicks.Tests/"
-FILM_POSTERS_TESTS = "tests/MedicPosters.Tests/"
+PROFILES_TESTS = "tests/MedicProfiles.Tests/"
+# Code both Medic Picks and Medic Profiles compile in (shared/Medic.Shared into each DLL, tests/Shared into each
+# one's tests), with its own tests, so a change to it goes out in both.
+PICKS_AND_PROFILES = ("shared/", "tests/MedicShared.Tests/", "tests/Shared/")
 # Files the release workflows write to main for every plugin, which say nothing about who did the work.
 SHARED = {"manifest.json"}
 
 
 def plugin_prefix(tag: str) -> str:
-    for prefix in ("picks-v", "profiles-v", "film-posters-v", "v"):
+    for prefix in ("picks-v", "profiles-v", "v"):
         if tag.startswith(prefix) and re.fullmatch(r"[0-9]+(\.[0-9]+)*", tag[len(prefix):]):
             return prefix
-    raise ValueError(f"{tag} isn't a release tag (v1.2.3, picks-v1.2.3, profiles-v1.2.3 or film-posters-v1.2.3)")
+    raise ValueError(f"{tag} isn't a release tag (v1.2.3, picks-v1.2.3 or profiles-v1.2.3)")
 
 
 def belongs_to(prefix: str, path: str) -> bool:
@@ -54,13 +57,11 @@ def belongs_to(prefix: str, path: str) -> bool:
     if path in SHARED:
         return False
     if prefix == "picks-v":
-        return path.startswith((PICKS, PICKS_TESTS))
+        return path.startswith((PICKS, PICKS_TESTS, *PICKS_AND_PROFILES))
     if prefix == "profiles-v":
-        return path.startswith(PROFILES)
-    if prefix == "film-posters-v":
-        return path.startswith((FILM_POSTERS, FILM_POSTERS_TESTS))
+        return path.startswith((PROFILES, PROFILES_TESTS, *PICKS_AND_PROFILES))
     # Jellyfin Medic is everything else: its code, tests, docs and the build.
-    return not path.startswith((PICKS, PICKS_TESTS, PROFILES, FILM_POSTERS, FILM_POSTERS_TESTS))
+    return not path.startswith((PICKS, PICKS_TESTS, PROFILES, PROFILES_TESTS, *PICKS_AND_PROFILES))
 
 
 def version_key(version: str):

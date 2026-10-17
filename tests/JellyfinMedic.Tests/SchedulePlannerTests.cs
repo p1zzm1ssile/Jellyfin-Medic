@@ -1,5 +1,6 @@
 using JellyfinMedic.Api;
 using JellyfinMedic.Services;
+using MediaBrowser.Model.Tasks;
 using static JellyfinMedic.Tests.FakeTaskWorker;
 
 namespace JellyfinMedic.Tests;
@@ -75,6 +76,126 @@ public class SchedulePlannerTests
 
         Assert.Equal(Cadence.LeaveAlone, plan.Single(p => p.Worker == scan).Cadence);
         Assert.Equal(new[] { clean.Name, scan.Name }, plan.Select(p => p.Worker.Name));
+    }
+
+    [Fact]
+    public void Hours_Medic_has_never_seen_are_not_planned_into()
+    {
+        // The server is switched off from 00:00 to 08:00, so Medic has no readings then. Those hours
+        // must not count as the quietest of the day.
+        var scan = new FakeTaskWorker("Scan Media Library", "RefreshLibrary", 180, Daily(2, 0));
+        var clean = new FakeTaskWorker("Clean Transcode Directory", "DeleteTranscodeFiles", 1, Daily(3, 0));
+
+        var plan = SchedulePlanner.Build(new[] { scan, clean }, NoHistory, new Dictionary<string, ManagedRun>(), OffAtNight(null));
+
+        foreach (var (task, minutes) in new[] { (scan, 180), (clean, 1) })
+        {
+            var planned = plan.Single(p => p.Worker == task);
+            Assert.Equal(Cadence.Daily, planned.Cadence);
+            Assert.All(planned.Triggers!, t => Assert.InRange(TimeSpan.FromTicks(t.TimeOfDayTicks!.Value).TotalMinutes, 8 * 60, (24 * 60) - minutes));
+        }
+    }
+
+    [Fact]
+    public void A_task_that_only_fits_in_hours_Medic_has_never_seen_keeps_its_time()
+    {
+        // Off from 00:00 to 08:00, and the rest of the day is avoided, so only unseen hours are free.
+        var clean = new FakeTaskWorker("Clean Transcode Directory", "DeleteTranscodeFiles", 1, Daily(3, 0));
+        var avoidDaytime = new PluginConfiguration { AvoidEnabled = true, AvoidStartMinute = 8 * 60, AvoidEndMinute = 0 };
+
+        var task = SchedulePlanner.Build(new[] { clean }, NoHistory, new Dictionary<string, ManagedRun>(), OffAtNight(avoidDaytime)).Single();
+
+        Assert.Equal(Cadence.LeaveAlone, task.Cadence);
+        Assert.False(task.Changes);
+        Assert.Equal(task.CurrentSchedule, task.ProposedSchedule);
+        Assert.Contains("never seen the server on", task.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_task_stays_put_when_the_new_time_is_only_slightly_quieter()
+    {
+        // 13:30 to 15:15 is quieter by 0.1 person every day: 7 runs of 15 minutes save 0.175
+        // person-hours a week, under the 0.25 a move has to save.
+        var clean = new FakeTaskWorker("Clean Transcode Directory", "DeleteTranscodeFiles", 1, Daily(3, 0));
+
+        var task = SchedulePlanner.Build(new[] { clean }, NoHistory, new Dictionary<string, ManagedRun>(), QuieterAfternoon(0.1)).Single();
+
+        Assert.Equal(3 * 60, task.StartMinutes);
+        Assert.False(task.Changes);
+    }
+
+    [Fact]
+    public void A_task_moves_when_the_new_time_is_clearly_quieter()
+    {
+        // Quieter by 0.2 person: 0.35 person-hours a week, over the 0.25 a move has to save.
+        var clean = new FakeTaskWorker("Clean Transcode Directory", "DeleteTranscodeFiles", 1, Daily(3, 0));
+
+        var task = SchedulePlanner.Build(new[] { clean }, NoHistory, new Dictionary<string, ManagedRun>(), QuieterAfternoon(0.2)).Single();
+
+        Assert.InRange(task.StartMinutes, (13 * 60) + 30, 15 * 60);
+        Assert.True(task.Changes);
+    }
+
+    [Fact]
+    public void A_task_kept_at_a_busy_time_says_a_slightly_quieter_time_was_not_worth_the_move()
+    {
+        // 0.6 people watch at 03:00, and 13:30 to 15:15 is only 0.1 quieter.
+        var clean = new FakeTaskWorker("Clean Transcode Directory", "DeleteTranscodeFiles", 1, Daily(3, 0));
+
+        var task = SchedulePlanner.Build(new[] { clean }, NoHistory, new Dictionary<string, ManagedRun>(), QuieterAfternoon(0.1, watching: 0.6)).Single();
+
+        Assert.Equal(3 * 60, task.StartMinutes);
+        Assert.DoesNotContain("no quieter free time", task.Warning, StringComparison.Ordinal);
+        Assert.Contains("slightly quieter time", task.Warning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_task_at_a_busy_time_with_nothing_quieter_still_says_so()
+    {
+        var clean = new FakeTaskWorker("Clean Transcode Directory", "DeleteTranscodeFiles", 1, Daily(3, 0));
+
+        var task = SchedulePlanner.Build(new[] { clean }, NoHistory, new Dictionary<string, ManagedRun>(), QuieterAfternoon(0, watching: 0.6)).Single();
+
+        Assert.Contains("There was no quieter free time for it.", task.Warning, StringComparison.Ordinal);
+        Assert.DoesNotContain("slightly quieter time", task.Warning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_task_that_keeps_its_time_keeps_its_triggers()
+    {
+        // The same time on every day, written as seven weekly triggers rather than one daily one.
+        var weekly = Enum.GetValues<DayOfWeek>().Select(d => Weekly(d, 3, 0)).ToArray();
+        var clean = new FakeTaskWorker("Clean Transcode Directory", "DeleteTranscodeFiles", 1, weekly);
+
+        var task = SchedulePlanner.Build(new[] { clean }, NoHistory, new Dictionary<string, ManagedRun>(), QuieterAfternoon(0.1)).Single();
+
+        Assert.False(task.Changes);
+        Assert.Equal(task.CurrentSchedule, task.ProposedSchedule);
+        Assert.Equal(7, task.Triggers!.Length);
+        Assert.All(task.Triggers, t => Assert.Equal(TaskTriggerInfoType.WeeklyTrigger, t.Type));
+    }
+
+    // Three weeks of readings, none between 00:00 and 08:00; quiet in the day, busy in the evening.
+    private static BusyProfile OffAtNight(PluginConfiguration? settings) =>
+        Learned(hour => hour < 8 ? null : hour < 18 ? 0.3 : 1.0, settings);
+
+    // Three weeks of readings with the same number of people watching all day, fewer from 13:00 to 16:00.
+    private static BusyProfile QuieterAfternoon(double quieterBy, double watching = 0.2) =>
+        Learned(hour => hour is >= 13 and < 16 ? watching - quieterBy : watching, null);
+
+    // Usage learned by hour of day, the same every day; null for an hour with no readings.
+    private static BusyProfile Learned(Func<int, double?> watching, PluginConfiguration? settings)
+    {
+        var week = Enumerable.Range(0, 168).Select(i => watching(i % 24)).ToList();
+        var usage = new UsageSummary
+        {
+            HoursCollected = 21 * 24,
+            Ready = true,
+            AverageStreams = week.Select(w => w ?? 0).ToList(),
+            SampleCounts = week.Select(w => w is null ? 0 : 36).ToList()
+        };
+
+        return BusyProfile.Create(usage, settings);
     }
 
     // Everything outside the given window is set as "avoid", so the planner can only use the window.

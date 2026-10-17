@@ -28,8 +28,8 @@ public sealed class LoadGuard : IHostedService, IDisposable
     // A heavy task that starts while the whole server is short of memory waits this long at most.
     internal static readonly TimeSpan MaxWait = TimeSpan.FromHours(2);
 
-    // A stopped task still waiting after a restart is started again only if it was stopped this recently; an older
-    // one will have had its next scheduled run by then.
+    // A stopped task is started again only if it was stopped this recently, before or after a restart; an older one
+    // will have had its next scheduled run by then.
     internal static readonly TimeSpan KeepAcrossRestart = TimeSpan.FromHours(24);
 
     // A task counts as just started for three checks.
@@ -93,7 +93,13 @@ public sealed class LoadGuard : IHostedService, IDisposable
                 saved = ScheduleStorage.ReadList<PausedTask>(DeferredPath);
             }
 
-            _deferred.AddRange(Restore(saved, DateTime.UtcNow));
+            var now = DateTime.UtcNow;
+            _deferred.AddRange(Restore(saved, now));
+            foreach (var task in saved.Where(p => p.TaskId.Length > 0 && Expired(p, now) && !_deferred.Any(d => d.TaskId == p.TaskId)).DistinctBy(p => p.TaskId))
+            {
+                LogExpired(task);
+            }
+
             Volatile.Write(ref _paused, _deferred.ToArray());
             if (_deferred.Count != saved.Count)
             {
@@ -142,17 +148,11 @@ public sealed class LoadGuard : IHostedService, IDisposable
                 return;
             }
 
+            DropStarted();
+            DropExpired(DateTime.UtcNow);
             if (!settings.LoadGuardEnabled)
             {
-                // Switched off: let go of what it held, rather than start stale tasks if it's switched on days later.
-                if (_deferred.Count > 0)
-                {
-                    _logger.LogInformation("Jellyfin Medic: LoadGuard is off, so the {Count} task(s) it stopped will run at their next scheduled time.", _deferred.Count);
-                    _deferred.Clear();
-                    Volatile.Write(ref _paused, Array.Empty<PausedTask>());
-                    SaveDeferred();
-                }
-
+                ReleaseAll();
                 return;
             }
 
@@ -220,7 +220,7 @@ public sealed class LoadGuard : IHostedService, IDisposable
 
             // Memory has recovered and nothing heavy is running: restart one deferred task.
             bool settled = now - _lastActionUtc > TimeSpan.FromMinutes(2);
-            if (_deferred.Count > 0 && settled && CanRestart(usedPercent, serverPercent, clearMark, heavyRunning.Count, now - _deferred[0].StoppedUtc))
+            if (_deferred.Count > 0 && settled && CanRestart(usedPercent, serverPercent, highMark, clearMark, heavyRunning.Count, now - _deferred[0].StoppedUtc))
             {
                 string id = _deferred[0].TaskId;
                 var worker = _tasks.ScheduledTasks.FirstOrDefault(t => t.Id.ToString() == id);
@@ -267,10 +267,13 @@ public sealed class LoadGuard : IHostedService, IDisposable
 
     /// <summary>
     /// Whether the oldest waiting task can start again: nothing heavy runs, Jellyfin's own memory is below the restart
-    /// mark, and so is the whole server's, unless the task has already waited MaxWait.
+    /// mark, and so is the whole server's. Once the task has waited MaxWait, the server's memory no longer counts and
+    /// Jellyfin's only has to be below the ceiling, so a Jellyfin that settles between the two marks can't hold it for ever.
     /// </summary>
-    internal static bool CanRestart(double jellyfinPercent, double? serverPercent, int clearMark, int heavyRunning, TimeSpan waited) =>
-        heavyRunning == 0 && jellyfinPercent <= clearMark && (serverPercent is not { } server || server <= clearMark || waited >= MaxWait);
+    internal static bool CanRestart(double jellyfinPercent, double? serverPercent, int highMark, int clearMark, int heavyRunning, TimeSpan waited) =>
+        heavyRunning == 0 && (waited >= MaxWait
+            ? jellyfinPercent < highMark
+            : jellyfinPercent <= clearMark && (serverPercent is not { } server || server <= clearMark));
 
     private static bool IsHeavy(IScheduledTaskWorker task) =>
         HeavyKeys.Contains(task.ScheduledTask.Key) || HeavyWords.Any(w => task.Name.Contains(w, StringComparison.OrdinalIgnoreCase));
@@ -293,6 +296,88 @@ public sealed class LoadGuard : IHostedService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Takes off the list each task that has started since it was stopped, on its schedule or by hand. It has had its
+    /// run, so starting it again later would run it twice.
+    /// </summary>
+    internal void DropStarted()
+    {
+        var started = _deferred.Where(d => _startedUtc.TryGetValue(d.TaskId, out var at) && at > d.StoppedUtc).ToList();
+        if (started.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var task in started)
+        {
+            _deferred.Remove(task);
+            _logger.LogInformation("Jellyfin Medic: '{Task}' started again on its own, so LoadGuard no longer holds it back.", task.TaskName);
+        }
+
+        Volatile.Write(ref _paused, _deferred.ToArray());
+        SaveDeferred();
+    }
+
+    /// <summary>Takes off the list each task stopped a day ago or more, rather than start it again on top of its next scheduled run.</summary>
+    internal void DropExpired(DateTime nowUtc)
+    {
+        var expired = _deferred.Where(d => Expired(d, nowUtc)).ToList();
+        if (expired.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var task in expired)
+        {
+            _deferred.Remove(task);
+            LogExpired(task);
+        }
+
+        Volatile.Write(ref _paused, _deferred.ToArray());
+        SaveDeferred();
+    }
+
+    private static bool Expired(PausedTask task, DateTime nowUtc) => nowUtc - task.StoppedUtc >= KeepAcrossRestart;
+
+    private void LogExpired(PausedTask task) =>
+        _logger.LogInformation("Jellyfin Medic: LoadGuard held back '{Task}' for over 24 hours, so it lets it go to run at its next scheduled time.", task.TaskName);
+
+    /// <summary>
+    /// Lets go of every held task when LoadGuard is switched off, to run at its next scheduled time, rather than start
+    /// stale tasks if it's switched on days later. Each one is recorded, so the Dashboard says where it went.
+    /// </summary>
+    internal void ReleaseAll()
+    {
+        if (_deferred.Count == 0)
+        {
+            return;
+        }
+
+        var released = _deferred.ToList();
+        _logger.LogInformation("Jellyfin Medic: LoadGuard is off, so the {Count} task(s) it stopped will run at their next scheduled time.", released.Count);
+        _deferred.Clear();
+        Volatile.Write(ref _paused, Array.Empty<PausedTask>());
+        SaveDeferred();
+
+        MemoryUsedPercent(out double usedGb, out double limitGb);
+        foreach (var task in released)
+        {
+            Record("released", task.TaskName, usedGb, limitGb);
+        }
+    }
+
+    /// <summary>The held tasks' names for a message, as "A", "B" and "C", or null when none is held.</summary>
+    internal static string? HeldNames(IReadOnlyList<PausedTask> held)
+    {
+        var names = held.Select(p => "\"" + p.TaskName + "\"").ToList();
+        return names.Count switch
+        {
+            0 => null,
+            1 => names[0],
+            _ => string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1]
+        };
+    }
+
     /// <summary>Takes the oldest task off the restart list.</summary>
     internal void DropFirst()
     {
@@ -303,7 +388,7 @@ public sealed class LoadGuard : IHostedService, IDisposable
 
     /// <summary>The saved list as it's taken back after a restart: each task once, and none stopped over a day ago.</summary>
     internal static List<PausedTask> Restore(IEnumerable<PausedTask> saved, DateTime nowUtc) =>
-        saved.Where(p => p.TaskId.Length > 0 && nowUtc - p.StoppedUtc < KeepAcrossRestart)
+        saved.Where(p => p.TaskId.Length > 0 && !Expired(p, nowUtc))
             .GroupBy(p => p.TaskId, StringComparer.Ordinal)
             .Select(g => g.First())
             .OrderBy(p => p.StoppedUtc)
@@ -462,7 +547,7 @@ public class LoadGuardEvent
 {
     public DateTime TimestampUtc { get; set; }
 
-    public string Action { get; set; } = string.Empty; // stopped | restarted
+    public string Action { get; set; } = string.Empty; // stopped | postponed | restarted | released
 
     public string TaskName { get; set; } = string.Empty;
 

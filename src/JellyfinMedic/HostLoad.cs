@@ -13,8 +13,8 @@ namespace JellyfinMedic.Services;
 /// whole, from the totals Linux shows every program in /proc. It never looks at single processes,
 /// containers or apps, so Medic learns how busy the server usually is, not what makes it busy.
 /// The readings go into an hour-of-the-week profile that the planner uses next to the viewing
-/// pattern. Readings taken while one of Jellyfin's scheduled tasks runs are left out, as those are
-/// the tasks the planner moves; counting them would push a task away from wherever it runs now.
+/// pattern. Readings whose 5 minutes overlap one of Jellyfin's scheduled tasks are left out, as those
+/// are the tasks the planner moves; counting them would push a task away from wherever it runs now.
 /// Nothing is read on Windows or macOS.
 /// </summary>
 public sealed class HostLoadSampler : IHostedService, IDisposable
@@ -56,6 +56,13 @@ public sealed class HostLoadSampler : IHostedService, IDisposable
 
     public void Dispose() => _timer?.Dispose();
 
+    /// <summary>
+    /// Whether a scheduled task ran at any time since <paramref name="sinceUtc"/>: one running now, or one whose last
+    /// run ended since then. A running task's last result is its previous run, so its state is what tells.
+    /// </summary>
+    internal static bool TaskTouched(IEnumerable<IScheduledTaskWorker> tasks, DateTime sinceUtc) =>
+        tasks.Any(t => t.State == TaskState.Running || t.LastExecutionResult?.EndTimeUtc >= sinceUtc);
+
     private void Sample()
     {
         try
@@ -63,7 +70,8 @@ public sealed class HostLoadSampler : IHostedService, IDisposable
             var now = HostCounters.Read(DateTime.UtcNow);
             var previous = _previous;
             _previous = now;
-            if (previous is null || _tasks.ScheduledTasks.Any(t => t.State == TaskState.Running))
+            // The reading covers the whole spell since the previous one, so a task that ended during it left its load there too.
+            if (previous is null || TaskTouched(_tasks.ScheduledTasks, previous.TimeUtc))
             {
                 return;
             }
@@ -89,7 +97,11 @@ public sealed class HostLoadSampler : IHostedService, IDisposable
             return;
         }
 
-        _failing = false;
+        if (_failing)
+        {
+            _failing = false;
+            _logger.LogInformation("Jellyfin Medic: recording the server's load works again.");
+        }
     }
 }
 
@@ -121,7 +133,7 @@ public sealed class HostCounters
             TimeUtc = utcNow,
             CpuBusy = cpu?.Busy,
             CpuTotal = cpu?.Total,
-            MemoryPercent = ParseMemory(HostPlatform.Lines("/proc/meminfo"), HostPlatform.Lines(ArcStatsPath)),
+            MemoryPercent = ParseMemory(HostPlatform.Lines("/proc/meminfo"), HostPlatform.Lines(ArcStatsPath), HostPlatform.Kind),
             DiskIoMs = ParseDisks(HostPlatform.Lines("/proc/diskstats"), name => Directory.Exists("/sys/block/" + name))
         };
     }
@@ -183,11 +195,11 @@ public sealed class HostCounters
     /// Share of memory in use, not counting what can be freed at once: the file cache, and ZFS's cache (ARC) above its
     /// minimum, which MemAvailable leaves out though ZFS gives it back when programs need memory.
     /// </summary>
-    internal static double? ParseMemory(IEnumerable<string> meminfo, IEnumerable<string>? arcstats = null) =>
-        MemoryKb(meminfo, arcstats) is { } kb ? UsedPercent(kb) : null;
+    internal static double? ParseMemory(IEnumerable<string> meminfo, IEnumerable<string>? arcstats = null, HostKind kind = HostKind.Linux) =>
+        MemoryKb(meminfo, arcstats, kind) is { } kb ? UsedPercent(kb) : null;
 
     /// <summary>Total memory and what can be used at once, in kB, counted as ParseMemory counts them.</summary>
-    internal static (long Total, long Available)? MemoryKb(IEnumerable<string> meminfo, IEnumerable<string>? arcstats = null)
+    internal static (long Total, long Available)? MemoryKb(IEnumerable<string> meminfo, IEnumerable<string>? arcstats = null, HostKind kind = HostKind.Linux)
     {
         long? total = null, available = null;
         foreach (var line in meminfo)
@@ -207,9 +219,12 @@ public sealed class HostCounters
             return null;
         }
 
+        // Inside an LXC, lxcfs shows the container's own memory in /proc/meminfo, but arcstats is the host's ARC, which
+        // the container can't get back. A Docker container's /proc/meminfo is the host's, so the ARC matches it there.
         // arcstats lines are "name type value", in bytes.
         long? arcSize = null, arcMin = null;
-        foreach (var line in arcstats ?? Enumerable.Empty<string>())
+        var arcLines = kind == HostKind.ProxmoxLxc ? null : arcstats;
+        foreach (var line in arcLines ?? Enumerable.Empty<string>())
         {
             if (line.StartsWith("size ", StringComparison.Ordinal))
             {
@@ -273,7 +288,7 @@ public static class ServerMemory
     {
         usedGb = 0;
         totalGb = 0;
-        if (!OperatingSystem.IsLinux() || HostCounters.MemoryKb(HostPlatform.Lines("/proc/meminfo"), HostPlatform.Lines(HostCounters.ArcStatsPath)) is not { } kb)
+        if (!OperatingSystem.IsLinux() || HostCounters.MemoryKb(HostPlatform.Lines("/proc/meminfo"), HostPlatform.Lines(HostCounters.ArcStatsPath), HostPlatform.Kind) is not { } kb)
         {
             return null;
         }
@@ -328,7 +343,7 @@ public static class HostLoadStore
     {
         lock (Sync)
         {
-            return LoadFrom(FilePath(paths));
+            return LoadFrom(FilePath(paths), forReading: true);
         }
     }
 
@@ -337,7 +352,7 @@ public static class HostLoadStore
         lock (Sync)
         {
             string path = FilePath(paths);
-            var profile = LoadFrom(path);
+            var profile = LoadFrom(path, forReading: false);
             Add(profile, localNow, reading);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             ScheduleStorage.WriteText(path, JsonSerializer.Serialize(profile, Indented));
@@ -373,7 +388,7 @@ public static class HostLoadStore
         profile.LastSampleUtc = DateTime.UtcNow;
     }
 
-    private static HostLoadProfile LoadFrom(string path)
+    private static HostLoadProfile LoadFrom(string path, bool forReading)
     {
         HostLoadProfile? profile = null;
         try
@@ -385,7 +400,17 @@ public static class HostLoadStore
         }
         catch (JsonException ex)
         {
-            ScheduleStorage.SetAside(path, ex);
+            try
+            {
+                ScheduleStorage.SetAside(path, ex);
+            }
+            catch (Exception moveFailed) when (forReading && moveFailed is IOException or UnauthorizedAccessException)
+            {
+                // Reading only shows the profile, so the report, the usage page and the planner get an empty one and
+                // carry on. Recording still fails, so nothing writes over the damaged file before it's set aside.
+                ScheduleStorage.Logger?.LogWarning(moveFailed, "Jellyfin Medic: {File} couldn't be read or kept aside as .bad, so it reads as empty", Path.GetFileName(path));
+            }
+
             profile = null;
         }
 

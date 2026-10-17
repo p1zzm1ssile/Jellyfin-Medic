@@ -50,7 +50,7 @@ public class IndexersService
             using var indexers = await _arr.GetAsync(app, "indexer", ct).ConfigureAwait(false);
             if (!indexers.Ok || indexers.Json?.RootElement.ValueKind != JsonValueKind.Array)
             {
-                errors[name.ToLowerInvariant()] = indexers.Ok ? name + " sent something unexpected." : indexers.Message;
+                errors[name.ToLowerInvariant()] = indexers.Ok ? DownloadsService.Unexpected(app, indexers, JsonValueKind.Array) : indexers.Message;
                 continue;
             }
 

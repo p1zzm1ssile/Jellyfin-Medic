@@ -259,13 +259,13 @@ public class DownloadsService
             using var result = await _arr.GetAsync(app, $"queue?page={page}&pageSize={PageSize}&{include}", ct).ConfigureAwait(false);
             if (!result.Ok || result.Json is null)
             {
-                return (records, result.Ok ? $"{ArrClient.Name(app)} sent something unexpected." : result.Message, total);
+                return (records, result.Ok ? Unexpected(app, result, JsonValueKind.Object) : result.Message, total);
             }
 
             var root = result.Json.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
             {
-                return (records, $"{ArrClient.Name(app)} sent something unexpected.", total);
+                return (records, Unexpected(app, result, JsonValueKind.Object), total);
             }
 
             if (root.TryGetProperty("records", out var list) && list.ValueKind == JsonValueKind.Array)
@@ -474,7 +474,7 @@ public class DownloadsService
             using var result = await _arr.GetAsync(app, $"blocklist?page=1&pageSize={BlockedShown}&sortKey=date&sortDirection=descending", ct).ConfigureAwait(false);
             if (!result.Ok || result.Json is null || result.Json.RootElement.ValueKind != JsonValueKind.Object)
             {
-                errors[Key(app)] = result.Ok ? ArrClient.Name(app) + " sent something unexpected." : result.Message;
+                errors[Key(app)] = result.Ok ? Unexpected(app, result, JsonValueKind.Object) : result.Message;
                 continue;
             }
 
@@ -600,6 +600,13 @@ public class DownloadsService
     /// <summary>Films or series in Sonarr or Radarr whose title matches, for when the match is wrong.</summary>
     public async Task<(List<MediaChoice>? Results, string? Error)> SearchLibraryAsync(ArrApp app, string query, CancellationToken ct)
     {
+        // Checked before the library is fetched: it can be thousands of entries, and nothing would match.
+        string q = Simplify(query);
+        if (q.Length == 0)
+        {
+            return (new List<MediaChoice>(), null);
+        }
+
         List<MediaChoice>? all = null;
         lock (_library)
         {
@@ -614,7 +621,7 @@ public class DownloadsService
             using var result = await _arr.GetAsync(app, app == ArrApp.Radarr ? "movie" : "series", ct).ConfigureAwait(false);
             if (!result.Ok || result.Json is null || result.Json.RootElement.ValueKind != JsonValueKind.Array)
             {
-                return (null, result.Ok ? ArrClient.Name(app) + " sent something unexpected." : result.Message);
+                return (null, result.Ok ? Unexpected(app, result, JsonValueKind.Array) : result.Message);
             }
 
             all = result.Json.RootElement.EnumerateArray()
@@ -625,12 +632,6 @@ public class DownloadsService
             {
                 _library[app] = (all, DateTime.UtcNow);
             }
-        }
-
-        string q = Simplify(query);
-        if (q.Length == 0)
-        {
-            return (new List<MediaChoice>(), null);
         }
 
         return (all
@@ -649,7 +650,7 @@ public class DownloadsService
         using var result = await _arr.GetAsync(ArrApp.Sonarr, "episode?seriesId=" + seriesId.ToString(CultureInfo.InvariantCulture), ct).ConfigureAwait(false);
         if (!result.Ok || result.Json is null || result.Json.RootElement.ValueKind != JsonValueKind.Array)
         {
-            return (null, result.Ok ? "Sonarr sent something unexpected." : result.Message);
+            return (null, result.Ok ? Unexpected(ArrApp.Sonarr, result, JsonValueKind.Array) : result.Message);
         }
 
         return (result.Json.RootElement.EnumerateArray().Select(EpisodeFrom)
@@ -742,6 +743,25 @@ public class DownloadsService
     // ---------- Helpers ----------
 
     public static string Key(ArrApp app) => app == ArrApp.Sonarr ? "sonarr" : "radarr";
+
+    /// <summary>The error for a successful answer that isn't the JSON asked for, saying what came back instead.</summary>
+    internal static string Unexpected(ArrApp app, ArrResult result, JsonValueKind expected)
+    {
+        string came = result.Json is null
+            ? "an empty answer, or one that isn't JSON (a web page, say)"
+            : $"{Shape(result.Json.RootElement.ValueKind)} where {Shape(expected)} was expected";
+        return $"{ArrClient.Name(app)} sent something unexpected: {came}.";
+    }
+
+    private static string Shape(JsonValueKind kind) => kind switch
+    {
+        JsonValueKind.Array => "a list",
+        JsonValueKind.Object => "an object",
+        JsonValueKind.String => "a piece of text",
+        JsonValueKind.Number => "a number",
+        JsonValueKind.True or JsonValueKind.False => "true or false",
+        _ => "null"
+    };
 
     private static EpisodeChoice EpisodeFrom(JsonElement e) => new()
     {
