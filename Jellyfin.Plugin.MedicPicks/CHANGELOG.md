@@ -3,7 +3,7 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
-## Unreleased
+## [1.2.6] – 2026-10-17
 
 ### Changed
 - **Accounts with parental controls get Discover picks only once you tick them.** Discover suggests titles from TMDb, which a maximum rating or blocked and allowed tags can't filter, but every account had Discover until an admin unticked it. An account with any of those controls is now left out of Discover, and of requesting from the picks page, until you tick it under "Who gets Discover picks", where it's marked as having parental controls. Accounts without them are as before.
