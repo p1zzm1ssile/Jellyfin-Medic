@@ -106,10 +106,10 @@ await check('library scanned', async () => {
     return `${ctx.films} films`;
 });
 
-await check('all three plugins loaded', async () => {
+await check('all four plugins loaded', async () => {
     const plugins = await ok('/Plugins');
     const names = plugins.map((p) => p.Name);
-    for (const want of ['Jellyfin Medic', 'Medic Picks', 'Medic Profiles']) {
+    for (const want of ['Jellyfin Medic', 'Medic Picks', 'Medic Profiles', 'Medic Posters']) {
         const p = plugins.find((x) => x.Name === want);
         expect(p, `${want} missing (have ${names.join(', ')})`);
         expect(p.Status === 'Active', `${want} is ${p.Status}`);
@@ -122,7 +122,7 @@ const medicGets = [
     '/JellyfinMedic/MedicSettings', '/JellyfinMedic/Plugins', '/JellyfinMedic/Usage', '/JellyfinMedic/TranscodeLog',
     '/JellyfinMedic/Weekly', '/JellyfinMedic/Cleanup', '/JellyfinMedic/JellyfinSettings',
     '/JellyfinMedic/Schedule/GetCalendar', '/JellyfinMedic/Schedule/GetRunHistory', '/JellyfinMedic/Schedule/PreviewScheduleDiff',
-    '/JellyfinMedic/Schedule/ListBackups', '/JellyfinMedic/Schedule/GetUntimedTasks', '/MedicPicks/Admin/Status', '/MedicProfiles/Status', '/MedicProfiles/History'
+    '/JellyfinMedic/Schedule/ListBackups', '/JellyfinMedic/Schedule/GetUntimedTasks', '/MedicPicks/Admin/Status', '/MedicProfiles/Status', '/MedicProfiles/History', '/MedicPosters/Status'
 ];
 for (const path of medicGets) {
     await check(`GET ${path}`, async () => { await ok(path); });
@@ -388,11 +388,11 @@ function adminRoutes() {
     const root = new URL('../../', import.meta.url);
     const files = [
         ['src/JellyfinMedic/MedicController.cs'], ['src/JellyfinMedic/ScheduleController.cs'], ['src/JellyfinMedic/MedicDashboardController.cs'],
-        ['Jellyfin.Plugin.MedicProfiles/Api/ProfilesController.cs'],
+        ['Jellyfin.Plugin.MedicProfiles/Api/ProfilesController.cs'], ['Jellyfin.Plugin.MedicPosters/Api/PostersController.cs'],
         ['Jellyfin.Plugin.MedicPicks/Api/PicksController.cs', (route) => route.startsWith('Admin/')]
     ];
     // Values that fit each route's parameters, so the request reaches the sign-in check rather than a 404.
-    const values = { app: 'sonarr', requestId: '1', name: 'e2e' };
+    const values = { app: 'sonarr', itemId: '00000000-0000-0000-0000-000000000000', requestId: '1', name: 'e2e' };
     const routes = [];
     for (const [file, include = () => true] of files) {
         const code = require('node:fs').readFileSync(new URL(file, root), 'utf8');
@@ -1498,6 +1498,226 @@ await check('exposure check says it tested from this server, and a failed TLS ha
     expect(!defaults.PublicIp, 'public IP looked up without being asked: ' + defaults.PublicIp);
 });
 
+const isGif = async (res) => Buffer.from(await res.arrayBuffer()).subarray(0, 6).toString('latin1') === 'GIF89a';
+
+await check('Medic Posters previews a poster without changing the film', async () => {
+    const preview = await api('POST', '/MedicPosters/Preview', {});
+    expect(preview.json?.ok, 'preview failed: ' + preview.text.slice(0, 300));
+    const img = await api('GET', '/MedicPosters/Preview/Image', undefined, true);
+    expect(img.status === 200 && await isGif(img), `preview image: ${img.status} ${img.headers.get('content-type')}`);
+    const film = await api('GET', `/Items/${preview.json.itemId}/Images/Primary`, undefined, true);
+    expect(film.status === 404, 'the previewed film was given a poster: ' + film.status);
+    return `${preview.json.title}, ${Math.round(preview.json.bytes / 1024)} KB`;
+});
+
+await check('Medic Posters previews a library cover, wide, without changing the library', async () => {
+    const preview = await api('POST', '/MedicPosters/Preview', { kind: 'cover' });
+    expect(preview.json?.ok && preview.json.kind === 'cover', 'preview failed: ' + preview.text.slice(0, 300));
+    const img = await api('GET', '/MedicPosters/Preview/Image', undefined, true);
+    const bytes = Buffer.from(await img.arrayBuffer());
+    expect(bytes.subarray(0, 6).toString('latin1') === 'GIF89a', 'the cover isn\'t a GIF');
+    const [w, h] = [bytes.readUInt16LE(6), bytes.readUInt16LE(8)];
+    expect(w === 480 && h === 270, `the cover is ${w} × ${h}`);
+    const library = await api('GET', `/Items/${preview.json.itemId}/Images/Primary`, undefined, true);
+    expect(library.status === 404, 'the previewed library was given a cover: ' + library.status);
+    return `${preview.json.title}, ${w} × ${h}, ${Math.round(preview.json.bytes / 1024)} KB`;
+});
+
+await check('Medic Posters previews with the settings on screen, uses a preview, makes only covers when asked, and leaves out an unticked library', async () => {
+    const gifSize = (bytes) => [bytes.readUInt16LE(6), bytes.readUInt16LE(8)];
+    try {
+        // Unsaved settings: a small one-moment poster, and the saved width stays as it was.
+        const found = await api('GET', '/MedicPosters/Titles?q=sample');
+        expect(found.status === 200 && found.json.length >= 1, 'no titles found for "sample": ' + found.text.slice(0, 200));
+        const preview = await api('POST', '/MedicPosters/Preview', { itemId: found.json[0].id, settings: { width: 160, moments: 1 } });
+        expect(preview.json?.ok && preview.json.itemId === found.json[0].id, 'preview: ' + preview.text.slice(0, 300));
+        const img = Buffer.from(await (await api('GET', '/MedicPosters/Preview/Image', undefined, true)).arrayBuffer());
+        const [w, h] = gifSize(img);
+        expect(w === 160 && h === 240, `the preview ignored the settings on screen: ${w} × ${h}`);
+        let s = (await api('GET', '/MedicPosters/Status')).json;
+        expect(s.settings.width === 240 && s.settings.moments === 3, 'previewing saved the settings: ' + JSON.stringify(s.settings));
+        const before = s.estimate;
+        expect(before.postersToMake >= 12 && before.posterRate === 0.05, 'estimate before any were made: ' + JSON.stringify(before));
+
+        // "Use this one" puts that preview on that film, and the estimate learns from it.
+        const use = await api('POST', '/MedicPosters/Preview/Use', {});
+        expect(use.json?.ok && use.json.itemId === found.json[0].id, 'use: ' + use.text);
+        const served = await api('GET', `/Items/${found.json[0].id}/Images/Primary?fillHeight=300`, undefined, true);
+        const servedBytes = Buffer.from(await served.arrayBuffer());
+        expect(served.status === 200 && gifSize(servedBytes)[0] === 160, 'the film didn\'t get the previewed poster: ' + served.status);
+        s = (await api('GET', '/MedicPosters/Status')).json;
+        expect(s.made === 1 && s.estimate.postersToMake === before.postersToMake - 1 && s.estimate.bytesNow > 0 && s.estimate.posterRate !== 0.05,
+            'after using the preview: ' + JSON.stringify(s.estimate));
+
+        // Library covers on their own: no posters are made.
+        const started = s.lastRun?.startedUtc;
+        const run = await api('POST', '/MedicPosters/Run?kind=cover');
+        expect(run.status === 202, 'Run?kind=cover returned ' + run.status);
+        for (let i = 0; i < 90; i++) {
+            await sleep(2000);
+            s = (await api('GET', '/MedicPosters/Status')).json;
+            if (!s.running && s.lastRun?.startedUtc !== started && s.lastRun?.finishedUtc) break;
+        }
+        expect(s.coversMade >= 1 && s.made === 1, `a covers-only run made ${s.coversMade} covers and left ${s.made} posters`);
+
+        // Unticking the library leaves it, and everything in it, alone.
+        const movies = s.libraries[0];
+        const filmsBefore = s.films;
+        await api('POST', '/MedicPosters/RestoreAll');
+        await api('POST', '/MedicPosters/Settings', { libraryIds: [], excludedLibraryIds: [movies.id] });
+        s = (await api('GET', '/MedicPosters/Status')).json;
+        expect(!s.chosenLibraries.some((l) => l.id === movies.id) && s.films < filmsBefore && s.estimate.covers === s.chosenLibraries.length,
+            'the left-out library is still used: ' + JSON.stringify({ chosen: s.chosenLibraries, films: s.films }));
+        return `preview ${w} × ${h}, then ${s.libraries.length - s.chosenLibraries.length} library left out`;
+    } finally {
+        await api('POST', '/MedicPosters/RestoreAll');
+        await api('POST', '/MedicPosters/Settings', { excludedLibraryIds: [] });
+    }
+});
+
+await check('Medic Posters makes an animated poster for each film, Jellyfin serves it still animated, and the originals come back', async () => {
+    const run = await api('POST', '/MedicPosters/Run');
+    expect(run.status === 202, 'Run returned ' + run.status + ' ' + run.text);
+    let s = null;
+    for (let i = 0; i < 150; i++) {
+        await sleep(2000);
+        s = (await api('GET', '/MedicPosters/Status')).json;
+        if (s && !s.running && s.lastRun?.finishedUtc) break;
+    }
+    expect(s && !s.running && s.lastRun?.finishedUtc, 'the run didn\'t finish: ' + JSON.stringify(s?.progress));
+    expect(s.made >= 12, `made ${s.made} of ${s.films}: ${JSON.stringify(s.failures).slice(0, 400)}`);
+    expect(s.failures.some((f) => /Stream Film/.test(f.title)), 'the .strm film wasn\'t listed as having no video file: ' + JSON.stringify(s.failures));
+
+    // Jellyfin is asked for a resized poster, as its apps do, and must still send the GIF.
+    const film = s.recent[0];
+    const served = await api('GET', `/Items/${film.itemId}/Images/Primary?fillHeight=300&fillWidth=200&quality=90`, undefined, true);
+    expect(served.status === 200 && await isGif(served), `Jellyfin sent ${served.status} ${served.headers.get('content-type')}`);
+
+    // The library gets an animated cover too, and Jellyfin sends it as a GIF however it's asked.
+    expect(s.coversMade >= 1, 'no library cover was made: ' + JSON.stringify(s.failures).slice(0, 300));
+    const cover = s.recent.find((p) => p.kind === 'cover');
+    expect(cover, 'the cover isn\'t listed with the latest posters');
+    const coverServed = await api('GET', `/Items/${cover.itemId}/Images/Primary?fillWidth=480&fillHeight=270&quality=90`, undefined, true);
+    expect(coverServed.status === 200 && await isGif(coverServed), `the library cover came back as ${coverServed.status} ${coverServed.headers.get('content-type')}`);
+
+    // A second run leaves the made ones alone.
+    await api('POST', '/MedicPosters/Run');
+    for (let i = 0; i < 60; i++) {
+        await sleep(1000);
+        const again = (await api('GET', '/MedicPosters/Status')).json;
+        if (!again.running && again.lastRun.startedUtc !== s.lastRun.startedUtc) { s.again = again.lastRun; break; }
+    }
+    expect(s.again && s.again.made === 0, 'a second run made posters again: ' + JSON.stringify(s.again));
+
+    const back = await api('POST', '/MedicPosters/RestoreAll');
+    expect(back.status === 200 && back.json.restored === s.made + s.coversMade, 'RestoreAll: ' + back.text);
+    const gone = await api('GET', `/Items/${film.itemId}/Images/Primary`, undefined, true);
+    expect(gone.status === 404, 'the film still has a poster after putting the originals back: ' + gone.status);
+    return `${s.made} posters, about ${Math.round(s.averageBytes / 1024)} KB each, and ${s.coversMade} library cover`;
+});
+
+await check('Medic Posters makes a series poster from its episodes, and a cover for a TV library', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const dir = '/media/tv/Sample Show/Season 1';
+    const ff = (...args) => execFileSync('docker', ['exec', CONTAINER, '/usr/lib/jellyfin-ffmpeg/ffmpeg', '-loglevel', 'error', '-y', ...args]);
+    execFileSync('docker', ['exec', CONTAINER, 'mkdir', '-p', dir]);
+    try {
+        for (const [n, c] of [[1, 'testsrc'], [2, 'smptebars'], [3, 'rgbtestsrc']]) {
+            ff('-f', 'lavfi', '-i', `${c}=size=320x180:rate=10:duration=8`, '-c:v', 'libx264', '-preset', 'ultrafast', `${dir}/Sample Show S01E0${n}.mkv`);
+        }
+        const add = await api('POST', '/Library/VirtualFolders?name=Shows&collectionType=tvshows&refreshLibrary=true', { LibraryOptions: { PathInfos: [{ Path: '/media/tv' }] } });
+        expect(add.status === 204, 'adding the TV library returned ' + add.status + ' ' + add.text);
+        let series = null;
+        for (let i = 0; i < 60 && !series; i++) {
+            await sleep(2000);
+            const r = await api('GET', '/Items?Recursive=true&IncludeItemTypes=Series&SearchTerm=Sample%20Show');
+            series = r.json?.Items?.[0] || null;
+            if (series) {
+                const eps = await api('GET', `/Items?Recursive=true&IncludeItemTypes=Episode&ParentId=${series.Id}`);
+                if ((eps.json?.Items?.length || 0) < 3) series = null;
+            }
+        }
+        expect(series, 'the series and its episodes weren\'t found');
+
+        const libs = (await api('GET', '/MedicPosters/Status')).json.libraries;
+        expect(libs.some((l) => l.name === 'Shows'), 'the TV library isn\'t offered: ' + JSON.stringify(libs));
+        const preview = await api('POST', '/MedicPosters/Preview', { itemId: series.Id });
+        expect(preview.json?.ok && preview.json.title === 'Sample Show', 'series preview: ' + preview.text.slice(0, 300));
+
+        const before = (await api('GET', '/MedicPosters/Status')).json.lastRun?.startedUtc;
+        await api('POST', '/MedicPosters/Run');
+        let s = null;
+        for (let i = 0; i < 150; i++) {
+            await sleep(2000);
+            s = (await api('GET', '/MedicPosters/Status')).json;
+            if (!s.running && s.lastRun?.startedUtc !== before && s.lastRun?.finishedUtc) break;
+        }
+        const poster = await api('GET', `/Items/${series.Id}/Images/Primary?fillHeight=300`, undefined, true);
+        expect(poster.status === 200 && await isGif(poster), 'the series has no animated poster: ' + poster.status);
+        const showsId = libs.find((l) => l.name === 'Shows').id;
+        const cover = await api('GET', `/Items/${showsId}/Images/Primary?fillWidth=400`, undefined, true);
+        expect(cover.status === 200 && await isGif(cover), 'the TV library has no animated cover: ' + cover.status);
+        return `${s.made} posters and ${s.coversMade} covers`;
+    } finally {
+        await api('POST', '/MedicPosters/RestoreAll');
+        await api('DELETE', '/Library/VirtualFolders?name=Shows&refreshLibrary=false');
+        execFileSync('docker', ['exec', CONTAINER, 'rm', '-rf', '/media/tv']);
+        await sleep(2000);
+    }
+});
+
+await check('Medic Posters keeps its poster when a refresh reads the film\'s own poster.jpg again, but not over a new upload', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const dir = '/media/movies/Poster Film (2003)';
+    const ff = (...args) => execFileSync('docker', ['exec', CONTAINER, '/usr/lib/jellyfin-ffmpeg/ffmpeg', '-loglevel', 'error', '-y', ...args]);
+    const image = async (id) => {
+        const r = await api('GET', `/Items/${id}/Images/Primary`, undefined, true);
+        if (r.status !== 200) return String(r.status);
+        return (await isGif(r)) ? 'gif' : 'still';
+    };
+    const settle = async (id, want) => {
+        let got = '';
+        for (let i = 0; i < 20; i++) { await sleep(1000); got = await image(id); if (got === want) break; }
+        return got;
+    };
+    execFileSync('docker', ['exec', CONTAINER, 'mkdir', '-p', dir]);
+    try {
+        // A film with its own poster.jpg beside it, and no locked metadata, so every refresh reads that poster again.
+        ff('-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=10:duration=6', '-c:v', 'libx264', '-preset', 'ultrafast', `${dir}/Poster Film (2003).mkv`);
+        ff('-f', 'lavfi', '-i', 'color=c=red:s=300x450', '-frames:v', '1', `${dir}/poster.jpg`);
+        await api('POST', '/Library/Refresh');
+        let id = null;
+        for (let i = 0; i < 60 && !id; i++) {
+            await sleep(2000);
+            const r = await api('GET', '/Items?Recursive=true&IncludeItemTypes=Movie&SearchTerm=Poster%20Film');
+            id = r.json?.Items?.find((x) => x.Name.startsWith('Poster Film'))?.Id || null;
+        }
+        expect(id, 'the new film wasn\'t found');
+        expect(await settle(id, 'still') === 'still', 'the film\'s own poster wasn\'t picked up');
+
+        await api('POST', '/MedicPosters/Run');
+        expect(await settle(id, 'gif') === 'gif', 'no animated poster was made');
+
+        await api('POST', `/Items/${id}/Refresh?metadataRefreshMode=FullRefresh&imageRefreshMode=FullRefresh&replaceAllMetadata=true`);
+        await sleep(3000);
+        expect(await settle(id, 'gif') === 'gif', 'a refresh left the film\'s own poster in place of the animated one');
+
+        // A poster uploaded under Edit Images is someone's choice, and stays.
+        const png = execFileSync('docker', ['exec', CONTAINER, '/usr/lib/jellyfin-ffmpeg/ffmpeg', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=200x300', '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', '-']);
+        const up = await fetch(`${JF}/Items/${id}/Images/Primary`, { method: 'POST', headers: { Authorization: AUTH + `, Token="${token}"`, 'Content-Type': 'image/png' }, body: png.toString('base64') });
+        expect(up.status === 204, 'upload returned ' + up.status);
+        await sleep(4000);
+        expect(await image(id) === 'still', 'the uploaded poster was replaced');
+        const s = (await api('GET', '/MedicPosters/Status')).json;
+        return `${s.made} posters`;
+    } finally {
+        await api('POST', '/MedicPosters/RestoreAll');
+        execFileSync('docker', ['exec', CONTAINER, 'rm', '-rf', dir]);
+        await api('POST', '/Library/Refresh');
+        await sleep(3000);
+    }
+});
+
 // ---------- Pages in a real browser ----------
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
@@ -1548,6 +1768,22 @@ await check('Jellyfin Medic page is styled by its stylesheet', async () => {
     return 'top bar laid out as a row';
 });
 await openPage('Medic Profiles', '/configurationpage?name=MedicProfiles', '#MedicProfilesPage .mp-tab', '.mp-tab');
+await openPage('Medic Posters', '/configurationpage?name=MedicPosters', '#MedicPostersPage #po-run');
+
+await check('Medic Posters page shows a preview poster and a library cover', async () => {
+    errors.length = 0;
+    await page.goto(JF + '/web/index.html#/configurationpage?name=MedicPosters');
+    await page.waitForSelector('#MedicPostersPage #po-preview', { timeout: 30000 });
+    await page.click('#MedicPostersPage #po-preview');
+    await page.waitForSelector('#MedicPostersPage #po-preview-img:not([hidden])', { timeout: 60000 });
+    const width = await page.locator('#MedicPostersPage #po-preview-img').evaluate((img) => img.naturalWidth);
+    expect(width === 240, 'preview is ' + width + ' px wide');
+    await page.click('#MedicPostersPage #po-preview-cover');
+    await page.waitForFunction(() => document.querySelector('#MedicPostersPage #po-preview-img').naturalWidth === 480, null, { timeout: 60000 });
+    const ours = errors.filter((e) => !/ResizeObserver|^CancelledError/i.test(e));
+    expect(ours.length === 0, ours.join(' | '));
+    return await page.locator('#MedicPostersPage #po-preview-info').textContent();
+});
 await openPage('Medic Picks settings', '/configurationpage?name=Medic%20Picks', '#MedicPicksConfigForm');
 
 await check('Medic Picks settings: the user boxes show, and a key that isn\'t saved says so', async () => {

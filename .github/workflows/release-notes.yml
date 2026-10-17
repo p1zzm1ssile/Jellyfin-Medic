@@ -3,12 +3,12 @@ name: Refresh release notes
 # Rewrites the notes of releases that are already out from their changelog section, with the line
 # thanking contributors that new releases get, and puts the same text in manifest.json. For a release
 # made before credits were added, or after fixing a changelog entry. Run it from the Actions tab with
-# one or more tags, such as: v1.0.20 picks-v1.2.4 profiles-v1.1.2
+# one or more tags, such as: v1.0.20 picks-v1.2.4 profiles-v1.1.2 film-posters-v1.0.0
 on:
   workflow_dispatch:
     inputs:
       tags:
-        description: 'Release tags, separated by spaces (v1.0.20 picks-v1.2.4 profiles-v1.1.2)'
+        description: 'Release tags, separated by spaces (v1.0.20 picks-v1.2.4 profiles-v1.1.2 film-posters-v1.0.0)'
         required: true
 
 permissions:
@@ -42,11 +42,12 @@ jobs:
             case "$TAG" in
               picks-v*)    FILE=Jellyfin.Plugin.MedicPicks/CHANGELOG.md;    GUID=b34ec5d1-b70f-435f-b77d-9b76979b03c7; VER="${TAG#picks-v}" ;;
               profiles-v*) FILE=Jellyfin.Plugin.MedicProfiles/CHANGELOG.md; GUID=1eb65368-7b2e-4a55-8f2b-b56134f3fe68; VER="${TAG#profiles-v}" ;;
+              film-posters-v*) FILE=Jellyfin.Plugin.MedicPosters/CHANGELOG.md; GUID=f8a6666f-5278-45ae-8e5d-abcec99de310; VER="${TAG#film-posters-v}" ;;
               v*)          FILE=CHANGELOG.md;                               GUID=8d1f5c2e-6b4a-4f7e-9c3d-2a7b5e1f0c94; VER="${TAG#v}" ;;
-              *) echo "::error::$TAG isn't a release tag (v1.2.3, picks-v1.2.3 or profiles-v1.2.3)"; exit 1 ;;
+              *) echo "::error::$TAG isn't a release tag (v1.2.3, picks-v1.2.3, profiles-v1.2.3 or film-posters-v1.2.3)"; exit 1 ;;
             esac
             if ! [[ "$VER" =~ ^[0-9]+(\.[0-9]+){2,3}$ ]]; then
-              echo "::error::$TAG isn't a release tag (v1.2.3, picks-v1.2.3 or profiles-v1.2.3)"; exit 1
+              echo "::error::$TAG isn't a release tag (v1.2.3, picks-v1.2.3, profiles-v1.2.3 or film-posters-v1.2.3)"; exit 1
             fi
             if ! gh release view "$TAG" >/dev/null 2>&1; then
               echo "::error::There is no release for $TAG."; exit 1

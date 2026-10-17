@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end tests: builds the three plugins, starts a real Jellyfin in Docker with them
+# End-to-end tests: builds the four plugins, starts a real Jellyfin in Docker with them
 # installed and some sample films, then runs e2e.mjs against it.
 #
 #   tests/e2e/run.sh            build, start, test, stop
@@ -74,6 +74,7 @@ build() { # project, folder, dll
 build src/JellyfinMedic/JellyfinMedic.csproj JellyfinMedic JellyfinMedic.dll
 build Jellyfin.Plugin.MedicPicks/Jellyfin.Plugin.MedicPicks.csproj MedicPicks Jellyfin.Plugin.MedicPicks.dll
 build Jellyfin.Plugin.MedicProfiles/Jellyfin.Plugin.MedicProfiles.csproj MedicProfiles Jellyfin.Plugin.MedicProfiles.dll
+build Jellyfin.Plugin.MedicPosters/Jellyfin.Plugin.MedicPosters.csproj MedicPosters Jellyfin.Plugin.MedicPosters.dll
 
 echo "== Making sample films"
 GENRES=(Action Comedy Drama Horror Animation Thriller Romance Documentary)
@@ -158,5 +159,5 @@ status=0
 # A time limit, so a check that hangs fails the run instead of holding it until the CI job is killed.
 JF="http://127.0.0.1:$PORT" WORK="$WORK" E2E_NAME="$NAME" FAKE_HOST="${GATEWAY:-0.0.0.0}" limited "${E2E_TIMEOUT:-1500}" node "$ROOT/tests/e2e/e2e.mjs" "$@" || status=$?
 [ "$status" = 124 ] && echo "The checks didn't finish within ${E2E_TIMEOUT:-1500} seconds" >&2
-docker logs "$NAME" 2>&1 | grep -E "\[ERR\]|\[FTL\]" | grep -iE "medic|picks|profiles" | head -20 || true
+docker logs "$NAME" 2>&1 | grep -E "\[ERR\]|\[FTL\]" | grep -iE "medic|picks|profiles|posters" | head -20 || true
 exit $status

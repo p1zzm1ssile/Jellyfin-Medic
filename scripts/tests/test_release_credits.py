@@ -16,13 +16,9 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(rc.plugin_prefix("v1.0.20"), "v")
         self.assertEqual(rc.plugin_prefix("picks-v1.2.4"), "picks-v")
         self.assertEqual(rc.plugin_prefix("profiles-v1.1.3"), "profiles-v")
+        self.assertEqual(rc.plugin_prefix("film-posters-v1.0.0"), "film-posters-v")
         with self.assertRaises(ValueError):
             rc.plugin_prefix("nightly")
-
-    def test_removed_plugins_tags_are_refused(self):
-        # Medic Posters was released from this repository, then moved out of it.
-        with self.assertRaises(ValueError):
-            rc.plugin_prefix("film-posters-v1.2.0")
 
     def test_previous_tag_is_the_same_plugins_last_lower_version(self):
         tags = ["v1.0.9", "v1.0.10", "v1.0.19", "v1.0.20", "picks-v1.2.4", "profiles-v1.1.2", "profiles-v1.1.3", "junk"]
@@ -41,6 +37,9 @@ class PluginTests(unittest.TestCase):
         self.assertFalse(rc.belongs_to("picks-v", "src/JellyfinMedic/Plugin.cs"))
         self.assertTrue(rc.belongs_to("profiles-v", "Jellyfin.Plugin.MedicProfiles/Plugin.cs"))
         self.assertFalse(rc.belongs_to("profiles-v", "manifest.json"))
+        self.assertTrue(rc.belongs_to("film-posters-v", "Jellyfin.Plugin.MedicPosters/Plugin.cs"))
+        self.assertTrue(rc.belongs_to("film-posters-v", "tests/MedicPosters.Tests/PosterMakerTests.cs"))
+        self.assertFalse(rc.belongs_to("v", "Jellyfin.Plugin.MedicPosters/Plugin.cs"))
 
     def test_profiles_tests_belong_to_profiles(self):
         self.assertTrue(rc.belongs_to("profiles-v", "tests/MedicProfiles.Tests/ProfileTests.cs"))
@@ -53,6 +52,7 @@ class PluginTests(unittest.TestCase):
             self.assertTrue(rc.belongs_to("picks-v", path), path)
             self.assertTrue(rc.belongs_to("profiles-v", path), path)
             self.assertFalse(rc.belongs_to("v", path), path)
+            self.assertFalse(rc.belongs_to("film-posters-v", path), path)
 
 
 class WindowTests(unittest.TestCase):
