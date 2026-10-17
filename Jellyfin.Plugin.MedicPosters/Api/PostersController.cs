@@ -38,7 +38,7 @@ public class PostersController : ControllerBase
     {
         var config = Plugin.Instance!.Configuration;
         var titles = _service.Titles();
-        var libraries = _service.ChosenLibraries();
+        var libraries = _service.CoverTargets();
         var (posters, failures, lastRun) = _store.Read(s => (
             s.Posters.Values.OrderByDescending(p => p.MadeUtc).ToList(),
             s.Failures.Values.OrderByDescending(f => f.Utc).Take(50).ToList(),
@@ -73,8 +73,26 @@ public class PostersController : ControllerBase
                 coverFramesPerSecond = config.CoverFramesPerSecond,
                 coverColours = config.CoverColours,
                 coverShowTitle = config.CoverShowTitle,
-                coverShowFrame = config.CoverShowFrame
+                coverShowFrame = config.CoverShowFrame,
+                font = PosterFonts.Find(config.Font).Key,
+                textSize = config.TextSize,
+                textPosition = config.TextPosition,
+                textShadow = config.TextShadow,
+                darkBand = config.DarkBand,
+                fadeBetween = config.FadeBetween,
+                fadeEnd = config.FadeEnd,
+                fadeTenths = config.FadeTenths,
+                coverFont = PosterFonts.Find(config.CoverFont).Key,
+                coverTextSize = config.CoverTextSize,
+                coverTextPosition = config.CoverTextPosition,
+                coverTextShadow = config.CoverTextShadow,
+                coverDarkBand = config.CoverDarkBand,
+                coverFadeBetween = config.CoverFadeBetween,
+                coverFadeEnd = config.CoverFadeEnd,
+                coverFadeTenths = config.CoverFadeTenths,
+                custom = config.Custom
             },
+            fonts = PosterFonts.All.Select(f => new { key = f.Key, label = f.Label }),
             libraries = _service.Libraries().Select(l => new { id = l.Id.ToString("N"), name = l.Name }),
             chosenLibraries = libraries.Select(l => new { id = l.Id.ToString("N"), name = l.Name, hasCover = made.Contains(l.Id) }),
             // "films" is every title that gets a poster (films, series, home and music videos); the name is kept for 1.0's page.
@@ -160,6 +178,61 @@ public class PostersController : ControllerBase
         c.CoverColours = Math.Clamp(request.CoverColours ?? c.CoverColours, 16, 256);
         c.CoverShowTitle = request.CoverShowTitle ?? c.CoverShowTitle;
         c.CoverShowFrame = request.CoverShowFrame ?? c.CoverShowFrame;
+
+        c.Font = PosterFonts.Known(request.Font) ? PosterFonts.Find(request.Font).Key : c.Font;
+        c.TextSize = Math.Clamp(request.TextSize ?? c.TextSize, 50, 200);
+        c.TextPosition = Position(request.TextPosition) ?? c.TextPosition;
+        c.TextShadow = request.TextShadow ?? c.TextShadow;
+        c.DarkBand = request.DarkBand ?? c.DarkBand;
+        c.FadeBetween = request.FadeBetween ?? c.FadeBetween;
+        c.FadeEnd = request.FadeEnd ?? c.FadeEnd;
+        c.FadeTenths = Math.Clamp(request.FadeTenths ?? c.FadeTenths, 1, 10);
+        c.CoverFont = PosterFonts.Known(request.CoverFont) ? PosterFonts.Find(request.CoverFont).Key : c.CoverFont;
+        c.CoverTextSize = Math.Clamp(request.CoverTextSize ?? c.CoverTextSize, 50, 200);
+        c.CoverTextPosition = Position(request.CoverTextPosition) ?? c.CoverTextPosition;
+        c.CoverTextShadow = request.CoverTextShadow ?? c.CoverTextShadow;
+        c.CoverDarkBand = request.CoverDarkBand ?? c.CoverDarkBand;
+        c.CoverFadeBetween = request.CoverFadeBetween ?? c.CoverFadeBetween;
+        c.CoverFadeEnd = request.CoverFadeEnd ?? c.CoverFadeEnd;
+        c.CoverFadeTenths = Math.Clamp(request.CoverFadeTenths ?? c.CoverFadeTenths, 1, 10);
+        if (request.Custom is not null)
+        {
+            c.Custom = Custom(request.Custom, known);
+        }
+    }
+
+    private static string? Position(string? position) => Array.IndexOf(PosterSpec.Positions, position) >= 0 ? position : null;
+
+    /// <summary>
+    /// The custom text and moments sent, tidied: one entry per library or title, sources only from libraries
+    /// with videos, up to six moments each, and entries with nothing in them dropped.
+    /// </summary>
+    public static PosterCustom[] Custom(PosterCustom[] sent, System.Collections.Generic.ISet<Guid> libraries)
+    {
+        static string? Id(string? id) => Guid.TryParse(id, out var g) && g != Guid.Empty ? g.ToString("N") : null;
+        return sent
+            .Where(c => c is not null && Id(c.ItemId) is not null)
+            .GroupBy(c => Id(c.ItemId)!)
+            .Select(g => g.Last())
+            .Select(c =>
+            {
+                string? title = string.IsNullOrWhiteSpace(c.Title) ? null : c.Title.Trim();
+                string? source = Id(c.SourceLibraryId);
+                return new PosterCustom
+                {
+                    ItemId = Id(c.ItemId)!,
+                    Title = title is { Length: > 80 } ? title[..80] : title,
+                    SourceLibraryId = source is not null && libraries.Contains(Guid.Parse(source)) && source != Id(c.ItemId) ? source : null,
+                    Moments = (c.Moments ?? Array.Empty<PosterCustomMoment>())
+                        .Where(m => m is not null && Id(m.ItemId) is not null)
+                        .Take(PosterService.MaxMoments)
+                        .Select(m => new PosterCustomMoment { ItemId = Id(m.ItemId)!, Start = m.Start < 0 || double.IsNaN(m.Start) ? -1 : Math.Round(Math.Min(m.Start, 1e6), 2) })
+                        .ToArray()
+                };
+            })
+            .Where(c => c.Title is not null || c.SourceLibraryId is not null || c.Moments.Length > 0)
+            .Take(1000)
+            .ToArray();
     }
 
     /// <summary>Makes a poster for one title, or a cover for one library (a random one if none is given), without changing anything.</summary>
@@ -201,12 +274,39 @@ public class PostersController : ControllerBase
         return Json(new { ok = error is null, error, itemId = item?.Id.ToString("N"), title = item?.Name });
     }
 
-    /// <summary>Films and series in the chosen libraries whose name contains the text, for choosing one.</summary>
+    /// <summary>
+    /// Films and series in the chosen libraries whose name contains the text, for choosing one; with everywhere,
+    /// in every library with videos. With ids, those titles, for showing the moments picked for a poster or cover.
+    /// </summary>
     [HttpGet("Titles")]
-    public ActionResult FindTitles([FromQuery] string? q)
+    public ActionResult FindTitles([FromQuery] string? q, [FromQuery] bool everywhere = false, [FromQuery] string? ids = null)
     {
-        var found = string.IsNullOrWhiteSpace(q) ? Array.Empty<MediaBrowser.Controller.Entities.BaseItem>() : _service.FindTitles(q.Trim(), 20);
-        return Json(found.Select(t => new { id = t.Id.ToString("N"), name = t.Name, year = t.ProductionYear }));
+        var found = !string.IsNullOrWhiteSpace(ids)
+            ? _service.FindItems(ids.Split(',').Select(id => Guid.TryParse(id, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).Take(100))
+            : string.IsNullOrWhiteSpace(q) ? Array.Empty<MediaBrowser.Controller.Entities.BaseItem>() : _service.FindTitles(q.Trim(), 20, everywhere);
+        return Json(found.Select(t => new
+        {
+            id = t.Id.ToString("N"),
+            name = t.Name,
+            year = t.ProductionYear,
+            series = t is MediaBrowser.Controller.Entities.TV.Series,
+            seconds = PosterService.Seconds(t)
+        }));
+    }
+
+    /// <summary>A still frame from a film, episode or video, for choosing where a moment starts.</summary>
+    [HttpGet("Frame")]
+    [Produces("image/jpeg")]
+    public async Task<ActionResult> Frame([FromQuery] Guid itemId, [FromQuery] double at, CancellationToken ct)
+    {
+        var jpeg = await _service.FrameAsync(itemId, at, ct).ConfigureAwait(false);
+        if (jpeg is null)
+        {
+            return NotFound();
+        }
+
+        Response.Headers.CacheControl = "private, max-age=3600";
+        return File(jpeg, "image/jpeg");
     }
 
     /// <summary>
@@ -292,6 +392,41 @@ public class PosterSettingsRequest
     public bool? CoverShowTitle { get; set; }
 
     public bool? CoverShowFrame { get; set; }
+
+    public string? Font { get; set; }
+
+    public int? TextSize { get; set; }
+
+    public string? TextPosition { get; set; }
+
+    public bool? TextShadow { get; set; }
+
+    public bool? DarkBand { get; set; }
+
+    public bool? FadeBetween { get; set; }
+
+    public bool? FadeEnd { get; set; }
+
+    public int? FadeTenths { get; set; }
+
+    public string? CoverFont { get; set; }
+
+    public int? CoverTextSize { get; set; }
+
+    public string? CoverTextPosition { get; set; }
+
+    public bool? CoverTextShadow { get; set; }
+
+    public bool? CoverDarkBand { get; set; }
+
+    public bool? CoverFadeBetween { get; set; }
+
+    public bool? CoverFadeEnd { get; set; }
+
+    public int? CoverFadeTenths { get; set; }
+
+    /// <summary>Every library's and title's own text and moments; the saved ones stay when missing.</summary>
+    public PosterCustom[]? Custom { get; set; }
 }
 
 public class PosterPreviewRequest

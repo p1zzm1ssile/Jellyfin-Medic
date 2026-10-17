@@ -809,8 +809,15 @@ Found under Plugins -> Medic Posters. Settings are for administrators only.
   - A wide 16:9 animated cover for each library, the shape of Jellyfin's
     library cards, cut from moments of a few random things in it, with the
     library's name. Can be turned off; four sizes, 320 x 180 to 640 x 360.
-  - The title in capitals in Bodoni Moda over a soft dark band, and a
-    rounded white frame. Either can be turned off.
+  - The title in capitals over a soft dark band, and a rounded white
+    frame. Either can be turned off.
+  - Ten fonts (Bodoni Moda, Playfair Display, Cinzel, Cormorant Garamond,
+    Abril Fatface, Bebas Neue, Anton, Oswald, Montserrat, Lobster), all
+    under the SIL Open Font License and inside the plugin.
+  - Text size 60% to 200%, at the top, middle or bottom, with or without
+    a shadow and the dark band.
+  - Fades through black between moments, and out at the end (in at the
+    start), 0.2 to 1 second each.
   - GIF because Jellyfin never resizes a GIF, so the poster reaches apps
     still animated. Other formats are turned into a still picture.
   - HDR films are converted to normal colour first.
@@ -848,7 +855,14 @@ Found under Plugins -> Medic Posters. Settings are for administrators only.
   - Size: posters 160 x 240 to 300 x 450, covers 320 x 180 to 640 x 360.
   - How many moments (1 to 6) and how long each plays (0.5 to 3 seconds).
   - Frames per second (6 to 15) and colours (48 to 256).
-  - Title and frame on or off.
+  - Title and frame on or off, font, text size and position, shadow, dark
+    band and fades.
+  - Your own text and moments: any library's cover or title's poster can
+    have its own text, up to six picked films or moments with a start time
+    chosen on a slider (with a still of that frame), and, for a cover, a
+    library to take random moments from instead of its own. So an IPTV
+    library can get a cover from the films library with its own name,
+    even when it's unticked.
 
 
 -------------------------------------------------------------------------------

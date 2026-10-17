@@ -49,7 +49,7 @@ public class PosterMakerTests
         Assert.Contains("PlayResX: 240", full);
         Assert.Contains("PlayResY: 360", full);
         Assert.Contains(",BIG BUCK BUNNY", full);
-        Assert.Contains("Style: Title," + PosterMaker.FontName, full);
+        Assert.Contains("Style: Title,Bodoni Moda,", full);
         Assert.Equal(4, full.Split("Dialogue:").Length);
 
         var bare = PosterMaker.BuildAss(Spec with { ShowTitle = false, ShowFrame = false }, "Big Buck Bunny");
@@ -143,5 +143,138 @@ public class PosterMakerTests
         Assert.Equal(240 * 360 * 24 / 20, Spec.EstimateBytes(0.05));
         var longer = Spec with { Moments = 6 };
         Assert.Equal(2 * Spec.EstimateBytes(0.05), longer.EstimateBytes(0.05));
+    }
+
+    [Fact]
+    public void Every_font_is_inside_the_plugin_with_its_licence_beside_it()
+    {
+        var names = typeof(PosterMaker).Assembly.GetManifestResourceNames();
+        foreach (var font in PosterFonts.All)
+        {
+            Assert.Contains("Jellyfin.Plugin.MedicPosters.Fonts." + font.File, names);
+        }
+
+        Assert.Equal(PosterFonts.All.Count, PosterFonts.All.Select(f => f.Key).Distinct().Count());
+        Assert.Equal("BodoniModa", PosterFonts.Find(null).Key);
+        Assert.Equal("BodoniModa", PosterFonts.Find("Comic Sans").Key);
+        Assert.Equal("Anton", PosterFonts.Find("anton").Key);
+    }
+
+    [Fact]
+    public void The_title_takes_the_chosen_font_size_and_position()
+    {
+        var c = new PluginConfiguration { Font = "Lobster", TextSize = 150, TextPosition = "top" };
+        var ass = PosterMaker.BuildAss(PosterSpec.From(c), "Up");
+        int size = (int)Math.Round(PosterMaker.TitleSize(240, 2) * 1.5);
+        // Alignment 8 is top centre.
+        Assert.Contains($"Style: Title,Lobster,{size},", ass);
+        Assert.Matches(@"Style: Title,[^\n]*,8,\d+,\d+,\d+,1\n", ass);
+        Assert.Matches(@"Style: Title,[^\n]*,5,\d+,\d+,\d+,1\n", PosterMaker.BuildAss(PosterSpec.From(new PluginConfiguration { TextPosition = "middle" }), "Up"));
+        Assert.Matches(@"Style: Title,[^\n]*,2,\d+,\d+,\d+,1\n", PosterMaker.BuildAss(PosterSpec.From(new PluginConfiguration { TextPosition = "sideways" }), "Up"));
+    }
+
+    [Fact]
+    public void The_shadow_and_the_dark_band_can_each_be_left_off()
+    {
+        var plain = PosterMaker.BuildAss(PosterSpec.From(new PluginConfiguration { TextShadow = false, DarkBand = false, ShowFrame = false }), "Up");
+        Assert.Matches(@"Style: Title,[^\n]*,100,1,0,1,0,0,2,", plain);
+        Assert.Single(plain.Split("Dialogue:").Skip(1));
+
+        var shaded = PosterMaker.BuildAss(PosterSpec.From(new PluginConfiguration { ShowFrame = false }), "Up");
+        Assert.Equal(2, shaded.Split("Dialogue:").Length - 1);
+        Assert.Matches(@"Style: Title,[^\n]*,100,1,0,1,0,1.5,2,", shaded);
+    }
+
+    [Fact]
+    public void Fades_go_between_moments_and_out_at_the_end_only_when_asked_for()
+    {
+        var none = PosterSpec.From(new PluginConfiguration());
+        Assert.Equal(string.Empty, PosterMaker.Fades(none, 0, 3));
+
+        var between = PosterSpec.From(new PluginConfiguration { FadeBetween = true, FadeTenths = 3 });
+        Assert.Equal(",fade=t=out:st=0.7:d=0.3", PosterMaker.Fades(between, 0, 3));
+        Assert.Equal(",fade=t=in:st=0:d=0.3,fade=t=out:st=0.7:d=0.3", PosterMaker.Fades(between, 1, 3));
+        Assert.Equal(",fade=t=in:st=0:d=0.3", PosterMaker.Fades(between, 2, 3));
+
+        var end = PosterSpec.From(new PluginConfiguration { FadeEnd = true, FadeTenths = 5 });
+        Assert.Equal(",fade=t=in:st=0:d=0.5", PosterMaker.Fades(end, 0, 3));
+        Assert.Equal(string.Empty, PosterMaker.Fades(end, 1, 3));
+        Assert.Equal(",fade=t=out:st=0.5:d=0.5", PosterMaker.Fades(end, 2, 3));
+
+        // A fade never takes more than half of a short moment.
+        var shortMoments = PosterSpec.From(new PluginConfiguration { FadeEnd = true, FadeTenths = 10, MomentTenths = 5 });
+        Assert.Equal(0.25, shortMoments.FadeSeconds);
+
+        var graph = PosterMaker.BuildArgs("/films/a.mkv", new[] { 10.0, 20 }, between, hdr: false, "/tmp/out.gif");
+        Assert.Contains("format=yuv420p,fade=t=out:st=0.7:d=0.3[m0]", graph[graph.ToList().IndexOf("-filter_complex") + 1]);
+    }
+
+    [Fact]
+    public void Covers_and_posters_have_their_own_text_style()
+    {
+        var c = new PluginConfiguration { Font = "Anton", TextSize = 80, CoverFont = "Cinzel", CoverTextSize = 200, CoverTextPosition = "middle", CoverFadeBetween = true };
+        var cover = PosterSpec.CoverFrom(c);
+        var poster = PosterSpec.From(c);
+        Assert.Equal(("Cinzel", 2.0, "middle", true), (cover.Font.Key, cover.TextScale, cover.TextPosition, cover.FadeBetween));
+        Assert.Equal(("Anton", 0.8, "bottom", false), (poster.Font.Key, poster.TextScale, poster.TextPosition, poster.FadeBetween));
+        Assert.Equal(0.5, PosterSpec.From(new PluginConfiguration { TextSize = 5 }).TextScale);
+    }
+
+    [Fact]
+    public void A_still_frame_is_one_jpeg_at_the_chosen_moment()
+    {
+        var args = PosterMaker.FrameArgs(new Clip("/films/a.mkv", 61.5, false), 320, "frame.jpg");
+        Assert.Equal(new[] { "-ss", "61.5", "-i", "/films/a.mkv" }, args.SkipWhile(a => a != "-ss").Take(4));
+        Assert.Contains("scale=320:-2", args);
+        Assert.Equal("frame.jpg", args[^1]);
+        Assert.Contains("tonemap", string.Join(' ', PosterMaker.FrameArgs(new Clip("/films/a.mkv", 0, true), 320, "frame.jpg")));
+    }
+
+    [Fact]
+    public void A_picked_moment_stays_inside_the_video()
+    {
+        Assert.Equal(100, PosterService.ChosenStart(100, 6000, 1));
+        Assert.Equal(5999, PosterService.ChosenStart(9000, 6000, 1));
+        Assert.Equal(42, PosterService.ChosenStart(42, null, 1));
+        Assert.InRange(PosterService.ChosenStart(-1, 1000, 1), 150, 750);
+    }
+
+    [Fact]
+    public void Custom_text_and_moments_are_tidied_when_saved()
+    {
+        var movies = Guid.NewGuid();
+        var iptv = Guid.NewGuid();
+        var film = Guid.NewGuid();
+        var sent = new[]
+        {
+            new PosterCustom { ItemId = iptv.ToString(), Title = "  Live TV  ", SourceLibraryId = movies.ToString("N") },
+            new PosterCustom { ItemId = film.ToString(), Title = new string('x', 120), Moments = Enumerable.Range(0, 9).Select(i => new PosterCustomMoment { ItemId = film.ToString(), Start = i * 10 }).ToArray() },
+            new PosterCustom { ItemId = movies.ToString(), SourceLibraryId = movies.ToString() },
+            new PosterCustom { ItemId = "not a guid", Title = "x" },
+            new PosterCustom { ItemId = Guid.NewGuid().ToString(), SourceLibraryId = Guid.NewGuid().ToString() },
+            new PosterCustom { ItemId = film.ToString("N"), Title = "Kept last", Moments = new[] { new PosterCustomMoment { ItemId = film.ToString(), Start = double.NaN } } }
+        };
+        var tidy = Jellyfin.Plugin.MedicPosters.Api.PostersController.Custom(sent, new HashSet<Guid> { movies, iptv });
+
+        Assert.Equal(2, tidy.Length);
+        var cover = tidy.Single(c => c.ItemId == iptv.ToString("N"));
+        Assert.Equal(("Live TV", movies.ToString("N")), (cover.Title, cover.SourceLibraryId));
+        // The last entry for the same title wins, and a moment with no time is a random one.
+        var poster = tidy.Single(c => c.ItemId == film.ToString("N"));
+        Assert.Equal("Kept last", poster.Title);
+        Assert.Equal(-1, Assert.Single(poster.Moments).Start);
+
+        var many = Jellyfin.Plugin.MedicPosters.Api.PostersController.Custom(new[] { sent[1] }, new HashSet<Guid>()).Single();
+        Assert.Equal(80, many.Title!.Length);
+        Assert.Equal(PosterService.MaxMoments, many.Moments.Length);
+    }
+
+    [Fact]
+    public void A_library_or_title_shows_its_own_text_when_it_has_some()
+    {
+        var id = Guid.NewGuid();
+        var c = new PluginConfiguration { Custom = new[] { new PosterCustom { ItemId = id.ToString("N"), Title = "IPTV Films" } } };
+        Assert.Equal("IPTV Films", c.CustomFor(id)?.Title);
+        Assert.Null(c.CustomFor(Guid.NewGuid()));
     }
 }

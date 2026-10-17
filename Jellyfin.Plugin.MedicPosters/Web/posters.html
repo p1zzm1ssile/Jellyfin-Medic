@@ -86,6 +86,30 @@
                     <p class="po-muted po-small">Jellyfin sends GIF posters at their full size (that's what keeps them moving), so every poster on a page is downloaded whole. Smaller, shorter and fewer colours make lighter files.</p>
                     <label class="po-check"><input type="checkbox" id="po-title"> The title</label>
                     <label class="po-check"><input type="checkbox" id="po-frame"> A rounded white frame</label>
+                    <label class="po-field"><span>Font</span>
+                        <select id="po-font" class="po-input po-font-select"></select>
+                    </label>
+                    <label class="po-field"><span>Text size</span>
+                        <select id="po-text-size" class="po-input">
+                            <option value="60">60%</option><option value="80">80%</option><option value="100">100% (fits the title)</option>
+                            <option value="120">120%</option><option value="150">150%</option><option value="200">200%</option>
+                        </select>
+                    </label>
+                    <label class="po-field"><span>Text position</span>
+                        <select id="po-text-position" class="po-input">
+                            <option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option>
+                        </select>
+                    </label>
+                    <label class="po-check"><input type="checkbox" id="po-shadow"> A shadow under the text</label>
+                    <label class="po-check"><input type="checkbox" id="po-band"> Darken the picture behind the text</label>
+                    <label class="po-check"><input type="checkbox" id="po-fade-between"> Fade between moments</label>
+                    <label class="po-check"><input type="checkbox" id="po-fade-end"> Fade out at the end, and in at the start</label>
+                    <label class="po-field"><span>Each fade</span>
+                        <select id="po-fade-length" class="po-input">
+                            <option value="2">0.2 seconds</option><option value="3">0.3 seconds</option><option value="5">0.5 seconds</option>
+                            <option value="8">0.8 seconds</option><option value="10">1 second</option>
+                        </select>
+                    </label>
                     <label class="po-field"><span>Size</span>
                         <select id="po-width" class="po-input">
                             <option value="160">Small (160 × 240)</option>
@@ -125,6 +149,30 @@
                     <label class="po-check"><input type="checkbox" id="po-covers"> Make library covers each night too, along with the posters</label>
                     <label class="po-check"><input type="checkbox" id="po-cover-title"> The library's name</label>
                     <label class="po-check"><input type="checkbox" id="po-cover-frame"> A rounded white frame</label>
+                    <label class="po-field"><span>Font</span>
+                        <select id="po-cover-font" class="po-input po-font-select"></select>
+                    </label>
+                    <label class="po-field"><span>Text size</span>
+                        <select id="po-cover-text-size" class="po-input">
+                            <option value="60">60%</option><option value="80">80%</option><option value="100">100% (fits the name)</option>
+                            <option value="120">120%</option><option value="150">150%</option><option value="200">200%</option>
+                        </select>
+                    </label>
+                    <label class="po-field"><span>Text position</span>
+                        <select id="po-cover-text-position" class="po-input">
+                            <option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option>
+                        </select>
+                    </label>
+                    <label class="po-check"><input type="checkbox" id="po-cover-shadow"> A shadow under the text</label>
+                    <label class="po-check"><input type="checkbox" id="po-cover-band"> Darken the picture behind the text</label>
+                    <label class="po-check"><input type="checkbox" id="po-cover-fade-between"> Fade between moments</label>
+                    <label class="po-check"><input type="checkbox" id="po-cover-fade-end"> Fade out at the end, and in at the start</label>
+                    <label class="po-field"><span>Each fade</span>
+                        <select id="po-cover-fade-length" class="po-input">
+                            <option value="2">0.2 seconds</option><option value="3">0.3 seconds</option><option value="5">0.5 seconds</option>
+                            <option value="8">0.8 seconds</option><option value="10">1 second</option>
+                        </select>
+                    </label>
                     <label class="po-field"><span>Size</span>
                         <select id="po-cover-width" class="po-input">
                             <option value="320">Small (320 × 180)</option>
@@ -159,11 +207,49 @@
                     </label>
                     <p id="po-cover-size" class="po-small"></p>
                 </fieldset>
+                <fieldset>
+                    <legend>Your own text and moments</legend>
+                    <p class="po-muted po-small">Give a library's cover or a title's poster its own text, and pick the films and moments it's cut from. A library of streams, such as IPTV, can take its cover from another library's films and still show its own name, or any text you like.</p>
+                    <label class="po-field"><span>Library cover</span>
+                        <select id="po-custom-library" class="po-input"><option value="">Choose a library</option></select>
+                    </label>
+                    <label class="po-field"><span>Or a poster</span>
+                        <input id="po-custom-search" class="po-input" type="search" list="po-custom-search-list" placeholder="Type a film or series" autocomplete="off">
+                        <datalist id="po-custom-search-list"></datalist>
+                    </label>
+                    <div id="po-custom-editor" class="po-custom" hidden>
+                        <h4 id="po-custom-heading" class="po-h4"></h4>
+                        <label class="po-field"><span>Text</span>
+                            <input id="po-custom-text" class="po-input po-wide-input" type="text" maxlength="80" autocomplete="off">
+                        </label>
+                        <label class="po-field" id="po-custom-source-row"><span>Random moments from</span>
+                            <select id="po-custom-source" class="po-input"></select>
+                        </label>
+                        <p class="po-small po-strong">Moments</p>
+                        <ul id="po-custom-moments" class="po-moments"></ul>
+                        <p id="po-custom-moments-empty" class="po-muted po-small"></p>
+                        <div class="po-row" id="po-custom-add-film-row">
+                            <input id="po-custom-add" class="po-input" type="search" list="po-custom-add-list" placeholder="Add a film or series" autocomplete="off" aria-label="Add a film or series to the cover">
+                            <datalist id="po-custom-add-list"></datalist>
+                            <button type="button" id="po-custom-add-btn" class="po-btn po-btn-plain">Add</button>
+                        </div>
+                        <div class="po-row" id="po-custom-add-moment-row">
+                            <button type="button" id="po-custom-add-moment" class="po-btn po-btn-plain">Add a moment</button>
+                        </div>
+                        <div class="po-row">
+                            <button type="button" id="po-custom-preview" class="po-btn po-btn-accent">Preview it</button>
+                            <button type="button" id="po-custom-clear" class="po-btn po-btn-plain">Clear its own text and moments</button>
+                        </div>
+                        <p id="po-custom-note" class="po-note" aria-live="polite"></p>
+                    </div>
+                    <p id="po-custom-summary" class="po-muted po-small"></p>
+                    <ul id="po-custom-list" class="po-list"></ul>
+                </fieldset>
                 <div class="po-row">
                     <button type="submit" class="po-btn po-btn-accent">Save</button>
                     <span id="po-saved" class="po-note" aria-live="polite"></span>
                 </div>
-                <p class="po-muted po-small">Changed settings apply to new posters. Press <strong>Make all posters again</strong> or <strong>Make all covers again</strong> to redo the ones already made.</p>
+                <p class="po-muted po-small">Changed settings apply to new posters. To see one straight away, use <strong>Preview it</strong> and then <strong>Use this one</strong>. Press <strong>Make all posters again</strong> or <strong>Make all covers again</strong> to redo the ones already made.</p>
             </form>
 
             <!-- Recent posters -->
@@ -232,6 +318,17 @@
         #MedicPostersPage .po-grid .po-name { font-size: 0.82em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         #MedicPostersPage .po-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
         #MedicPostersPage .po-list li { font-size: 0.9em; }
+        #MedicPostersPage .po-h4 { margin: 4px 0; }
+        #MedicPostersPage .po-strong { font-weight: 600; margin: 10px 0 4px !important; }
+        #MedicPostersPage .po-wide-input { flex: 1; min-width: 200px; }
+        #MedicPostersPage .po-custom { border-top: 1px solid #2e3138; margin-top: 10px; padding-top: 8px; }
+        #MedicPostersPage .po-moments { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+        #MedicPostersPage .po-moments li { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: #15171b; border-radius: 6px; padding: 8px; }
+        #MedicPostersPage .po-thumb { width: 160px; aspect-ratio: 16 / 9; background: #0b0c0e; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 0.8em; color: #aaa; text-align: center; }
+        #MedicPostersPage .po-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        #MedicPostersPage .po-moment-controls { flex: 1; min-width: 220px; display: grid; gap: 6px; }
+        #MedicPostersPage .po-moment-controls input[type=range] { width: 100%; accent-color: #00a4dc; }
+        #MedicPostersPage .po-time { font-variant-numeric: tabular-nums; }
     </style>
 
     <script>
@@ -277,6 +374,12 @@
                 let previewUrl = null;
                 let status = null;
                 let titleMatches = [];
+                // Each library's and title's own text and moments, as on screen: { itemId, title, sourceLibraryId, moments: [{ itemId, start }] }.
+                let custom = [];
+                // Names, lengths and kinds of the titles they mention, by id.
+                const known = {};
+                // The library or title being edited: { itemId, kind, name }.
+                let editing = null;
 
                 function note(text, ok) {
                     const n = $('po-note');
@@ -316,6 +419,30 @@
                     setSelect('po-cover-moment-length', s.coverMomentTenths);
                     setSelect('po-cover-fps', s.coverFramesPerSecond);
                     setSelect('po-cover-colours', s.coverColours);
+                    fillStyle('po-', s.font, s.textSize, s.textPosition, s.textShadow, s.darkBand, s.fadeBetween, s.fadeEnd, s.fadeTenths);
+                    fillStyle('po-cover-', s.coverFont, s.coverTextSize, s.coverTextPosition, s.coverTextShadow, s.coverDarkBand, s.coverFadeBetween, s.coverFadeEnd, s.coverFadeTenths);
+                    custom = (s.custom || []).map(function (c) {
+                        return { itemId: c.itemId, title: c.title || '', sourceLibraryId: c.sourceLibraryId || '', moments: (c.moments || []).map(function (m) { return { itemId: m.itemId, start: m.start }; }) };
+                    });
+                }
+
+                // The text and fade settings, which posters and covers each have their own of.
+                function fillStyle(pre, font, size, position, shadow, band, fadeBetween, fadeEnd, fadeTenths) {
+                    setSelect(pre + 'font', font || 'BodoniModa');
+                    setSelect(pre + 'text-size', size || 100);
+                    setSelect(pre + 'text-position', position || 'bottom');
+                    $(pre + 'shadow').checked = shadow !== false;
+                    $(pre + 'band').checked = band !== false;
+                    $(pre + 'fade-between').checked = !!fadeBetween;
+                    $(pre + 'fade-end').checked = !!fadeEnd;
+                    setSelect(pre + 'fade-length', fadeTenths || 3);
+                }
+
+                function fillFonts(fonts) {
+                    page.querySelectorAll('.po-font-select').forEach(function (select) {
+                        if (select.options.length) return;
+                        fonts.forEach(function (f) { select.appendChild(el('option', null, f.label)).value = f.key; });
+                    });
                 }
 
                 function num(id) { return parseInt($(id).value, 10); }
@@ -342,7 +469,26 @@
                         coverFramesPerSecond: num('po-cover-fps'),
                         coverColours: num('po-cover-colours'),
                         coverShowTitle: $('po-cover-title').checked,
-                        coverShowFrame: $('po-cover-frame').checked
+                        coverShowFrame: $('po-cover-frame').checked,
+                        font: $('po-font').value,
+                        textSize: num('po-text-size'),
+                        textPosition: $('po-text-position').value,
+                        textShadow: $('po-shadow').checked,
+                        darkBand: $('po-band').checked,
+                        fadeBetween: $('po-fade-between').checked,
+                        fadeEnd: $('po-fade-end').checked,
+                        fadeTenths: num('po-fade-length'),
+                        coverFont: $('po-cover-font').value,
+                        coverTextSize: num('po-cover-text-size'),
+                        coverTextPosition: $('po-cover-text-position').value,
+                        coverTextShadow: $('po-cover-shadow').checked,
+                        coverDarkBand: $('po-cover-band').checked,
+                        coverFadeBetween: $('po-cover-fade-between').checked,
+                        coverFadeEnd: $('po-cover-fade-end').checked,
+                        coverFadeTenths: num('po-cover-fade-length'),
+                        custom: custom.filter(hasContent).map(function (c) {
+                            return { itemId: c.itemId, title: c.title.trim() || null, sourceLibraryId: c.sourceLibraryId || null, moments: c.moments };
+                        })
                     };
                 }
 
@@ -408,8 +554,11 @@
                     }
 
                     if (firstLoad) {
+                        fillFonts(s.fonts || []);
                         fillSettings(s.settings);
                         fillLibraries(s.libraries, s.settings.libraryIds || [], s.settings.excludedLibraryIds || []);
+                        fillCustomLibraries(s.libraries);
+                        loadCustomNames();
                     }
 
                     const pick = $('po-cover-library');
@@ -505,14 +654,16 @@
                     }).catch(function () { note('The posters weren’t put back. Stop any run that’s going, then try again.', false); });
                 });
 
-                function preview(kind) {
+                function preview(kind, forcedId) {
                     const buttons = [$('po-preview'), $('po-preview-cover')];
                     const cover = kind === 'cover';
                     buttons.forEach(function (b) { b.disabled = true; });
                     $('po-preview-info').textContent = cover ? 'Making a library cover…' : 'Making a poster…';
                     $('po-preview-use').hidden = true;
                     let itemId = null;
-                    if (cover) {
+                    if (forcedId) {
+                        itemId = forcedId;
+                    } else if (cover) {
                         itemId = $('po-cover-library').value || null;
                     } else {
                         const typed = $('po-title-search').value.trim().toLowerCase();
@@ -553,6 +704,264 @@
                         $('po-preview-info').textContent = 'The preview couldn’t be made. Try again.';
                     }).then(function () { buttons.forEach(function (b) { b.disabled = false; }); });
                 }
+
+                // ---- Your own text and moments ----
+
+                function hasContent(c) { return !!(c.title.trim() || c.sourceLibraryId || c.moments.length); }
+
+                function libraryName(id) {
+                    const lib = status && status.libraries.filter(function (l) { return l.id === id; })[0];
+                    return lib ? lib.name : null;
+                }
+
+                function itemName(id) { return libraryName(id) || (known[id] ? label(known[id]) : 'A title'); }
+
+                function clock(seconds) {
+                    const t = Math.max(0, Math.round(seconds));
+                    const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, sec = t % 60;
+                    return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(sec).padStart(2, '0');
+                }
+
+                function remember(found) { found.forEach(function (t) { known[t.id] = t; }); }
+
+                function loadCustomNames() {
+                    const ids = [];
+                    custom.forEach(function (c) {
+                        if (!libraryName(c.itemId)) ids.push(c.itemId);
+                        c.moments.forEach(function (m) { ids.push(m.itemId); });
+                    });
+                    const missing = ids.filter(function (id, i) { return !known[id] && ids.indexOf(id) === i; }).slice(0, 100);
+                    const done = missing.length ? getJson('Titles?ids=' + missing.join(',')).then(remember).catch(function () { }) : Promise.resolve();
+                    return done.then(function () { renderCustomList(); if (editing) renderMoments(); });
+                }
+
+                function fillCustomLibraries(libraries) {
+                    const select = $('po-custom-library');
+                    select.textContent = '';
+                    select.appendChild(el('option', null, 'Choose a library')).value = '';
+                    libraries.forEach(function (lib) { select.appendChild(el('option', null, lib.name)).value = lib.id; });
+                }
+
+                function entry(create) {
+                    if (!editing) return null;
+                    let c = custom.filter(function (x) { return x.itemId === editing.itemId; })[0];
+                    if (!c && create) {
+                        c = { itemId: editing.itemId, title: '', sourceLibraryId: '', moments: [] };
+                        custom.push(c);
+                    }
+                    return c || null;
+                }
+
+                function changed() { renderCustomList(); showSizes(); $('po-custom-note').textContent = ''; }
+
+                function renderCustomList() {
+                    const list = $('po-custom-list');
+                    list.textContent = '';
+                    const own = custom.filter(hasContent);
+                    $('po-custom-summary').textContent = own.length
+                        ? 'With their own text or moments (press Save to keep changes):'
+                        : 'No library or title has its own text or moments yet.';
+                    own.forEach(function (c) {
+                        const li = el('li');
+                        const cover = !!libraryName(c.itemId);
+                        const parts = [];
+                        if (c.title.trim()) parts.push('text “' + c.title.trim() + '”');
+                        if (c.sourceLibraryId) parts.push('moments from ' + (libraryName(c.sourceLibraryId) || 'another library'));
+                        if (c.moments.length) parts.push(c.moments.length + ' picked moment' + (c.moments.length === 1 ? '' : 's'));
+                        li.appendChild(el('strong', null, (cover ? 'Cover for ' : 'Poster for ') + itemName(c.itemId)));
+                        li.appendChild(document.createTextNode(': ' + parts.join(', ') + ' '));
+                        const edit = el('button', 'po-btn po-btn-plain po-btn-small', 'Change');
+                        edit.type = 'button';
+                        edit.addEventListener('click', function () { openEditor(cover ? 'cover' : 'poster', c.itemId, itemName(c.itemId)); });
+                        li.appendChild(edit);
+                        list.appendChild(li);
+                    });
+                }
+
+                function openEditor(kind, itemId, name) {
+                    editing = { kind: kind, itemId: itemId, name: name };
+                    const cover = kind === 'cover';
+                    const c = entry(false);
+                    $('po-custom-editor').hidden = false;
+                    $('po-custom-heading').textContent = (cover ? 'Cover for the library ' : 'Poster for ') + name;
+                    $('po-custom-text').value = c ? c.title : '';
+                    $('po-custom-text').placeholder = name;
+                    $('po-custom-source-row').hidden = !cover;
+                    $('po-custom-add-film-row').hidden = !cover;
+                    const series = !cover && known[itemId] && known[itemId].series;
+                    $('po-custom-add-moment-row').hidden = cover || series;
+                    $('po-custom-note').textContent = '';
+                    if (cover) {
+                        const source = $('po-custom-source');
+                        source.textContent = '';
+                        source.appendChild(el('option', null, 'This library')).value = '';
+                        status.libraries.forEach(function (lib) {
+                            if (lib.id !== itemId) source.appendChild(el('option', null, lib.name)).value = lib.id;
+                        });
+                        source.value = c && c.sourceLibraryId ? c.sourceLibraryId : '';
+                    }
+                    renderMoments();
+                }
+
+                function renderMoments() {
+                    const list = $('po-custom-moments');
+                    list.textContent = '';
+                    const c = entry(false);
+                    const moments = c ? c.moments : [];
+                    const cover = editing.kind === 'cover';
+                    const series = !cover && known[editing.itemId] && known[editing.itemId].series;
+                    $('po-custom-moments-empty').textContent = moments.length ? ''
+                        : series ? 'A series poster takes its moments from random episodes. You can still give it its own text.'
+                        : cover ? 'None picked, so the cover takes random moments from ' + ($('po-custom-source').value ? libraryName($('po-custom-source').value) : 'this library') + '. Add up to 6 films or series to choose them.'
+                        : 'None picked, so the moments are spread through the film. Add up to 6 to choose them.';
+                    $('po-custom-add-btn').disabled = moments.length >= 6;
+                    $('po-custom-add-moment').disabled = moments.length >= 6;
+                    moments.forEach(function (m, index) { list.appendChild(momentRow(c, m, index)); });
+                }
+
+                function momentRow(c, m, index) {
+                    const info = known[m.itemId] || { name: 'A title', series: false, seconds: null };
+                    const li = el('li');
+                    const thumb = el('div', 'po-thumb');
+                    li.appendChild(thumb);
+                    const controls = el('div', 'po-moment-controls');
+                    controls.appendChild(el('strong', null, (index + 1) + '. ' + label(info)));
+                    li.appendChild(controls);
+                    const length = info.seconds || 0;
+                    let frameTimer = null;
+
+                    function showFrame() {
+                        thumb.textContent = '';
+                        if (info.series) { thumb.textContent = 'A random episode'; return; }
+                        if (m.start < 0) { thumb.textContent = 'A random moment'; return; }
+                        clearTimeout(frameTimer);
+                        frameTimer = setTimeout(function () {
+                            fetch(ApiClient.getUrl('MedicPosters/Frame', { itemId: m.itemId, at: m.start }), {
+                                headers: { Authorization: 'MediaBrowser Token="' + ApiClient.accessToken() + '"' }
+                            }).then(function (res) {
+                                if (!res.ok) throw new Error(String(res.status));
+                                return res.blob();
+                            }).then(function (blob) {
+                                thumb.textContent = '';
+                                const img = el('img');
+                                img.alt = 'The frame at ' + clock(m.start) + ' in ' + info.name;
+                                img.onload = function () { URL.revokeObjectURL(img.src); };
+                                img.src = URL.createObjectURL(blob);
+                                thumb.appendChild(img);
+                            }).catch(function () { thumb.textContent = 'No picture for this moment'; });
+                        }, 300);
+                    }
+
+                    if (info.series) {
+                        controls.appendChild(el('span', 'po-muted po-small', 'A random moment from a random episode.'));
+                    } else {
+                        const row = el('div', 'po-row po-row-tight');
+                        const range = el('input');
+                        range.type = 'range';
+                        range.min = '0';
+                        range.max = String(Math.max(1, Math.floor(length)));
+                        range.step = '1';
+                        range.value = String(m.start < 0 ? Math.floor(length * 0.4) : Math.min(m.start, length || m.start));
+                        range.setAttribute('aria-label', 'Where the moment from ' + info.name + ' starts');
+                        const time = el('span', 'po-time po-small');
+                        const random = el('label', 'po-check po-small');
+                        const box = el('input');
+                        box.type = 'checkbox';
+                        box.checked = m.start < 0;
+                        random.appendChild(box);
+                        random.appendChild(document.createTextNode(' Random'));
+                        function showTime() {
+                            range.disabled = box.checked;
+                            time.textContent = box.checked ? 'Random' : clock(m.start) + (length ? ' of ' + clock(length) : '');
+                        }
+                        range.addEventListener('input', function () { m.start = parseInt(range.value, 10); showTime(); showFrame(); changed(); });
+                        box.addEventListener('change', function () { m.start = box.checked ? -1 : parseInt(range.value, 10); showTime(); showFrame(); changed(); });
+                        showTime();
+                        controls.appendChild(range);
+                        row.appendChild(time);
+                        row.appendChild(random);
+                        controls.appendChild(row);
+                    }
+
+                    const remove = el('button', 'po-btn po-btn-plain po-btn-small', 'Remove');
+                    remove.type = 'button';
+                    remove.setAttribute('aria-label', 'Remove moment ' + (index + 1));
+                    remove.addEventListener('click', function () { c.moments.splice(index, 1); renderMoments(); changed(); });
+                    controls.appendChild(remove);
+                    showFrame();
+                    return li;
+                }
+
+                function searchInto(input, list, everywhere, store) {
+                    let t = null;
+                    input.addEventListener('input', function () {
+                        clearTimeout(t);
+                        const q = input.value.trim();
+                        t = setTimeout(function () {
+                            if (!q) { store.length = 0; list.textContent = ''; return; }
+                            getJson('Titles?q=' + encodeURIComponent(q) + (everywhere ? '&everywhere=true' : '')).then(function (found) {
+                                remember(found);
+                                store.length = 0;
+                                Array.prototype.push.apply(store, found);
+                                list.textContent = '';
+                                found.forEach(function (f) { list.appendChild(el('option')).value = label(f); });
+                            }).catch(function () { });
+                        }, 250);
+                    });
+                }
+
+                function typed(input, store) {
+                    const v = input.value.trim().toLowerCase();
+                    return v && store.filter(function (t) { return label(t).toLowerCase() === v || t.name.toLowerCase() === v; })[0];
+                }
+
+                const posterMatches = [], addMatches = [];
+                searchInto($('po-custom-search'), $('po-custom-search-list'), false, posterMatches);
+                searchInto($('po-custom-add'), $('po-custom-add-list'), true, addMatches);
+
+                $('po-custom-library').addEventListener('change', function () {
+                    const id = this.value;
+                    if (!id) return;
+                    $('po-custom-search').value = '';
+                    openEditor('cover', id, libraryName(id));
+                });
+                $('po-custom-search').addEventListener('change', function () {
+                    const t = typed(this, posterMatches);
+                    if (!t) return;
+                    $('po-custom-library').value = '';
+                    openEditor('poster', t.id, label(t));
+                });
+                $('po-custom-text').addEventListener('input', function () { entry(true).title = this.value; changed(); });
+                $('po-custom-source').addEventListener('change', function () { entry(true).sourceLibraryId = this.value; renderMoments(); changed(); });
+                $('po-custom-add-btn').addEventListener('click', function () {
+                    const t = typed($('po-custom-add'), addMatches);
+                    if (!t) { $('po-custom-note').textContent = 'Pick a film or series from the list first.'; $('po-custom-note').className = 'po-note bad'; return; }
+                    entry(true).moments.push({ itemId: t.id, start: t.series || !t.seconds ? -1 : Math.floor(t.seconds * 0.4) });
+                    $('po-custom-add').value = '';
+                    renderMoments();
+                    changed();
+                });
+                $('po-custom-add-moment').addEventListener('click', function () {
+                    const info = known[editing.itemId] || {};
+                    const c = entry(true);
+                    // Each new moment starts a little further in than the last one, past the opening titles.
+                    const length = info.seconds || 0;
+                    const last = c.moments.length ? c.moments[c.moments.length - 1].start : -1;
+                    const start = length ? Math.min(Math.floor(length - 1), last >= 0 ? last + Math.floor(length / 8) : Math.floor(length * 0.15)) : 0;
+                    c.moments.push({ itemId: editing.itemId, start: Math.max(0, start) });
+                    renderMoments();
+                    changed();
+                });
+                $('po-custom-clear').addEventListener('click', function () {
+                    custom = custom.filter(function (x) { return x.itemId !== editing.itemId; });
+                    openEditor(editing.kind, editing.itemId, editing.name);
+                    changed();
+                });
+                $('po-custom-preview').addEventListener('click', function () {
+                    $('po-custom-note').className = 'po-note';
+                    $('po-custom-note').textContent = 'Making a preview, which shows in Preview above.';
+                    preview(editing.kind, editing.itemId);
+                });
 
                 function label(t) { return t.year ? t.name + ' (' + t.year + ')' : t.name; }
 

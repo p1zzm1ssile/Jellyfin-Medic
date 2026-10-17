@@ -3,6 +3,23 @@
 All notable changes to Medic Posters are recorded here. The newest version is at the top.
 Jellyfin Medic, Medic Picks and Medic Profiles have their own changelogs.
 
+## [1.3.0] – 2026-10-17
+
+### Added
+- **Your own text on a cover or poster.** Under **Your own text and moments**, choose a library or a title and type the text to show instead of its name.
+- **Covers for IPTV libraries.** A library's cover can take its random moments from another library, so an IPTV library of streams can get a cover cut from your films library and still show its own name, or any text you like. It gets a cover even when it's unticked under **Libraries**.
+- **Pick the films and the moments.** Pick up to six films or series for a library cover, or up to six moments of a film for its poster, and slide each one to where it should start, with a still of that frame to see what you'll get. A moment can stay random, and a series gives a moment from a random episode.
+- **Ten fonts**: Bodoni Moda, Playfair Display, Cinzel, Cormorant Garamond, Abril Fatface, Bebas Neue, Anton, Oswald, Montserrat and Lobster. All are free fonts under the SIL Open Font License, and they travel inside the plugin.
+- **Text size** from 60% to 200% of the size that fits the title, and **text position** at the top, middle or bottom.
+- **Shadow on or off**: the shadow under the letters and the darkened band behind them can each be turned off.
+- **Fades**: through black between moments, and out at the end (and in at the start, so the loop starts again from black), with how long each fade takes.
+- **Preview it** next to a library's or title's own text and moments, then **Use this one**.
+
+Posters and covers each have their own font, text and fade settings. Ones already made keep their old look until they're made again.
+
+### Fixed
+- Medic Posters is back in this repository and the catalogue, so servers that have it get updates again.
+
 ## [1.2.0] – 2026-10-17
 
 ### Added

@@ -160,7 +160,7 @@ The keys are kept on the server in their own file, only admins can use them, and
 
 An animated poster for every film and series, and an animated cover for every library, in the style of the [Library Cover Maker](https://github.com/p1zzm1ssile/Library-Cover-Maker)'s library covers. Set up under **Plugins → Medic Posters** (admins only); everyone sees the posters.
 
-- **Made from the video itself.** Each poster cuts between a few moments of the film, spread from 15% to 75% of the way through so it skips the opening titles and the credits (for a series, a moment from each of a few episodes), with the title in capitals in a big serif font (Bodoni Moda) and a rounded white frame. HDR films are converted to normal colour first. It uses Jellyfin's own FFmpeg, so there's nothing else to install.
+- **Made from the video itself.** Each poster cuts between a few moments of the film, spread from 15% to 75% of the way through so it skips the opening titles and the credits (for a series, a moment from each of a few episodes), with the title in capitals and a rounded white frame. Choose from ten fonts, the text's size and position (top, middle or bottom), its shadow and the dark band behind it, and fades between moments or at the end. HDR films are converted to normal colour first. It uses Jellyfin's own FFmpeg, so there's nothing else to install.
 - **They stay animated.** Jellyfin resizes posters before sending them to an app, which turns an animated WebP into a still picture, but it never resizes a GIF. So the posters are small GIFs, and they move in the Jellyfin website, Jellyfin Desktop and the apps that can play a GIF poster. Apps that can't show the first frame.
 - **Library covers too.** Each library with videos in it (films, TV, home videos, music videos) gets a wide cover, the shape of Jellyfin's library cards, cut from moments of a few random things in it with the library's name on it. It's a GIF as well, so it moves on the home screen. Covers have their own settings, separate from the posters'.
 - **Your own posters are kept.** Nothing in your media folders is changed or deleted: the GIFs live in the server's data folder, and each film's own poster is remembered. **Put back** under any poster, or **Put back the original posters**, brings them back.
@@ -168,6 +168,7 @@ An animated poster for every film and series, and an animated cover for every li
 - **A preview** shows a poster or a cover with the settings on screen, saved or not, and its size, without changing anything. Pick the film, series or library, or let it choose one. **Use this one** puts that preview on it, so you can do them one at a time.
 - **Posters and covers separately.** **Make posters now** and **Make library covers now** each make only their own kind, and each says how many there are to make and roughly how much space they'll take, worked out from the settings on screen and the ones made so far.
 - **Leave libraries out**, such as IPTV ones, by unticking them. Libraries you add later are included.
+- **Your own text and moments.** Give any library's cover or title's poster its own text, and pick the films and the exact moments it's cut from, with a still of each frame. A library of streams, such as IPTV, can take its cover from another library's films and keep its own name.
 
 ### Size
 

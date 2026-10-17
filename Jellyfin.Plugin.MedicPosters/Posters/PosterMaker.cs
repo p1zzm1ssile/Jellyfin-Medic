@@ -23,21 +23,57 @@ public sealed record PosterSpec(
     bool ShowTitle,
     bool ShowFrame)
 {
+    /// <summary>The title font.</summary>
+    public PosterFont Font { get; init; } = PosterFonts.Default;
+
+    /// <summary>The title's size against the size that fits it: 1 is the size from before 1.3.</summary>
+    public double TextScale { get; init; } = 1;
+
+    /// <summary>Where the title sits: "top", "middle" or "bottom".</summary>
+    public string TextPosition { get; init; } = "bottom";
+
+    public bool TextShadow { get; init; } = true;
+
+    public bool DarkBand { get; init; } = true;
+
+    public bool FadeBetween { get; init; }
+
+    public bool FadeEnd { get; init; }
+
+    public double FadeSeconds { get; init; } = 0.3;
+
+    public static readonly string[] Positions = { "top", "middle", "bottom" };
+
     /// <summary>The settings as a 2:3 poster spec, with every value kept in a range that makes a sensible GIF.</summary>
     public static PosterSpec From(Configuration.PluginConfiguration c)
     {
         int width = Math.Clamp(c.Width / 2 * 2, 120, 600);
-        return new(width, width * 3 / 2, Math.Clamp(c.Moments, 1, 6), Math.Clamp(c.MomentTenths, 5, 30) / 10.0,
-            Math.Clamp(c.FramesPerSecond, 4, 15), Math.Clamp(c.Colours, 16, 256), c.ShowTitle, c.ShowFrame);
+        return new PosterSpec(width, width * 3 / 2, Math.Clamp(c.Moments, 1, 6), Math.Clamp(c.MomentTenths, 5, 30) / 10.0,
+            Math.Clamp(c.FramesPerSecond, 4, 15), Math.Clamp(c.Colours, 16, 256), c.ShowTitle, c.ShowFrame)
+            .Styled(c.Font, c.TextSize, c.TextPosition, c.TextShadow, c.DarkBand, c.FadeBetween, c.FadeEnd, c.FadeTenths);
     }
 
     /// <summary>The settings as a 16:9 library cover spec, the shape of Jellyfin's library cards.</summary>
     public static PosterSpec CoverFrom(Configuration.PluginConfiguration c)
     {
         int width = Math.Clamp(c.CoverWidth / 2 * 2, 240, 960);
-        return new(width, width * 9 / 16 / 2 * 2, Math.Clamp(c.CoverMoments, 1, 6), Math.Clamp(c.CoverMomentTenths, 5, 30) / 10.0,
-            Math.Clamp(c.CoverFramesPerSecond, 4, 15), Math.Clamp(c.CoverColours, 16, 256), c.CoverShowTitle, c.CoverShowFrame);
+        return new PosterSpec(width, width * 9 / 16 / 2 * 2, Math.Clamp(c.CoverMoments, 1, 6), Math.Clamp(c.CoverMomentTenths, 5, 30) / 10.0,
+            Math.Clamp(c.CoverFramesPerSecond, 4, 15), Math.Clamp(c.CoverColours, 16, 256), c.CoverShowTitle, c.CoverShowFrame)
+            .Styled(c.CoverFont, c.CoverTextSize, c.CoverTextPosition, c.CoverTextShadow, c.CoverDarkBand, c.CoverFadeBetween, c.CoverFadeEnd, c.CoverFadeTenths);
     }
+
+    private PosterSpec Styled(string? font, int textSize, string? position, bool shadow, bool band, bool fadeBetween, bool fadeEnd, int fadeTenths) => this with
+    {
+        Font = PosterFonts.Find(font),
+        TextScale = Math.Clamp(textSize is 0 ? 100 : textSize, 50, 200) / 100.0,
+        TextPosition = Array.IndexOf(Positions, position) >= 0 ? position! : "bottom",
+        TextShadow = shadow,
+        DarkBand = band,
+        FadeBetween = fadeBetween,
+        FadeEnd = fadeEnd,
+        // A fade never takes more than half a moment, so every moment still shows clearly.
+        FadeSeconds = Math.Min(Math.Clamp(fadeTenths is 0 ? 3 : fadeTenths, 1, 10) / 10.0, MomentSeconds / 2)
+    };
 
     /// <summary>How many frames a poster or cover made with this spec has.</summary>
     public int Frames => (int)Math.Round(Moments * MomentSeconds * FramesPerSecond);
@@ -60,8 +96,7 @@ public sealed record Clip(string Path, double Start, bool Hdr);
 /// </summary>
 public class PosterMaker
 {
-    public const string FontFile = "BodoniModa-Bold.ttf";
-    public const string FontName = "Bodoni Moda";
+    private const string HdrToSdr = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,";
 
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(3);
 
@@ -97,7 +132,7 @@ public class PosterMaker
         try
         {
             await File.WriteAllTextAsync(Path.Combine(work, "poster.ass"), BuildAss(spec, title), new UTF8Encoding(false), ct).ConfigureAwait(false);
-            await WriteFontAsync(Path.Combine(work, "fonts", FontFile), ct).ConfigureAwait(false);
+            await WriteFontAsync(spec.Font.File, Path.Combine(work, "fonts", spec.Font.File), ct).ConfigureAwait(false);
             string temp = Path.Combine(work, "poster.gif");
 
             var (exit, error) = await RunAsync(ffmpeg, work, BuildArgs(clips, spec, temp), ct).ConfigureAwait(false);
@@ -122,6 +157,48 @@ public class PosterMaker
         {
             try { Directory.Delete(work, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
+    }
+
+    /// <summary>
+    /// One still frame of a video as a JPEG, for choosing a moment on the settings page. Null when FFmpeg
+    /// couldn't read it.
+    /// </summary>
+    public async Task<byte[]?> FrameAsync(Clip clip, int width, CancellationToken ct)
+    {
+        string? ffmpeg = _mediaEncoder.EncoderPath;
+        if (string.IsNullOrEmpty(ffmpeg) || !File.Exists(ffmpeg))
+        {
+            return null;
+        }
+
+        string work = Path.Combine(Path.GetTempPath(), "medic-posters-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(work);
+        try
+        {
+            var (exit, _) = await RunAsync(ffmpeg, work, FrameArgs(clip, width, "frame.jpg"), ct).ConfigureAwait(false);
+            if (exit != 0 && clip.Hdr)
+            {
+                (exit, _) = await RunAsync(ffmpeg, work, FrameArgs(clip with { Hdr = false }, width, "frame.jpg"), ct).ConfigureAwait(false);
+            }
+
+            string frame = Path.Combine(work, "frame.jpg");
+            return exit == 0 && File.Exists(frame) ? await File.ReadAllBytesAsync(frame, ct).ConfigureAwait(false) : null;
+        }
+        finally
+        {
+            try { Directory.Delete(work, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>FFmpeg's arguments for one still frame at the clip's start.</summary>
+    public static IReadOnlyList<string> FrameArgs(Clip clip, int width, string output)
+    {
+        string toSdr = clip.Hdr ? HdrToSdr : string.Empty;
+        return new[]
+        {
+            "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-ss", Num(clip.Start), "-i", clip.Path,
+            "-frames:v", "1", "-vf", $"{toSdr}scale={width}:-2", "-q:v", "4", "-an", "-sn", output
+        };
     }
 
     /// <summary>
@@ -187,10 +264,8 @@ public class PosterMaker
         var graph = new StringBuilder();
         for (int i = 0; i < clips.Count; i++)
         {
-            string toSdr = clips[i].Hdr
-                ? "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,"
-                : string.Empty;
-            graph.Append(CultureInfo.InvariantCulture, $"[{i}:v:0]{toSdr}fps={spec.FramesPerSecond},scale={spec.Width}:{spec.Height}:force_original_aspect_ratio=increase,crop={spec.Width}:{spec.Height},setsar=1,format=yuv420p[m{i}];");
+            string toSdr = clips[i].Hdr ? HdrToSdr : string.Empty;
+            graph.Append(CultureInfo.InvariantCulture, $"[{i}:v:0]{toSdr}fps={spec.FramesPerSecond},scale={spec.Width}:{spec.Height}:force_original_aspect_ratio=increase,crop={spec.Width}:{spec.Height},setsar=1,format=yuv420p{Fades(spec, i, clips.Count)}[m{i}];");
         }
 
         for (int i = 0; i < clips.Count; i++)
@@ -204,6 +279,20 @@ public class PosterMaker
 
         args.AddRange(new[] { "-filter_complex", graph.ToString(), "-an", "-sn", "-loop", "0", "-f", "gif", output });
         return args;
+    }
+
+    /// <summary>
+    /// The fades for one moment: through black between moments, and out at the end (with in at the start, so the
+    /// loop comes back from black). Each moment's own clock starts at 0, so a fade out starts a fade's length before
+    /// the moment ends. The title is drawn after the moments are joined, so it stays put while the picture fades.
+    /// </summary>
+    public static string Fades(PosterSpec spec, int index, int count)
+    {
+        bool fadeIn = (spec.FadeBetween && index > 0) || (spec.FadeEnd && index == 0);
+        bool fadeOut = (spec.FadeBetween && index < count - 1) || (spec.FadeEnd && index == count - 1);
+        string d = Num(spec.FadeSeconds);
+        return (fadeIn ? $",fade=t=in:st=0:d={d}" : string.Empty)
+            + (fadeOut ? $",fade=t=out:st={Num(Math.Max(0, spec.MomentSeconds - spec.FadeSeconds))}:d={d}" : string.Empty);
     }
 
     /// <summary>
@@ -221,21 +310,31 @@ public class PosterMaker
         string text = AssText(title);
         // Sized by the shorter side, so a wide library cover's title fits its height like a poster's fits its width.
         int side = Math.Min(w, h);
-        int size = TitleSize(side, text.Length);
+        int size = Math.Max(6, (int)Math.Round(TitleSize(side, text.Length) * spec.TextScale));
         int margin = (int)Math.Round(side * 0.09);
-        int marginBottom = (int)Math.Round(h * 0.1);
+        int marginV = (int)Math.Round(h * 0.1);
+        // ASS numpad alignment: 8 is top centre, 5 the middle, 2 the bottom.
+        int alignment = spec.TextPosition switch { "top" => 8, "middle" => 5, _ => 2 };
+        string shadow = spec.TextShadow ? Num(Math.Max(1, side / 160.0)) : "0";
         ass.Append("[V4+ Styles]\n");
         ass.Append("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n");
-        ass.Append(CultureInfo.InvariantCulture, $"Style: Title,{FontName},{size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,1,0,1,0,{Num(Math.Max(1, side / 160.0))},2,{margin},{margin},{marginBottom},1\n");
+        ass.Append(CultureInfo.InvariantCulture, $"Style: Title,{spec.Font.Family},{size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,1,0,1,0,{shadow},{alignment},{margin},{margin},{marginV},1\n");
         ass.Append("Style: Draw,Arial,10,&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1\n\n");
 
         ass.Append("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n");
         const string Always = "0:00:00.00,9:59:59.00";
-        if (spec.ShowTitle && text.Length > 0)
+        if (spec.ShowTitle && spec.DarkBand && text.Length > 0)
         {
-            // Darkens the lower part so white text reads on any picture; the blur gives it a soft top edge.
-            int top = (int)Math.Round(h * 0.62), blur = Math.Max(4, side / 14);
-            ass.Append(CultureInfo.InvariantCulture, $"Dialogue: 0,{Always},Draw,,0,0,0,,{{\\pos(0,0)\\an7\\bord0\\shad0\\1c&H000000&\\1a&H50&\\blur{blur}\\p1}}m {-2 * blur} {top} l {w + (2 * blur)} {top} {w + (2 * blur)} {h + (2 * blur)} {-2 * blur} {h + (2 * blur)}{{\\p0}}\n");
+            // Darkens the part behind the title so white text reads on any picture; the blur softens its edges.
+            // It runs past the picture's sides, so only the edges facing the picture show.
+            int blur = Math.Max(4, side / 14);
+            var (top, bottom) = spec.TextPosition switch
+            {
+                "top" => (-2 * blur, (int)Math.Round(h * 0.38)),
+                "middle" => ((int)Math.Round(h * 0.3), (int)Math.Round(h * 0.7)),
+                _ => ((int)Math.Round(h * 0.62), h + (2 * blur))
+            };
+            ass.Append(CultureInfo.InvariantCulture, $"Dialogue: 0,{Always},Draw,,0,0,0,,{{\\pos(0,0)\\an7\\bord0\\shad0\\1c&H000000&\\1a&H50&\\blur{blur}\\p1}}m {-2 * blur} {top} l {w + (2 * blur)} {top} {w + (2 * blur)} {bottom} {-2 * blur} {bottom}{{\\p0}}\n");
         }
 
         if (spec.ShowFrame)
@@ -295,9 +394,9 @@ public class PosterMaker
             + $"l {P(x2)} {P(y1 + r)} b {P(x2)} {P(y1 + k)} {P(x2 - k)} {P(y1)} {P(x2 - r)} {P(y1)} l {P(x1 + r)} {P(y1)}";
     }
 
-    private static async Task WriteFontAsync(string path, CancellationToken ct)
+    private static async Task WriteFontAsync(string fontFile, string path, CancellationToken ct)
     {
-        await using var font = typeof(PosterMaker).Assembly.GetManifestResourceStream("Jellyfin.Plugin.MedicPosters.Fonts." + FontFile)
+        await using var font = typeof(PosterMaker).Assembly.GetManifestResourceStream("Jellyfin.Plugin.MedicPosters.Fonts." + fontFile)
             ?? throw new InvalidOperationException("The title font is missing from the plugin.");
         await using var file = File.Create(path);
         await font.CopyToAsync(file, ct).ConfigureAwait(false);

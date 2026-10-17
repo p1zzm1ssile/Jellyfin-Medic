@@ -83,9 +83,9 @@ public class PosterService
             .ToList();
 
     /// <summary>The libraries to make posters for: all of them, or the ones chosen in 1.0 and 1.1, less the ones left out.</summary>
-    public IReadOnlyList<CollectionFolder> ChosenLibraries()
+    public IReadOnlyList<CollectionFolder> ChosenLibraries(PluginConfiguration? settings = null)
     {
-        var config = Plugin.Instance?.Configuration;
+        var config = settings ?? Plugin.Instance?.Configuration;
         var chosen = Ids(config?.LibraryIds);
         var excluded = Ids(config?.ExcludedLibraryIds);
         return Libraries()
@@ -95,6 +95,26 @@ public class PosterService
             .ToList();
     }
 
+    /// <summary>
+    /// The libraries that get a cover: the chosen ones, and any library whose cover has its own moments or takes
+    /// them from another library, even one left out of posters, such as an IPTV library of streams.
+    /// </summary>
+    public IReadOnlyList<CollectionFolder> CoverTargets(PluginConfiguration? settings = null)
+    {
+        var config = settings ?? Plugin.Instance?.Configuration;
+        var chosen = ChosenLibraries(config);
+        var extra = Libraries()
+            .Where(l => chosen.All(c => c.Id != l.Id) && config?.CustomFor(l.Id) is { } custom
+                && (!string.IsNullOrEmpty(custom.SourceLibraryId) || custom.Moments.Length > 0))
+            .Select(l => _libraryManager.GetItemById(l.Id))
+            .OfType<CollectionFolder>();
+        return chosen.Concat(extra).ToList();
+    }
+
+    /// <summary>The text on an item's poster or cover: its own text if it has some, otherwise its name.</summary>
+    public static string TitleFor(BaseItem item, PluginConfiguration? config) =>
+        config?.CustomFor(item.Id)?.Title is { Length: > 0 } title && !string.IsNullOrWhiteSpace(title) ? title.Trim() : item.Name;
+
     private static HashSet<Guid> Ids(string[]? ids) =>
         (ids ?? Array.Empty<string>())
             .Select(id => Guid.TryParse(id, out var g) ? g : Guid.Empty)
@@ -102,10 +122,12 @@ public class PosterService
             .ToHashSet();
 
     /// <summary>The films, series, home videos and music videos in the chosen libraries: everything that gets a poster.</summary>
-    public IReadOnlyList<BaseItem> Titles()
+    public IReadOnlyList<BaseItem> Titles(PluginConfiguration? settings = null) => TitlesIn(ChosenLibraries(settings));
+
+    private IReadOnlyList<BaseItem> TitlesIn(IEnumerable<CollectionFolder> libraries)
     {
         // A library's items sit under its folders on disk, which is what Jellyfin files them by, not the library itself.
-        var folders = ChosenLibraries().SelectMany(f => f.PhysicalFolderIds).Distinct().ToArray();
+        var folders = libraries.SelectMany(f => f.PhysicalFolderIds).Distinct().ToArray();
         if (folders.Length == 0)
         {
             return Array.Empty<BaseItem>();
@@ -135,18 +157,16 @@ public class PosterService
     /// The moments for an item's poster: spread through a film, or one from each of a few episodes of a series.
     /// Returns why not when there's nothing to cut them from.
     /// </summary>
-    public (IReadOnlyList<Clip> Clips, string? Error) PosterClips(BaseItem item, PosterSpec spec)
+    public (IReadOnlyList<Clip> Clips, string? Error) PosterClips(BaseItem item, PosterSpec spec, PluginConfiguration? config = null)
     {
+        if (ChosenMoments(item.Id, spec, config) is { } chosen)
+        {
+            return chosen;
+        }
+
         if (item is Series series)
         {
-            var episodes = _libraryManager.GetItemList(new InternalItemsQuery
-            {
-                IncludeItemTypes = new[] { BaseItemKind.Episode },
-                AncestorIds = new[] { series.Id },
-                Recursive = true,
-                IsVirtualItem = false
-            });
-            var clips = OneMomentEach(episodes, spec);
+            var clips = OneMomentEach(Episodes(series), spec);
             return clips.Count == 0 ? (clips, "None of its episodes is a video file on this server.") : (clips, null);
         }
 
@@ -160,9 +180,18 @@ public class PosterService
     }
 
     /// <summary>The moments for a library's cover: one from each of a few random videos in it.</summary>
-    public (IReadOnlyList<Clip> Clips, string? Error) CoverClips(CollectionFolder library, PosterSpec spec)
+    public (IReadOnlyList<Clip> Clips, string? Error) CoverClips(CollectionFolder library, PosterSpec spec, PluginConfiguration? config = null)
     {
-        var folders = library.PhysicalFolderIds.ToArray();
+        if (ChosenMoments(library.Id, spec, config) is { } chosen)
+        {
+            return chosen;
+        }
+
+        // An IPTV library has nothing to cut moments from, so its cover can take them from another library.
+        var custom = config?.CustomFor(library.Id);
+        var source = custom?.SourceLibraryId is { } sourceId && Guid.TryParse(sourceId, out var sid)
+            && _libraryManager.GetItemById(sid) is CollectionFolder other ? other : library;
+        var folders = source.PhysicalFolderIds.ToArray();
         var videos = folders.Length == 0 ? new List<BaseItem>() : _libraryManager.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Episode, BaseItemKind.Video, BaseItemKind.MusicVideo },
@@ -174,8 +203,61 @@ public class PosterService
             Limit = 60
         });
         var clips = OneMomentEach(videos, spec);
-        return clips.Count == 0 ? (clips, "Nothing in it is a video file on this server.") : (clips, null);
+        return clips.Count == 0
+            ? (clips, source == library ? "Nothing in it is a video file on this server." : $"Nothing in {source.Name} is a video file on this server.")
+            : (clips, null);
     }
+
+    /// <summary>The moments picked by hand for a poster or cover, in order, or null when there are none.</summary>
+    private (IReadOnlyList<Clip> Clips, string? Error)? ChosenMoments(Guid itemId, PosterSpec spec, PluginConfiguration? config)
+    {
+        var picked = config?.CustomFor(itemId)?.Moments;
+        if (picked is null || picked.Length == 0)
+        {
+            return null;
+        }
+
+        var clips = picked.Take(MaxMoments).Select(m => MomentClip(m, spec)).OfType<Clip>().ToList();
+        return clips.Count == 0 ? (clips, "None of the moments picked for it is in a video file this server can read.") : (clips, null);
+    }
+
+    /// <summary>Most moments a poster or cover can have, picked by hand or not.</summary>
+    public const int MaxMoments = 6;
+
+    private Clip? MomentClip(PosterCustomMoment moment, PosterSpec spec)
+    {
+        if (!Guid.TryParse(moment.ItemId, out var id) || _libraryManager.GetItemById(id) is not BaseItem item)
+        {
+            return null;
+        }
+
+        if (item is Series series)
+        {
+            // A series picked for a cover gives a random moment of a random episode.
+            return OneMomentEach(Episodes(series), spec with { Moments = 1 }).FirstOrDefault();
+        }
+
+        return CantMake(item) is null ? new Clip(item.Path, ChosenStart(moment.Start, Seconds(item), spec.MomentSeconds), IsHdr(item)) : null;
+    }
+
+    /// <summary>Where a picked moment starts: where it was put, kept inside the video, or a random moment for one below 0.</summary>
+    public static double ChosenStart(double start, double? runtimeSeconds, double momentSeconds)
+    {
+        if (start < 0 || double.IsNaN(start))
+        {
+            return PosterMaker.RandomStart(runtimeSeconds, momentSeconds, Random.Shared);
+        }
+
+        return Math.Round(runtimeSeconds is > 0 ? Math.Min(start, Math.Max(0, runtimeSeconds.Value - momentSeconds)) : start, 2);
+    }
+
+    private IReadOnlyList<BaseItem> Episodes(Series series) => _libraryManager.GetItemList(new InternalItemsQuery
+    {
+        IncludeItemTypes = new[] { BaseItemKind.Episode },
+        AncestorIds = new[] { series.Id },
+        Recursive = true,
+        IsVirtualItem = false
+    });
 
     // A moment from each of up to spec.Moments readable videos, in random order.
     private static List<Clip> OneMomentEach(IEnumerable<BaseItem> videos, PosterSpec spec)
@@ -213,7 +295,7 @@ public class PosterService
             // The nightly run makes covers only when they're switched on; "Make library covers now" always does.
             bool covers = only == CoverKind || (only is null && config.MakeLibraryCovers);
             bool posters = only != CoverKind;
-            var jobs = ChosenLibraries().Where(_ => covers).Select(l => ((BaseItem)l, CoverKind))
+            var jobs = CoverTargets(config).Where(_ => covers).Select(l => ((BaseItem)l, CoverKind))
                 .Concat(Titles().Where(_ => posters).Select(t => (t, PosterKind)))
                 .ToList();
             _progress = new RunProgress { Total = jobs.Count };
@@ -241,7 +323,7 @@ public class PosterService
                 else
                 {
                     var spec = kind == CoverKind ? coverSpec : posterSpec;
-                    string? error = await MakeForAsync(item, kind, spec, ct).ConfigureAwait(false);
+                    string? error = await MakeForAsync(item, kind, spec, config, ct).ConfigureAwait(false);
                     if (error is null)
                     {
                         summary.Made++;
@@ -271,14 +353,16 @@ public class PosterService
     }
 
     /// <summary>Makes one poster or library cover and swaps it in. Returns null when it worked, otherwise why not.</summary>
-    public async Task<string?> MakeForAsync(BaseItem item, string kind, PosterSpec spec, CancellationToken ct)
+    public async Task<string?> MakeForAsync(BaseItem item, string kind, PosterSpec spec, PluginConfiguration config, CancellationToken ct)
     {
-        var (clips, error) = kind == CoverKind && item is CollectionFolder library ? CoverClips(library, spec) : PosterClips(item, spec);
+        var (clips, error) = kind == CoverKind && item is CollectionFolder library ? CoverClips(library, spec, config) : PosterClips(item, spec, config);
         if (error is null)
         {
+            // Moments picked by hand, or fewer videos than moments, change how many there are.
+            spec = spec with { Moments = clips.Count };
             string output = _store.PosterPath(item.Id);
             string temp = output + ".new.gif";
-            error = await _maker.MakeAsync(clips, item.Name, spec, temp, ct).ConfigureAwait(false);
+            error = await _maker.MakeAsync(clips, TitleFor(item, config), spec, temp, ct).ConfigureAwait(false);
             if (error is null)
             {
                 File.Move(temp, output, overwrite: true);
@@ -304,10 +388,17 @@ public class PosterService
         var config = settings ?? Plugin.Instance!.Configuration;
         bool cover = kind == CoverKind;
         var spec = cover ? PosterSpec.CoverFrom(config) : PosterSpec.From(config);
-        IReadOnlyList<BaseItem> candidates = cover ? ChosenLibraries() : Titles();
+        IReadOnlyList<BaseItem> candidates = cover ? CoverTargets(config) : Titles(config);
         BaseItem? item = itemId is { } id && id != Guid.Empty
             ? candidates.FirstOrDefault(c => c.Id == id)
-            : candidates.OrderBy(_ => Random.Shared.Next()).FirstOrDefault(c => (cover ? CoverClips((CollectionFolder)c, spec) : PosterClips(c, spec)).Error is null);
+            : candidates.OrderBy(_ => Random.Shared.Next()).FirstOrDefault(c => (cover ? CoverClips((CollectionFolder)c, spec, config) : PosterClips(c, spec, config)).Error is null);
+        if (item is null && itemId is { } wanted && wanted != Guid.Empty)
+        {
+            return (null, cover
+                ? "That library is left out under Libraries. Tick it, or pick its moments or a library to take them from."
+                : "That title isn't in the chosen libraries.");
+        }
+
         if (item is null)
         {
             return (null, candidates.Count == 0
@@ -315,9 +406,14 @@ public class PosterService
                 : "Nothing in the chosen libraries is a video file this server can read.");
         }
 
-        var (clips, error) = cover ? CoverClips((CollectionFolder)item, spec) : PosterClips(item, spec);
+        var (clips, error) = cover ? CoverClips((CollectionFolder)item, spec, config) : PosterClips(item, spec, config);
         LastPreview = null;
-        error ??= await _maker.MakeAsync(clips, item.Name, spec, _store.PreviewPath, ct).ConfigureAwait(false);
+        if (error is null)
+        {
+            spec = spec with { Moments = clips.Count };
+            error = await _maker.MakeAsync(clips, TitleFor(item, config), spec, _store.PreviewPath, ct).ConfigureAwait(false);
+        }
+
         if (error is null)
         {
             LastPreview = (item.Id, kind, spec);
@@ -348,11 +444,32 @@ public class PosterService
     }
 
     /// <summary>Titles in the chosen libraries whose name contains the text, for picking one to preview or make.</summary>
-    public IReadOnlyList<BaseItem> FindTitles(string text, int limit) =>
-        Titles().Where(t => !t.IsShortcut && t.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
+    /// <param name="everywhere">Search every library with videos, not just the chosen ones: for picking a cover's films.</param>
+    public IReadOnlyList<BaseItem> FindTitles(string text, int limit, bool everywhere = false) =>
+        (everywhere ? TitlesIn(Libraries().Select(l => _libraryManager.GetItemById(l.Id)).OfType<CollectionFolder>()) : Titles())
+            .Where(t => !t.IsShortcut && t.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
             .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
             .Take(limit)
             .ToList();
+
+    /// <summary>The films, series and videos with these ids, for showing the moments picked for a poster or cover.</summary>
+    public IReadOnlyList<BaseItem> FindItems(IEnumerable<Guid> ids) =>
+        ids.Distinct().Select(id => _libraryManager.GetItemById(id)).OfType<BaseItem>()
+            .Where(i => i is Video or Series).ToList();
+
+    /// <summary>A still frame of a film, episode or video, for choosing where a moment starts. Null if it can't be read.</summary>
+    public async Task<byte[]?> FrameAsync(Guid itemId, double at, CancellationToken ct)
+    {
+        if (_libraryManager.GetItemById(itemId) is not BaseItem item || item is Series || CantMake(item) is not null)
+        {
+            return null;
+        }
+
+        return await _maker.FrameAsync(new Clip(item.Path, ChosenStart(Math.Max(0, at), Seconds(item), 0), IsHdr(item)), 320, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>How long a video is in seconds, if known.</summary>
+    public static double? Seconds(BaseItem film) => film.RunTimeTicks is > 0 ? film.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond : null;
 
     /// <summary>Puts a film's own poster back and deletes Medic's. Returns false if Medic never made one for it.</summary>
     public async Task<bool> RestoreAsync(Guid itemId, CancellationToken ct)
@@ -477,7 +594,6 @@ public class PosterService
         });
     }
 
-    private static double? Seconds(BaseItem film) => film.RunTimeTicks is > 0 ? film.RunTimeTicks.Value / (double)TimeSpan.TicksPerSecond : null;
 
     private static bool IsHdr(BaseItem film)
     {

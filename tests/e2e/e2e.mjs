@@ -1575,6 +1575,80 @@ await check('Medic Posters previews with the settings on screen, uses a preview,
     }
 });
 
+await check('Medic Posters gives a left-out IPTV library a cover from the films library with its own text, and a poster its own moments, font and fades', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const gifFrames = (bytes) => { let n = 0; for (let i = 0; i + 2 < bytes.length; i++) if (bytes[i] === 0x21 && bytes[i + 1] === 0xf9 && bytes[i + 2] === 0x04) n++; return n; };
+    const previewBytes = async () => Buffer.from(await (await api('GET', '/MedicPosters/Preview/Image', undefined, true)).arrayBuffer());
+    execFileSync('docker', ['exec', CONTAINER, 'sh', '-c', 'mkdir -p "/media/iptv/Channel One (2020)" && echo http://127.0.0.1:9/live.ts > "/media/iptv/Channel One (2020)/Channel One (2020).strm"']);
+    try {
+        const add = await api('POST', '/Library/VirtualFolders?name=IPTV&collectionType=movies&refreshLibrary=true', { LibraryOptions: { PathInfos: [{ Path: '/media/iptv' }] } });
+        expect(add.status === 204, 'adding the IPTV library returned ' + add.status + ' ' + add.text);
+        let s = null, iptv = null;
+        for (let i = 0; i < 30 && !iptv; i++) {
+            await sleep(1000);
+            s = (await api('GET', '/MedicPosters/Status')).json;
+            iptv = s.libraries.find((l) => l.name === 'IPTV');
+        }
+        expect(iptv, 'the IPTV library isn\'t offered: ' + JSON.stringify(s.libraries));
+        const movies = s.libraries.find((l) => l.name === 'Movies');
+        expect(s.fonts.length >= 10 && s.settings.font === 'BodoniModa' && s.settings.textPosition === 'bottom', 'fonts and default text settings: ' + JSON.stringify({ fonts: s.fonts, settings: s.settings }));
+
+        // Left out, with nothing of its own to cut from, it gets no cover.
+        await api('POST', '/MedicPosters/Settings', { excludedLibraryIds: [iptv.id] });
+        const refused = await api('POST', '/MedicPosters/Preview', { kind: 'cover', itemId: iptv.id });
+        expect(refused.json && !refused.json.ok, 'a left-out library with nothing to cut from was previewed: ' + refused.text);
+
+        // Its cover takes random moments from Movies but keeps a name of its own, in a font of its own.
+        const film = (await api('GET', '/MedicPosters/Titles?q=sample')).json[0];
+        const saved = await api('POST', '/MedicPosters/Settings', {
+            excludedLibraryIds: [iptv.id],
+            coverFont: 'Anton', coverTextSize: 150, coverTextPosition: 'top', coverTextShadow: false, coverFadeEnd: true,
+            custom: [{ itemId: iptv.id, title: '  Live Films ', sourceLibraryId: movies.id }, { itemId: 'nonsense', title: 'x' }]
+        });
+        expect(saved.status === 204, 'saving returned ' + saved.status + ' ' + saved.text);
+        s = (await api('GET', '/MedicPosters/Status')).json;
+        expect(s.settings.coverFont === 'Anton' && s.settings.coverTextSize === 150 && s.settings.coverTextPosition === 'top' && !s.settings.coverTextShadow && s.settings.coverFadeEnd,
+            'the cover text settings weren\'t saved: ' + JSON.stringify(s.settings));
+        expect(s.settings.custom.length === 1 && s.settings.custom[0].title === 'Live Films' && s.settings.custom[0].sourceLibraryId === movies.id,
+            'the IPTV cover\'s own text wasn\'t saved as sent: ' + JSON.stringify(s.settings.custom));
+        expect(s.chosenLibraries.some((l) => l.id === iptv.id), 'the left-out IPTV library doesn\'t get a cover from Movies');
+        const cover = await api('POST', '/MedicPosters/Preview', { kind: 'cover', itemId: iptv.id });
+        expect(cover.json?.ok && cover.json.itemId === iptv.id, 'IPTV cover preview: ' + cover.text.slice(0, 300));
+        const use = await api('POST', '/MedicPosters/Preview/Use', {});
+        expect(use.json?.ok, 'use: ' + use.text);
+        const served = await api('GET', `/Items/${iptv.id}/Images/Primary?fillWidth=400`, undefined, true);
+        expect(served.status === 200 && await isGif(served), 'the IPTV library has no animated cover: ' + served.status);
+
+        // A poster cut from one picked moment, unsaved, with its own text, font, position and fades.
+        const looked = await api('GET', '/MedicPosters/Titles?ids=' + film.id);
+        expect(looked.json?.[0]?.id === film.id && looked.json[0].seconds > 3, 'looking the film up by id: ' + looked.text);
+        const frame = await api('GET', `/MedicPosters/Frame?itemId=${film.id}&at=2`, undefined, true);
+        const jpeg = Buffer.from(await frame.arrayBuffer());
+        expect(frame.status === 200 && jpeg[0] === 0xff && jpeg[1] === 0xd8, 'the still frame isn\'t a JPEG: ' + frame.status);
+        const settings = { moments: 3, momentTenths: 10, framesPerSecond: 8, font: 'Lobster', textPosition: 'middle', fadeBetween: true, fadeEnd: true,
+            custom: [{ itemId: film.id, title: 'My Own Title', moments: [{ itemId: film.id, start: 2 }] }] };
+        const one = await api('POST', '/MedicPosters/Preview', { itemId: film.id, settings });
+        expect(one.json?.ok, 'poster preview with a picked moment: ' + one.text.slice(0, 300));
+        const oneFrames = gifFrames(await previewBytes());
+        const three = await api('POST', '/MedicPosters/Preview', { itemId: film.id, settings: { ...settings, custom: [] } });
+        expect(three.json?.ok, 'poster preview: ' + three.text.slice(0, 300));
+        const threeFrames = gifFrames(await previewBytes());
+        expect(oneFrames > 0 && oneFrames * 2 < threeFrames, `one picked moment made ${oneFrames} frames against ${threeFrames} for three`);
+        s = (await api('GET', '/MedicPosters/Status')).json;
+        expect(s.settings.font === 'BodoniModa' && s.settings.custom.every((c) => c.itemId !== film.id), 'previewing saved the poster settings');
+        return `IPTV cover from Movies, ${oneFrames} frames from one picked moment against ${threeFrames} from three`;
+    } finally {
+        await api('POST', '/MedicPosters/RestoreAll');
+        await api('POST', '/MedicPosters/Settings', {
+            excludedLibraryIds: [], custom: [],
+            coverFont: 'BodoniModa', coverTextSize: 100, coverTextPosition: 'bottom', coverTextShadow: true, coverFadeEnd: false
+        });
+        await api('DELETE', '/Library/VirtualFolders?name=IPTV&refreshLibrary=false');
+        execFileSync('docker', ['exec', CONTAINER, 'rm', '-rf', '/media/iptv']);
+        await sleep(1000);
+    }
+});
+
 await check('Medic Posters makes an animated poster for each film, Jellyfin serves it still animated, and the originals come back', async () => {
     const run = await api('POST', '/MedicPosters/Run');
     expect(run.status === 202, 'Run returned ' + run.status + ' ' + run.text);
