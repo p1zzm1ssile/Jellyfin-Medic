@@ -6,7 +6,7 @@ Health checks, performance tests and usage-aware task scheduling for your Jellyf
 
 [![Build and Release](https://github.com/P1zzm1ssile/Jellyfin-Medic/actions/workflows/release.yml/badge.svg)](https://github.com/P1zzm1ssile/Jellyfin-Medic/actions/workflows/release.yml) [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE) ![Jellyfin 12.1+](https://img.shields.io/badge/Jellyfin-12.1%2B-00a4dc.svg)
 
-This repository has three plugins: **Jellyfin Medic**, for the person who runs the server; **[Medic Picks](#medic-picks)**, personal viewing suggestions for everyone who uses it; and **[Medic Profiles](#medic-profiles)**, Sonarr and Radarr from your Jellyfin dashboard.
+This repository has four plugins: **Jellyfin Medic**, for the person who runs the server; **[Medic Picks](#medic-picks)**, personal viewing suggestions for everyone who uses it; **[Medic Profiles](#medic-profiles)**, Sonarr and Radarr from your Jellyfin dashboard; and **[Medic Posters](#medic-posters)**, an animated poster for every film.
 
 ---
 
@@ -67,7 +67,7 @@ Change Medic's own options, browse every Jellyfin setting with a red, yellow or 
 
 ## Requirements
 
-- **Jellyfin 12.1 or later** for Jellyfin Medic, **12.0 or later** for Medic Picks and Medic Profiles.
+- **Jellyfin 12.1 or later** for Jellyfin Medic, **12.0 or later** for Medic Picks, Medic Profiles and Medic Posters.
 - **Any server language.** Jellyfin's own tasks are recognised by their keys whatever language the server uses; tasks added by plugins are recognised by their names, which plugins rarely translate.
 - Runs wherever Jellyfin does: **Unraid, TrueNAS SCALE, Proxmox, Docker, Kubernetes, Linux, Windows and macOS**. Medic works out which one it's on and words its advice and directions to match. A few checks depend on the platform: GPU device checks need Linux (containers included), and disk health uses Unraid's own disk data.
 - Developed and tested on **Unraid**, with both the **binhex-Jellyfin** and **linuxserver.io Jellyfin** containers. Reports from other platforms are very welcome. GPU checks cover NVIDIA, Intel and AMD.
@@ -80,7 +80,7 @@ Change Medic's own options, browse every Jellyfin setting with a red, yellow or 
 2. Enter:
    - **Name:** `Jellyfin Medic`
    - **URL:** `https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/manifest.json`
-3. Save, open the **Catalog** tab, install **Jellyfin Medic**, **Medic Picks** and/or **Medic Profiles**, and restart Jellyfin.
+3. Save, open the **Catalog** tab, install **Jellyfin Medic**, **Medic Picks**, **Medic Profiles** and/or **Medic Posters**, and restart Jellyfin.
 
 ### Manual install
 
@@ -89,6 +89,7 @@ Download the latest zip from [Releases](https://github.com/P1zzm1ssile/Jellyfin-
 - Jellyfin Medic: a `JellyfinMedic` folder containing `JellyfinMedic.dll`
 - Medic Picks: a `MedicPicks` folder containing `Jellyfin.Plugin.MedicPicks.dll`
 - Medic Profiles: a `MedicProfiles` folder containing `Jellyfin.Plugin.MedicProfiles.dll`
+- Medic Posters: a `MedicPosters` folder containing `Jellyfin.Plugin.MedicPosters.dll`
 
 Plugin images only appear when a plugin is installed from the repository.
 
@@ -155,6 +156,32 @@ The keys are kept on the server in their own file, only admins can use them, and
 
 ---
 
+## Medic Posters
+
+An animated poster for every film and series, and an animated cover for every library, in the style of the [Library Cover Maker](https://github.com/p1zzm1ssile/Library-Cover-Maker)'s library covers. Set up under **Plugins → Medic Posters** (admins only); everyone sees the posters.
+
+- **Made from the video itself.** Each poster cuts between a few moments of the film, spread from 15% to 75% of the way through so it skips the opening titles and the credits (for a series, a moment from each of a few episodes), with the title in capitals and a rounded white frame. Choose from ten fonts, the text's size and position (top, middle or bottom), its shadow and the dark band behind it, and fades between moments or at the end. HDR films are converted to normal colour first. It uses Jellyfin's own FFmpeg, so there's nothing else to install.
+- **They stay animated.** Jellyfin resizes posters before sending them to an app, which turns an animated WebP into a still picture, but it never resizes a GIF. So the posters are small GIFs, and they move in the Jellyfin website, Jellyfin Desktop and the apps that can play a GIF poster. Apps that can't show the first frame.
+- **Library covers too.** Each library with videos in it (films, TV, home videos, music videos) gets a wide cover, the shape of Jellyfin's library cards, cut from moments of a few random things in it with the library's name on it. It's a GIF as well, so it moves on the home screen. Covers have their own settings, separate from the posters'.
+- **Your own posters are kept.** Nothing in your media folders is changed or deleted: the GIFs live in the server's data folder, and each film's own poster is remembered. **Put back** under any poster, or **Put back the original posters**, brings them back.
+- **New films get one each night** from the **Make animated posters** scheduled task. A poster you change yourself, or that a metadata refresh replaces, is left alone. **Make all posters again** and **Make all covers again** redo them all.
+- **A preview** shows a poster or a cover with the settings on screen, saved or not, and its size, without changing anything. Pick the film, series or library, or let it choose one. **Use this one** puts that preview on it, so you can do them one at a time.
+- **Posters and covers separately.** **Make posters now** and **Make library covers now** each make only their own kind, and each says how many there are to make and roughly how much space they'll take, worked out from the settings on screen and the ones made so far.
+- **Leave libraries out**, such as IPTV ones, by unticking them. Libraries you add later are included.
+- **Your own text and moments.** Give any library's cover or title's poster its own text, and pick the films and the exact moments it's cut from, with a still of each frame. A library of streams, such as IPTV, can take its cover from another library's films and keep its own name.
+
+### Size
+
+Because Jellyfin sends GIF posters at their full size, every poster on a page is downloaded whole. The default, 240 × 360 with three one-second moments at 8 frames a second and 96 colours, comes to anything from under 100 KB for a plain picture to about 750 KB for a busy one, such as a field of grass. The settings page has smaller sizes, fewer moments and colours, and the preview shows what each choice comes to. What's new in each version is in [Medic Posters' changelog](Jellyfin.Plugin.MedicPosters/CHANGELOG.md).
+
+### Setting it up
+
+1. Install **Medic Posters** from the catalogue and restart Jellyfin.
+2. Open **Plugins → Medic Posters**, untick any library to leave alone, and press **Preview a poster** or **Preview a library cover** to try the settings.
+3. Press **Make posters now**, or wait for the nightly run.
+
+---
+
 ## Privacy
 
 - **Admin only.** Every part of Jellyfin Medic requires an administrator account.
@@ -182,18 +209,20 @@ Requires the .NET 10 SDK.
 dotnet publish src/JellyfinMedic/JellyfinMedic.csproj -c Release -o publish/JellyfinMedic
 dotnet publish Jellyfin.Plugin.MedicPicks/Jellyfin.Plugin.MedicPicks.csproj -c Release -o publish/MedicPicks
 dotnet publish Jellyfin.Plugin.MedicProfiles/Jellyfin.Plugin.MedicProfiles.csproj -c Release -o publish/MedicProfiles
+dotnet publish Jellyfin.Plugin.MedicPosters/Jellyfin.Plugin.MedicPosters.csproj -c Release -o publish/MedicPosters
 ```
 
-Medic Picks and Medic Profiles can also be built for Jellyfin 10.11, where they target .NET 9 (the .NET 10 SDK builds that too). Releases are only built for Jellyfin 12, so a 10.11 server needs one built by hand:
+Medic Picks, Medic Profiles and Medic Posters can also be built for Jellyfin 10.11, where they target .NET 9 (the .NET 10 SDK builds that too). Releases are only built for Jellyfin 12, so a 10.11 server needs one built by hand:
 
 ```
 dotnet publish Jellyfin.Plugin.MedicPicks/Jellyfin.Plugin.MedicPicks.csproj -c Release -o publish/MedicPicks-10.11 -p:JellyfinTarget=10.11
 dotnet publish Jellyfin.Plugin.MedicProfiles/Jellyfin.Plugin.MedicProfiles.csproj -c Release -o publish/MedicProfiles-10.11 -p:JellyfinTarget=10.11
+dotnet publish Jellyfin.Plugin.MedicPosters/Jellyfin.Plugin.MedicPosters.csproj -c Release -o publish/MedicPosters-10.11 -p:JellyfinTarget=10.11
 ```
 
-The end-to-end tests start a real Jellyfin in Docker with the three plugins and click through their pages: `tests/e2e/run.sh` (needs Docker, ffmpeg, and Node with Playwright; see the top of the script).
+The end-to-end tests start a real Jellyfin in Docker with the four plugins and click through their pages: `tests/e2e/run.sh` (needs Docker, ffmpeg, and Node with Playwright; see the top of the script).
 
-Releases are automatic: push a tag like `v1.0.6` for Jellyfin Medic, `picks-v1.0.1` for Medic Picks, or `profiles-v1.0.0` for Medic Profiles, and GitHub Actions builds the plugin, creates the release, and adds it to `manifest.json`.
+Releases are automatic: push a tag like `v1.0.6` for Jellyfin Medic, `picks-v1.0.1` for Medic Picks, `profiles-v1.0.0` for Medic Profiles, or `film-posters-v1.0.0` for Medic Posters, and GitHub Actions builds the plugin, creates the release, and adds it to `manifest.json`.
 
 ---
 
