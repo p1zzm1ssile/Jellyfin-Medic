@@ -1858,6 +1858,35 @@ await check('Medic Posters page shows a preview poster and a library cover', asy
     expect(ours.length === 0, ours.join(' | '));
     return await page.locator('#MedicPostersPage #po-preview-info').textContent();
 });
+await check('Medic Posters page: a library cover gets its own text and a picked film with a still of its frame, and Save keeps them', async () => {
+    errors.length = 0;
+    const film = (await api('GET', '/MedicPosters/Titles?q=sample&everywhere=true')).json[0];
+    try {
+        await page.goto(JF + '/web/index.html#/configurationpage?name=MedicPosters');
+        await page.waitForSelector('#MedicPostersPage #po-custom-library option:nth-child(2)', { state: 'attached', timeout: 30000 });
+        const movies = await page.locator('#MedicPostersPage #po-custom-library option:nth-child(2)').getAttribute('value');
+        await page.selectOption('#MedicPostersPage #po-custom-library', movies);
+        await page.waitForSelector('#MedicPostersPage #po-custom-editor:not([hidden])');
+        await page.fill('#MedicPostersPage #po-custom-text', 'Live Films');
+        await page.fill('#MedicPostersPage #po-custom-add', film.name);
+        await page.waitForFunction(() => document.querySelectorAll('#MedicPostersPage #po-custom-add-list option').length > 0, null, { timeout: 10000 });
+        await page.click('#MedicPostersPage #po-custom-add-btn');
+        await page.waitForSelector('#MedicPostersPage #po-custom-moments li .po-thumb img', { timeout: 30000 });
+        await page.selectOption('#MedicPostersPage #po-cover-font', 'Cinzel');
+        await page.click('#MedicPostersPage #po-form button[type=submit]');
+        await page.getByText('Saved.').waitFor({ timeout: 10000 });
+        const s = (await api('GET', '/MedicPosters/Status')).json;
+        const own = s.settings.custom.find((c) => c.itemId === movies);
+        expect(own && own.title === 'Live Films' && own.moments.length === 1 && own.moments[0].itemId === film.id && own.moments[0].start > 0,
+            'the cover\'s own text and moment weren\'t saved: ' + JSON.stringify(s.settings.custom));
+        expect(s.settings.coverFont === 'Cinzel', 'the cover font wasn\'t saved: ' + s.settings.coverFont);
+        const ours = errors.filter((e) => !/ResizeObserver|^CancelledError/i.test(e));
+        expect(ours.length === 0, ours.join(' | '));
+        return `${film.name} at ${own.moments[0].start} s`;
+    } finally {
+        await api('POST', '/MedicPosters/Settings', { custom: [], coverFont: 'BodoniModa' });
+    }
+});
 await openPage('Medic Picks settings', '/configurationpage?name=Medic%20Picks', '#MedicPicksConfigForm');
 
 await check('Medic Picks settings: the user boxes show, and a key that isn\'t saved says so', async () => {
