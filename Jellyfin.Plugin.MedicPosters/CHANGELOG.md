@@ -3,6 +3,14 @@
 All notable changes to Medic Posters are recorded here. The newest version is at the top.
 Jellyfin Medic, Medic Picks and Medic Profiles have their own changelogs.
 
+## [1.3.1] – 2026-10-18
+
+### Added
+- **Time left.** While posters or covers are being made, the progress line says roughly how long the rest will take, once one has been made to time.
+
+### Fixed
+- **Put back the original posters** carries on to the end on the server. Before, reloading or leaving the page, or a reverse proxy giving up waiting on a big library, stopped it partway and left the rest of the animated posters in place. The page now shows how far it has got, and one title that can't be put back no longer stops the others.
+
 ## [1.3.0] – 2026-10-17
 
 ### Added

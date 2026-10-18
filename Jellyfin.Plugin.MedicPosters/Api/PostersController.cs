@@ -336,19 +336,19 @@ public class PostersController : ControllerBase
     }
 
     [HttpPost("Restore/{itemId}")]
-    public async Task<ActionResult> Restore([FromRoute] Guid itemId, CancellationToken ct) =>
-        await _service.RestoreAsync(itemId, ct).ConfigureAwait(false) ? NoContent() : NotFound();
+    public async Task<ActionResult> Restore([FromRoute] Guid itemId) =>
+        await _service.RestoreAsync(itemId, CancellationToken.None).ConfigureAwait(false) ? NoContent() : NotFound();
 
     /// <summary>Puts every film's own poster back.</summary>
     [HttpPost("RestoreAll")]
-    public async Task<ActionResult> RestoreAll(CancellationToken ct)
+    public async Task<ActionResult> RestoreAll()
     {
         if (_service.Progress is not null)
         {
             return Conflict(new { error = "Stop making posters first." });
         }
 
-        int count = await _service.RestoreAllAsync(ct).ConfigureAwait(false);
+        int count = await _service.RestoreAllAsync().ConfigureAwait(false);
         return Json(new { restored = count });
     }
 
