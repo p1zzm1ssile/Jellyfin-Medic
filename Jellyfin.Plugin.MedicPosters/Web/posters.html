@@ -532,6 +532,15 @@
                     });
                 }
 
+                // Roughly how long the rest of a run will take, once one has been made to time.
+                function timeLeft(seconds) {
+                    if (seconds == null) return '';
+                    const m = Math.round(seconds / 60);
+                    return m < 1 ? '. Less than a minute left.'
+                        : m < 90 ? '. About ' + m + ' minute' + (m === 1 ? '' : 's') + ' left.'
+                        : '. About ' + Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min left.';
+                }
+
                 function render(s, firstLoad) {
                     $('po-summary').textContent = (s.films === 0
                         ? 'No films or series in the chosen libraries yet.'
@@ -543,13 +552,15 @@
                         : '';
 
                     $('po-progress').hidden = !s.running;
-                    $('po-stop').hidden = !s.running;
+                    $('po-stop').hidden = !s.running || !!(s.progress && s.progress.kind === 'restore');
                     ['po-run', 'po-redo', 'po-run-covers', 'po-redo-covers'].forEach(function (id) { $(id).disabled = s.running; });
                     $('po-restore-all').disabled = s.running || (s.made === 0 && !s.coversMade);
                     if (s.running) {
                         const p = s.progress;
                         const pct = p && p.total ? Math.round(100 * p.done / p.total) : 0;
-                        $('po-progress-text').textContent = p ? 'Making: ' + p.done + ' of ' + p.total + (p.current ? ' (' + p.current + ')' : '') : 'Starting…';
+                        $('po-progress-text').textContent = p
+                            ? (p.kind === 'restore' ? 'Putting back: ' : 'Making: ') + p.done + ' of ' + p.total + (p.current ? ' (' + p.current + ')' : '') + timeLeft(p.secondsLeft)
+                            : 'Starting…';
                         $('po-progress-bar').style.width = pct + '%';
                     }
 
@@ -647,11 +658,21 @@
                 $('po-confirm-no').addEventListener('click', function () { $('po-confirm').hidden = true; });
                 $('po-confirm-yes').addEventListener('click', function () {
                     $('po-confirm').hidden = true;
-                    note('Putting the original posters back…', true);
+                    note('Putting the original posters back. It carries on even if you leave this page.', true);
+                    setTimeout(load, 1000);
                     post('RestoreAll', {}, true).then(function (r) {
                         note('Put back ' + r.restored + ' original picture' + (r.restored === 1 ? '' : 's') + '.', true);
                         load();
-                    }).catch(function () { note('The posters weren’t put back. Stop any run that’s going, then try again.', false); });
+                    }).catch(function () {
+                        // A proxy can give up waiting on a big library while the server carries on.
+                        load().then(function () {
+                            if (status && status.running && status.progress && status.progress.kind === 'restore') {
+                                note('Still putting the original posters back. This page shows how far it’s got.', true);
+                            } else {
+                                note('The posters weren’t put back. Stop any run that’s going, then try again.', false);
+                            }
+                        });
+                    });
                 });
 
                 function preview(kind, forcedId) {

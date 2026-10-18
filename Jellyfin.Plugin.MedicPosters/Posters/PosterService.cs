@@ -19,11 +19,17 @@ namespace Jellyfin.Plugin.MedicPosters.Posters;
 /// <summary>Where a run has got to, for the settings page.</summary>
 public class RunProgress
 {
+    /// <summary>"make" while posters are being made, "restore" while their own pictures are being put back.</summary>
+    public string Kind { get; set; } = "make";
+
     public int Total { get; set; }
 
     public int Done { get; set; }
 
     public string? Current { get; set; }
+
+    /// <summary>Roughly how long the rest will take, once one has been made to time; null before that.</summary>
+    public double? SecondsLeft { get; set; }
 }
 
 /// <summary>
@@ -299,13 +305,18 @@ public class PosterService
                 .Concat(Titles().Where(_ => posters).Select(t => (t, PosterKind)))
                 .ToList();
             _progress = new RunProgress { Total = jobs.Count };
+            // For the time left: how many will need making (the rest are skipped in no time), and how long each takes.
+            int toMake = redo ? jobs.Count : jobs.Count(j => _store.Read(s => s.Posters.GetValueOrDefault(j.Item1.Id)) is null);
+            int worked = 0;
+            double workedSeconds = 0;
             _logger.LogInformation("Medic Posters: checking {Count} titles and libraries{Redo}", jobs.Count, redo ? ", making every one again" : string.Empty);
 
             for (int i = 0; i < jobs.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
                 var (item, kind) = jobs[i];
-                _progress = new RunProgress { Total = jobs.Count, Done = i, Current = item.Name };
+                double? left = worked == 0 ? null : workedSeconds / worked * Math.Max(1, toMake - worked);
+                _progress = new RunProgress { Total = jobs.Count, Done = i, Current = item.Name, SecondsLeft = left };
                 // A metadata refresh may have swapped the item's own poster back in while Medic Posters wasn't watching.
                 await KeepOursAsync(item.Id, ct).ConfigureAwait(false);
                 var record = _store.Read(s => s.Posters.GetValueOrDefault(item.Id));
@@ -323,7 +334,10 @@ public class PosterService
                 else
                 {
                     var spec = kind == CoverKind ? coverSpec : posterSpec;
+                    var began = DateTime.UtcNow;
                     string? error = await MakeForAsync(item, kind, spec, config, ct).ConfigureAwait(false);
+                    worked++;
+                    workedSeconds += (DateTime.UtcNow - began).TotalSeconds;
                     if (error is null)
                     {
                         summary.Made++;
@@ -502,19 +516,30 @@ public class PosterService
         return true;
     }
 
-    /// <summary>Puts every film's own poster back. Returns how many films were changed.</summary>
-    public async Task<int> RestoreAllAsync(CancellationToken ct)
+    /// <summary>
+    /// Puts every film's own poster back. Returns how many films were changed. It carries on to the end even when
+    /// the page that asked for it is reloaded or closed, or a proxy gives up waiting, so none are left half done.
+    /// </summary>
+    public async Task<int> RestoreAllAsync()
     {
-        await _running.WaitAsync(ct).ConfigureAwait(false);
+        await _running.WaitAsync().ConfigureAwait(false);
         try
         {
+            var ids = _store.Read(s => s.Posters.Keys.ToList());
             int count = 0;
-            foreach (var id in _store.Read(s => s.Posters.Keys.ToList()))
+            for (int i = 0; i < ids.Count; i++)
             {
-                ct.ThrowIfCancellationRequested();
-                if (await RestoreAsync(id, ct).ConfigureAwait(false))
+                _progress = new RunProgress { Kind = "restore", Total = ids.Count, Done = i, Current = _store.Read(s => s.Posters.GetValueOrDefault(ids[i]))?.Title };
+                try
                 {
-                    count++;
+                    if (await RestoreAsync(ids[i], CancellationToken.None).ConfigureAwait(false))
+                    {
+                        count++;
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or InvalidOperationException)
+                {
+                    _logger.LogError(ex, "Medic Posters: couldn't put back the own picture of {Id}", ids[i]);
                 }
             }
 
@@ -523,6 +548,7 @@ public class PosterService
         }
         finally
         {
+            _progress = null;
             _running.Release();
         }
     }
