@@ -366,6 +366,14 @@
     "thumbImage": "https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/Jellyfin.Plugin.MedicPosters/thumb.png",
     "versions": [
       {
+        "version": "1.3.1.0",
+        "changelog": "### Added\n- **Time left.** While posters or covers are being made, the progress line says roughly how long the rest will take, once one has been made to time.\n\n### Fixed\n- **Put back the original posters** carries on to the end on the server. Before, reloading or leaving the page, or a reverse proxy giving up waiting on a big library, stopped it partway and left the rest of the animated posters in place. The page now shows how far it has got, and one title that can't be put back no longer stops the others.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/Jellyfin-Medic/releases/download/film-posters-v1.3.1/MedicPosters-v1.3.1.zip",
+        "checksum": "84932821e649380c9f316cc2c97b702a",
+        "timestamp": "2026-10-18T14:57:47Z"
+      },
+      {
         "version": "1.3.0.0",
         "changelog": "### Added\n- **Your own text on a cover or poster.** Under **Your own text and moments**, choose a library or a title and type the text to show instead of its name.\n- **Covers for IPTV libraries.** A library's cover can take its random moments from another library, so an IPTV library of streams can get a cover cut from your films library and still show its own name, or any text you like. It gets a cover even when it's unticked under **Libraries**.\n- **Pick the films and the moments.** Pick up to six films or series for a library cover, or up to six moments of a film for its poster, and slide each one to where it should start, with a still of that frame to see what you'll get. A moment can stay random, and a series gives a moment from a random episode.\n- **Ten fonts**: Bodoni Moda, Playfair Display, Cinzel, Cormorant Garamond, Abril Fatface, Bebas Neue, Anton, Oswald, Montserrat and Lobster. All are free fonts under the SIL Open Font License, and they travel inside the plugin.\n- **Text size** from 60% to 200% of the size that fits the title, and **text position** at the top, middle or bottom.\n- **Shadow on or off**: the shadow under the letters and the darkened band behind them can each be turned off.\n- **Fades**: through black between moments, and out at the end (and in at the start, so the loop starts again from black), with how long each fade takes.\n- **Preview it** next to a library's or title's own text and moments, then **Use this one**.\n\nPosters and covers each have their own font, text and fade settings. Ones already made keep their old look until they're made again.\n\n### Fixed\n- Medic Posters is back in this repository and the catalogue, so servers that have it get updates again.\n\nThanks @camarigor (#209) for their work on this release.",
         "targetAbi": "12.0.0.0",
