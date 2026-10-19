@@ -3,6 +3,11 @@
 All notable changes to Medic Posters are recorded here. The newest version is at the top.
 Jellyfin Medic, Medic Picks and Medic Profiles have their own changelogs.
 
+## [1.3.2] – 2026-10-19
+
+### Added
+- **A warning about low-end devices** on the settings page and in the README: animated posters for a whole library aren't recommended on Fire TV sticks, smart TVs and other low-end devices, while animated library covers are fine.
+
 ## [1.3.1] – 2026-10-18
 
 ### Added
