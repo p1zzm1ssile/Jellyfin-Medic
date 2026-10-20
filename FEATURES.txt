@@ -1,8 +1,8 @@
 ===============================================================================
-         JELLYFIN MEDIC, MEDIC PICKS, MEDIC PROFILES AND THE POSTER PLUGINS
+             JELLYFIN MEDIC, MEDIC PICKS AND MEDIC PROFILES
 ===============================================================================
 
-This repository contains four Jellyfin plugins:
+This repository contains three Jellyfin plugins:
 
   1. JELLYFIN MEDIC
      For the person who runs the server. Health checks, performance tests,
@@ -19,16 +19,13 @@ This repository contains four Jellyfin plugins:
      dashboard: downloads, fixes, and quality profile advice.
      Needs Jellyfin 12.0 or later. Administrators only.
 
-  4. MEDIC POSTERS
-     For everyone who uses the server, set up by the person who runs it.
-     Animated posters for every film, cut from moments of the film.
-     Needs Jellyfin 12.0 or later. Settings are for administrators only.
+Medic Posters, animated posters for every film, has moved to its own
+repository: https://github.com/p1zzm1ssile/Jellyfin-animated-posters
 
 Each plugin's current version and what changed are in its changelog (CHANGELOG.md,
-Jellyfin.Plugin.MedicPicks/CHANGELOG.md, Jellyfin.Plugin.MedicProfiles/CHANGELOG.md,
-Jellyfin.Plugin.MedicPosters/CHANGELOG.md).
+Jellyfin.Plugin.MedicPicks/CHANGELOG.md, Jellyfin.Plugin.MedicProfiles/CHANGELOG.md).
 
-All four are installed from the same plugin repository:
+All three are installed from the same plugin repository:
   https://raw.githubusercontent.com/P1zzm1ssile/Jellyfin-Medic/main/manifest.json
 
 
@@ -790,90 +787,6 @@ press a button. Tabs: Downloads, Blocked, Indexers, Profiles, History, Settings.
     file, separate from other settings, and never sent to a browser.
   - Release names from indexers are shown as plain text, never as page code.
   - Talks only to your own Sonarr, Radarr and qBittorrent.
-
-
-===============================================================================
-PART 4: MEDIC POSTERS (PLUGIN 4)
-===============================================================================
-
-Found under Plugins -> Medic Posters. Settings are for administrators only.
-
-
--------------------------------------------------------------------------------
-4.1  THE POSTERS
--------------------------------------------------------------------------------
-
-  - A short animated GIF for each film, series, home video and music video:
-    a few moments of the film (spread from 15% to 75% of the way through),
-    or one from each of a few episodes of a series, cropped to a 2:3 poster.
-  - A wide 16:9 animated cover for each library, the shape of Jellyfin's
-    library cards, cut from moments of a few random things in it, with the
-    library's name. Can be turned off; four sizes, 320 x 180 to 640 x 360.
-  - The title in capitals over a soft dark band, and a rounded white
-    frame. Either can be turned off.
-  - Ten fonts (Bodoni Moda, Playfair Display, Cinzel, Cormorant Garamond,
-    Abril Fatface, Bebas Neue, Anton, Oswald, Montserrat, Lobster), all
-    under the SIL Open Font License and inside the plugin.
-  - Text size 60% to 200%, at the top, middle or bottom, with or without
-    a shadow and the dark band.
-  - Fades through black between moments, and out at the end (in at the
-    start), 0.2 to 1 second each.
-  - GIF because Jellyfin never resizes a GIF, so the poster reaches apps
-    still animated. Other formats are turned into a still picture.
-  - HDR films are converted to normal colour first.
-  - Made by Jellyfin's own FFmpeg. Nothing else to install.
-
-
--------------------------------------------------------------------------------
-4.2  MAKING THEM
--------------------------------------------------------------------------------
-
-  - "Make animated posters" scheduled task, nightly at 4 am to begin with:
-    makes posters for films that don't have one yet.
-  - Make posters now and Make all posters again, Make library covers now
-    and Make all covers again (each only its own kind), and Stop, with
-    progress while it runs.
-  - How much space they use now, and for each kind how many are left to
-    make and roughly how much they'll take, from the settings on screen.
-  - Posters changed by hand (or by a metadata refresh that replaces images)
-    are left alone, unless you make them all again.
-  - Preview: a poster for a film or series you pick, or a cover for a
-    library you pick (or random ones), with the settings on screen, saved
-    or not, and its size, without changing it. Use this one puts it on.
-  - Films without a poster are listed with the reason (a stream, a disc
-    folder, a missing file, or one FFmpeg can't read).
-
-
--------------------------------------------------------------------------------
-4.3  SETTINGS
--------------------------------------------------------------------------------
-
-  - Which libraries: films, TV, home videos, music videos and mixed. All
-    are ticked; untick one (such as IPTV) to leave it alone. New libraries
-    are included.
-  - Posters and library covers each have their own settings:
-  - Size: posters 160 x 240 to 300 x 450, covers 320 x 180 to 640 x 360.
-  - How many moments (1 to 6) and how long each plays (0.5 to 3 seconds).
-  - Frames per second (6 to 15) and colours (48 to 256).
-  - Title and frame on or off, font, text size and position, shadow, dark
-    band and fades.
-  - Your own text and moments: any library's cover or title's poster can
-    have its own text, up to six picked films or moments with a start time
-    chosen on a slider (with a still of that frame), and, for a cover, a
-    library to take random moments from instead of its own. So an IPTV
-    library can get a cover from the films library with its own name,
-    even when it's unticked.
-
-
--------------------------------------------------------------------------------
-4.4  PRIVACY AND SAFETY (MEDIC POSTERS)
--------------------------------------------------------------------------------
-
-  - Nothing in your media folders is changed or deleted. Posters are kept
-    in the server's data folder, under medic-posters.
-  - Each film's own poster is remembered, and Put back (one film) or Put
-    back the original posters (all of them) brings them back.
-  - Nothing is sent anywhere: the posters are made on your server.
 
 
 ===============================================================================

@@ -1,6 +1,6 @@
 name: Tests
 
-# Unit tests, and the end-to-end tests that build the four plugins, run them in a real Jellyfin and
+# Unit tests, and the end-to-end tests that build the three plugins, run them in a real Jellyfin and
 # click through their pages. On pull requests, by hand, and before every release (the release
 # workflows call this one and only publish when it passes).
 on:
