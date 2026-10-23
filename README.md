@@ -6,7 +6,7 @@ Health checks, performance tests and usage-aware task scheduling for your Jellyf
 
 [![Build and Release](https://github.com/P1zzm1ssile/Jellyfin-Medic/actions/workflows/release.yml/badge.svg)](https://github.com/P1zzm1ssile/Jellyfin-Medic/actions/workflows/release.yml) [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE) ![Jellyfin 12.1+](https://img.shields.io/badge/Jellyfin-12.1%2B-00a4dc.svg)
 
-This repository has three plugins: **Jellyfin Medic**, for the person who runs the server; **[Medic Picks](#medic-picks)**, personal viewing suggestions for everyone who uses it; and **[Medic Profiles](#medic-profiles)**, Sonarr and Radarr from your Jellyfin dashboard. **[Medic Posters](#medic-posters)** has moved to its own repository.
+This repository has three plugins: **Jellyfin Medic**, for the person who runs the server; **[Medic Picks](#medic-picks)**, personal viewing suggestions for everyone who uses it; and **[Medic Profiles](#medic-profiles)**, Sonarr and Radarr from your Jellyfin dashboard. **[Jellyfin Animated Posters](https://github.com/p1zzm1ssile/Jellyfin-animated-posters)** has its own repository.
 
 ---
 
@@ -152,20 +152,6 @@ Sonarr and Radarr, from your Jellyfin dashboard, under **Plugins → Medic Profi
 2. Open **Plugins → Medic Profiles → Settings**, add your Sonarr and Radarr addresses (ones the Jellyfin server can reach) and their API keys (in each: Settings → General → API Key), and press **Test**.
 
 The keys are kept on the server in their own file, only admins can use them, and they never reach a browser. What's new in each version is in [Medic Profiles' changelog](Jellyfin.Plugin.MedicProfiles/CHANGELOG.md).
-
----
-
-## Medic Posters
-
-Medic Posters, an animated poster for every film and series and an animated cover for every library, has moved to its own repository: **[Jellyfin Animated Posters](https://github.com/p1zzm1ssile/Jellyfin-animated-posters)**. Its README, changelog and new versions are there.
-
-If you have it installed, add that repository's catalogue in **Dashboard → Plugins → Repositories**:
-
-```
-https://raw.githubusercontent.com/p1zzm1ssile/Jellyfin-animated-posters/main/manifest.json
-```
-
-It keeps the same name and ID, so the next version arrives as an ordinary update and your posters, covers and settings are kept. Versions up to 1.3.1 stay in this repository's catalogue, so nothing breaks for a server that hasn't added the new one yet, but newer versions are only published there.
 
 ---
 
