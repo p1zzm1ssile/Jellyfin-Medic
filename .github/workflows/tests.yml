@@ -5,6 +5,11 @@ name: Tests
 # workflows call this one and only publish when it passes).
 on:
   pull_request:
+    # A change to the downloads report alone doesn't touch the plugins, so it doesn't need
+    # the ten-minute build and Jellyfin run.
+    paths-ignore:
+      - 'scripts/github-downloads.py'
+      - '.github/workflows/github-downloads.yml'
   workflow_dispatch:
   workflow_call:
 
