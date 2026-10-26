@@ -19,7 +19,7 @@ import re
 import sys
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import github_http
 
@@ -86,19 +86,25 @@ def release_downloads(user):
             continue
         groups = {}
         for r in api_pages(f"https://api.github.com/repos/{user}/{repo['name']}/releases"):
-            groups.setdefault(release_product(r), []).append(r)
+            if r["assets"]:  # a release with nothing to download would only add a line stuck at 0
+                groups.setdefault(release_product(r), []).append(r)
         for prefix, releases in groups.items():
             name = repo["name"] if len(groups) == 1 else product_label(repo["name"], prefix, releases)
             counts[name] = counts.get(name, 0) + sum(a["download_count"] for r in releases for a in r["assets"])
     return counts
 
 
-def previous(csv_path):
+def previous(csv_path, since):
+    """Each line's count as it stood a day ago: the last row logged at or before `since`,
+    or the first row when the line is newer than that. The workflow runs every 4 hours,
+    so comparing with the previous run alone shows +0 almost every time."""
     last = {}
     if os.path.exists(csv_path):
         with open(csv_path, newline="") as f:
             for row in csv.DictReader(f):
-                last[(row["Kind"], row["Name"])] = int(row["Downloads"])
+                key = (row["Kind"], row["Name"])
+                if key not in last or row["Timestamp"] <= since:
+                    last[key] = int(row["Downloads"])
     return last
 
 
@@ -114,7 +120,7 @@ def send_telegram(text):
 def main():
     user, csv_path = sys.argv[1], sys.argv[2]
     now = datetime.now(timezone.utc)
-    last = previous(csv_path)
+    last = previous(csv_path, (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"))
     counts, errors = [], []
 
     try:
@@ -146,7 +152,7 @@ def main():
 
     def line(kind, name, n):
         before = last.get((kind, name))
-        return f"• {name}: {n:,}" + (f" (+{n - before:,})" if before is not None else " (new)")
+        return f"• {name}: {n:,}" + (f" (+{n - before:,} in 24h)" if before is not None else " (new)")
 
     lines = [f"📊 GitHub downloads, {now:%d %b %Y %H:%M} UTC"]
     for kind, title in (("image", "📦 Container images"), ("release", "🏷️ Release downloads")):
@@ -155,7 +161,7 @@ def main():
             lines += ["", title] + rows
     total = sum(n for _, _, n in counts)
     total_before = sum(last.get((k, name), n) for k, name, n in counts)
-    lines += ["", f"Total: {total:,}" + (f" (+{total - total_before:,})" if last else "")]
+    lines += ["", f"Total: {total:,}" + (f" (+{total - total_before:,} in 24h)" if last else "")]
     if errors:
         lines += ["", "⚠️ Couldn't read:"] + [f"• {e}" for e in errors]
 
