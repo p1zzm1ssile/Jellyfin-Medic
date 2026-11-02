@@ -77,6 +77,12 @@ public class PicksController : ControllerBase
         var dub = AudioLanguage.FromTmdb(config.TmdbLanguage, _localization.FindLanguageInfo);
         string requestMode = RequestMode(config);
 
+        // Picks saved by an earlier version could list copies of one title more than once; each shows once here.
+        var seen = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+        string[] SameTitle(LibraryPick p) => new[] { PicksEngine.NameYearKey(p.Kind.ToLowerInvariant(), p.Name, p.Year) };
+        var inLibrary = PicksEngine.OneOfEach(picks?.InLibrary ?? new System.Collections.Generic.List<LibraryPick>(), SameTitle, seen).ToList();
+        var linked = PicksEngine.OneOfEach(picks?.Linked ?? new System.Collections.Generic.List<LibraryPick>(), SameTitle, seen).ToList();
+
         var body = new
         {
             generatedUtc = picks?.GeneratedUtc,
@@ -96,8 +102,8 @@ public class PicksController : ControllerBase
             dubLanguage = dub.Name,
             dubLanguageCode = dub.TwoLetter,
             playlistName = config.CreatePlaylists && picks?.PlaylistId is not null ? config.PlaylistName : null,
-            inLibrary = picks?.InLibrary ?? new System.Collections.Generic.List<LibraryPick>(),
-            linked = picks?.Linked ?? new System.Collections.Generic.List<LibraryPick>(),
+            inLibrary,
+            linked,
             // Saved picks stay until the next build, so Discover being switched off since then is checked here.
             discover = picks is not null && DiscoverShownTo(config, userId) ? picks.Discover : new System.Collections.Generic.List<DiscoverPick>()
         };

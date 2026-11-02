@@ -3,6 +3,11 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
+## [1.3.1] – 2026-11-02
+
+### Fixed
+- **Each title shows once, for real this time.** 1.3.0 still showed some films two or three times. Picks saved before the update kept their repeats until the next build, and a copy with a TMDb id wasn't matched with a copy of the same film without one. My picks now shows each title once straight away, picks saved earlier included, and copies are matched on their name and year as well as their TMDb id. Press "Update my picks" once to clear the repeats from the "Picks for you" playlist too.
+
 ## [1.3.0] – 2026-11-02
 
 ### Added

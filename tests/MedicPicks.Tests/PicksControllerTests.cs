@@ -58,6 +58,34 @@ public sealed class PicksControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Picks_saved_with_copies_of_one_title_show_it_once()
+    {
+        Save(new PluginConfiguration());
+        _store.Save(_userId, new UserPicks
+        {
+            GeneratedUtc = DateTime.UtcNow,
+            InLibrary =
+            {
+                new LibraryPick { ItemId = Guid.NewGuid(), Name = "Avengers: Infinity War", Year = 2018, Kind = "Movie" },
+                new LibraryPick { ItemId = Guid.NewGuid(), Name = "Avengers - Infinity War", Year = 2018, Kind = "Movie" },
+                new LibraryPick { ItemId = Guid.NewGuid(), Name = "Dune", Year = 1984, Kind = "Movie" }
+            },
+            Linked =
+            {
+                new LibraryPick { ItemId = Guid.NewGuid(), Name = "Avengers Infinity War", Year = 2018, Kind = "Movie" },
+                new LibraryPick { ItemId = Guid.NewGuid(), Name = "Avengers: Endgame", Year = 2019, Kind = "Movie" },
+                new LibraryPick { ItemId = Guid.NewGuid(), Name = "Avengers - Endgame", Year = 2019, Kind = "Movie" },
+                new LibraryPick { ItemId = Guid.NewGuid(), Name = "Dune", Year = 2021, Kind = "Movie" }
+            }
+        });
+
+        var picks = await MyPicks();
+
+        Assert.Equal(new[] { "Avengers: Infinity War", "Dune" }, picks.GetProperty("inLibrary").EnumerateArray().Select(p => p.GetProperty("name").GetString()));
+        Assert.Equal(new[] { "Avengers: Endgame", "Dune" }, picks.GetProperty("linked").EnumerateArray().Select(p => p.GetProperty("name").GetString()));
+    }
+
+    [Fact]
     public void Serves_the_in_app_script_as_a_script_that_is_checked_on_every_load()
     {
         var file = Assert.IsType<FileStreamResult>(_controller.GetInAppScript());
