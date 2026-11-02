@@ -154,6 +154,17 @@
                     Roku can't show extra pages, so those users get the private playlist instead.
                 </div>
             </div>
+            <div class="checkboxContainer checkboxContainer-withDescription">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="OpenInApp" form="MedicPicksConfigForm" />
+                    <span>Open My picks inside Jellyfin</span>
+                </label>
+                <div class="fieldDescription checkboxFieldDescription">
+                    The link opens the picks as a page of the app, in your Jellyfin theme, instead of a separate page in
+                    a new tab or window. For browsers and the apps that run the server's web client, with the same choices, hiding and
+                    requests as the full page. Untick it to have the link open the full page straight away, as before.
+                </div>
+            </div>
             <div class="inputContainer">
                 <input is="emby-input" type="text" id="MenuLinkName" form="MedicPicksConfigForm" label="Menu link name" />
             </div>
@@ -267,6 +278,7 @@
                         $('ShowRequests').checked = config.ShowRequests !== false;
                         $('MinimumWatchedTitles').value = config.MinimumWatchedTitles;
                         $('AddMenuLink').checked = config.AddMenuLink !== false;
+                        $('OpenInApp').checked = config.OpenInApp !== false;
                         $('MenuLinkName').value = config.MenuLinkName || 'My picks';
                         renderUsers(users, (config.DiscoverDisabledUserIds || []).map(norm), (config.DiscoverAllowedLimitedUserIds || []).map(norm));
                         savedDisabled = untickedIds();
@@ -294,6 +306,7 @@
                     config.ShowRequests = $('ShowRequests').checked;
                     config.MinimumWatchedTitles = parseInt($('MinimumWatchedTitles').value, 10) || 3;
                     config.AddMenuLink = $('AddMenuLink').checked;
+                    config.OpenInApp = $('OpenInApp').checked;
                     config.MenuLinkName = $('MenuLinkName').value.trim() || 'My picks';
                     var boxes = Array.prototype.slice.call(page.querySelectorAll('.discoverUser'));
                     // An account with parental controls is off unless ticked, so it's kept in its own list.

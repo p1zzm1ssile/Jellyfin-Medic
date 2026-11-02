@@ -49,6 +49,8 @@
     <EmbeddedResource Include="Configuration\configPage.html" />
     <None Remove="Web\picks.html" />
     <EmbeddedResource Include="Web\picks.html" />
+    <None Remove="Web\inapp.js" />
+    <EmbeddedResource Include="Web\inapp.js" />
   </ItemGroup>
 
   <ItemGroup>

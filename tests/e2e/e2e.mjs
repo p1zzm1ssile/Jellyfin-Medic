@@ -128,7 +128,7 @@ for (const path of medicGets) {
     await check(`GET ${path}`, async () => { await ok(path); });
 }
 
-await check('Jellyfin Medic serves its stylesheet to anyone, and nothing else from there', async () => {
+await check('Jellyfin Medic serves its stylesheet and tab scripts to anyone, and nothing else from there', async () => {
     // The page links it, and a stylesheet link carries no sign-in, so it's served without one.
     const css = await fetch(JF + '/JellyfinMedic/Assets/medic.css');
     const text = await css.text();
@@ -137,7 +137,12 @@ await check('Jellyfin Medic serves its stylesheet to anyone, and nothing else fr
     expect(css.headers.get('x-content-type-options') === 'nosniff', 'x-content-type-options: ' + css.headers.get('x-content-type-options'));
     expect((css.headers.get('cache-control') || '').includes('no-cache'), 'cache-control: ' + css.headers.get('cache-control'));
     expect(text.includes('#JellyfinMedicPage .so-topbar'), 'not the Medic stylesheet: ' + text.slice(0, 120));
-    for (const name of ['medic.html', 'assist.js', '..%2Fmedic.html']) {
+    // A tab's script, loaded by a script tag, which carries no sign-in either.
+    const js = await fetch(JF + '/JellyfinMedic/Assets/medic-iptv.js');
+    expect(js.status === 200, 'medic-iptv.js: ' + js.status);
+    expect((js.headers.get('content-type') || '').startsWith('text/javascript'), 'script content type: ' + js.headers.get('content-type'));
+    expect((await js.text()).includes('JellyfinMedicTabs'), 'not the IPTV tab\'s script');
+    for (const name of ['medic.html', 'assist.js', 'iptv.js', '..%2Fmedic.html']) {
         const other = await fetch(JF + '/JellyfinMedic/Assets/' + name);
         expect(other.status === 404, `${name}: ${other.status}`);
     }
@@ -1547,6 +1552,44 @@ await check('Jellyfin Medic page is styled by its stylesheet', async () => {
     await page.waitForFunction(() => getComputedStyle(document.querySelector('#JellyfinMedicPage .so-topbar')).display === 'flex', null, { timeout: 10000 });
     return 'top bar laid out as a row';
 });
+await check('Medic IPTV tab, from its own script: shows the last analysis, and Analyse IPTV draws it again', async () => {
+    // The IPTV check above analysed the M3U tuner's channels, so the tab opens on that analysis.
+    await medicTab('iptv');
+    await page.waitForSelector('#md-iptv .md-dups', { timeout: 30000 });
+    const shown = await page.textContent('#md-iptv');
+    expect(/BBC One[^(]*\(3\)/i.test(shown), 'BBC One and its 3 copies not listed: ' + shown.slice(0, 300));
+    await page.click('#md-iptv .md-dups summary');
+    await page.fill('#md-iptv .md-dups input[type="search"]', 'bbc one');
+    const visible = await page.$$eval('#md-iptv .md-dup-list li', (lis) => lis.filter((li) => !li.hidden).length);
+    expect(visible >= 1, 'the filter hid BBC One');
+    await page.click('#md-run-iptv');
+    await page.waitForFunction(() => !document.getElementById('md-run-iptv').disabled && !!document.querySelector('#md-iptv .md-dups'), null, { timeout: 120000 });
+    const scripts = await page.$$eval('script[src*="medic-iptv.js"]', (list) => list.length);
+    expect(scripts === 1, `the tab's script was added ${scripts} times`);
+    return 'analysis shown and redrawn';
+});
+
+await check('Medic IPTV tab: when its script can\'t load, the tab says so, the other tabs still work, and the next visit tries again', async () => {
+    const ctx = await browser.newContext({ locale: 'en-GB' });
+    try {
+        const p = await adminPage(ctx);
+        const errs = [];
+        p.on('pageerror', (e) => errs.push(e.message));
+        await p.route(/\/JellyfinMedic\/Assets\/medic-iptv\.js/, (route) => route.abort());
+        await medicTab('iptv', false, p);
+        await p.waitForFunction(() => /Couldn't load this tab/.test(document.querySelector('#JellyfinMedicPage #so-status')?.textContent || ''), null, { timeout: 30000 });
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="history"]');
+        await p.waitForFunction(() => !document.querySelector('#JellyfinMedicPage .so-tabpanel[data-panel="history"]').hidden, null, { timeout: 10000 });
+        await p.unroute(/\/JellyfinMedic\/Assets\/medic-iptv\.js/);
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="iptv"]');
+        await p.waitForSelector('#md-iptv .so-panel, #md-iptv p', { timeout: 30000 });
+        expect(errs.length === 0, errs.join(' | '));
+        return 'error shown, then loaded on the next visit';
+    } finally {
+        await ctx.close();
+    }
+});
+
 await openPage('Medic Profiles', '/configurationpage?name=MedicProfiles', '#MedicProfilesPage .mp-tab', '.mp-tab');
 await openPage('Medic Picks settings', '/configurationpage?name=Medic%20Picks', '#MedicPicksConfigForm');
 
@@ -1805,6 +1848,149 @@ await check('My picks page opens signed in', async () => {
     await page.waitForLoadState('networkidle');
     await sleep(2000);
     expect(errors.length === 0, errors.join(' | '));
+});
+
+await check('My picks opens inside Jellyfin: the menu link shows the picks in the app, a title opens in the app, and Back comes back', async () => {
+    const ctx2 = await browser.newContext({ locale: 'en-GB' });
+    try {
+        const p = await adminPage(ctx2);
+        const errs = [];
+        const opened = [];
+        p.on('pageerror', (e) => errs.push(e.message));
+        ctx2.on('page', (other) => opened.push(other.url()));
+        const me = await ok('/MedicPicks/Me');
+        expect(me.inLibrary?.length, 'no picks to show: ' + JSON.stringify(me).slice(0, 200));
+        await p.click('header a[href$="/MedicPicks/Page"]', { timeout: 30000 });
+        await p.waitForSelector('#medicPicksInApp .card', { timeout: 30000 });
+        expect(/#\/mypicks$/.test(p.url()), 'not on #/mypicks: ' + p.url());
+        expect(opened.length === 0, 'opened a new tab: ' + opened.join(', '));
+        // Inside the app's own frame, under its top bar, with the web app's own card markup.
+        expect(await p.locator('header.MuiAppBar-root:visible, .skinHeader:visible').count() > 0, 'the app\'s top bar is gone');
+        const titles = await p.$$eval('#medicPicksInApp .cardText-first', (l) => l.map((t) => t.textContent));
+        expect(titles.includes(me.inLibrary[0].name), `"${me.inLibrary[0].name}" not shown: ${titles.join(', ')}`);
+        expect(!(await p.isVisible('#fallbackPage h1:text("Page not found")')), '"Page not found" still shows');
+        expect(await p.title() === 'My picks', 'title: ' + await p.title());
+        // The full page, for choices, hiding and requests, opens in the same window.
+        expect(await p.getAttribute('#medicPicksInApp .medicPicksFull', 'target') === null, 'the full page opens elsewhere');
+        await p.click('#medicPicksInApp a.cardImageContainer');
+        await p.waitForURL(/#\/details\?id=/, { timeout: 15000 });
+        await p.goBack();
+        await p.waitForSelector('#medicPicksInApp .card', { timeout: 15000 });
+        // Opened straight from its address too, as after a refresh.
+        await p.reload();
+        await p.waitForSelector('#medicPicksInApp .card', { timeout: 30000 });
+        expect(await p.$$eval('#medicPicksInApp', (l) => l.length) === 1, 'drawn more than once');
+        expect(errs.length === 0, errs.join(' | '));
+        return `${titles.length} picks in the app`;
+    } finally {
+        await ctx2.close();
+    }
+});
+
+await check('My picks inside Jellyfin: choices rebuild the picks, Ignore takes a title away until "Show them again", and Show me different ones works', async () => {
+    const ctx2 = await browser.newContext({ locale: 'en-GB' });
+    const before = (await ok('/MedicPicks/Me')).preferences;
+    try {
+        const p = await adminPage(ctx2);
+        const errs = [];
+        p.on('pageerror', (e) => errs.push(e.message));
+        await p.goto(JF + '/web/index.html#/mypicks');
+        await p.waitForSelector('#medicPicksInApp .card', { timeout: 30000 });
+        const cards = () => p.$$eval('#medicPicksInApp .medicPicksRow:not([hidden]) .card', (l) => l.length);
+        const settled = () => p.waitForFunction(() => /Updated just now|Couldn|Still/.test(document.querySelector('#medicPicksInApp .medicPicksNote')?.textContent || '')
+            && !document.querySelector('#medicPicksInApp button[type="submit"]').disabled, null, { timeout: 120000 });
+        const n0 = await cards();
+        const first = await p.textContent('#medicPicksInApp .medicPicksRow:not([hidden]) .card .cardText-first');
+        await p.locator('#medicPicksInApp .card button:has-text("Ignore")').first().click();
+        await p.waitForFunction((n) => document.querySelectorAll('#medicPicksInApp .medicPicksRow:not([hidden]) .card').length === n - 1, n0, { timeout: 15000 });
+        const hidden = (await ok('/MedicPicks/Me')).preferences;
+        expect(hidden.hiddenItems.length + hidden.hiddenTmdb.length === 1, 'not saved as ignored: ' + JSON.stringify(hidden));
+
+        await p.click('#medicPicksInApp .medicPicksChoices > summary');
+        expect(await p.isVisible('#medicPicksInApp .medicPicksForm button:has-text("Show them again")'), 'no "Show them again" after Ignore');
+        await p.selectOption('#medicPicksShow', 'movies');
+        await p.click('#medicPicksInApp button[type="submit"]');
+        await settled();
+        expect((await ok('/MedicPicks/Me')).preferences.kind === 'movies', 'the choice wasn\'t saved');
+        const after = await p.$$eval('#medicPicksInApp .cardText-first', (l) => l.map((t) => t.textContent));
+        expect(!after.includes(first), `"${first}" is back although it was ignored`);
+
+        await p.click('#medicPicksInApp .medicPicksForm button:has-text("Show them again")');
+        await settled();
+        const shown = (await ok('/MedicPicks/Me')).preferences;
+        expect(shown.hiddenItems.length + shown.hiddenTmdb.length === 0, 'still ignored: ' + JSON.stringify(shown));
+
+        await p.click('#medicPicksInApp .medicPicksForm button:has-text("Show me different ones")');
+        await settled();
+        expect(/Updated just now/.test(await p.textContent('#medicPicksInApp .medicPicksNote')), 'Show me different ones: ' + await p.textContent('#medicPicksInApp .medicPicksNote'));
+        expect(errs.length === 0, errs.join(' | '));
+        return `${n0} picks, one ignored and brought back, films only, then different ones`;
+    } finally {
+        await ctx2.close();
+        await api('POST', '/MedicPicks/Me/Preferences', { kind: before.kind, count: before.count, dubbedOnly: before.dubbedOnly, genres: before.genres });
+        await api('POST', '/MedicPicks/Me/Unhide', {});
+    }
+});
+
+await check('My picks inside Jellyfin: My requests shows Seerr\'s requests, and an admin approves from it', async () => {
+    const seerrServer = await fakeArr.startSeerr(P(18999));
+    const plugin = (await ok('/Plugins')).find((x) => x.Name === 'Medic Picks');
+    const cfg = await ok(`/Plugins/${plugin.Id}/Configuration`);
+    await api('POST', `/Plugins/${plugin.Id}/Configuration`, { ...cfg, JellyseerrUrl: `http://host.docker.internal:${P(18999)}`, ShowRequests: true });
+    await api('POST', '/MedicPicks/Admin/SeerrKey', { Key: 'e2e-seerr-key' });
+    const ctx2 = await browser.newContext({ locale: 'en-GB' });
+    try {
+        fakeArr.seerr.decisions.length = 0;
+        const p = await adminPage(ctx2);
+        const errs = [];
+        p.on('pageerror', (e) => errs.push(e.message));
+        await p.goto(JF + '/web/index.html#/mypicks');
+        const mine = p.locator('#medicPicksInApp .medicPicksRow', { hasText: 'My requests' });
+        await mine.locator('.card').first().waitFor({ timeout: 30000 });
+        expect((await mine.textContent()).includes('Film 550'), 'My requests: ' + await mine.textContent());
+        const waiting = p.locator('#medicPicksInApp .medicPicksRow', { hasText: 'Waiting for your approval' });
+        await waiting.locator('.card').first().waitFor({ timeout: 30000 });
+        const card = waiting.locator('.card', { hasText: 'Film 551' });
+        await card.locator('button:has-text("Approve")').click();
+        // This pretend Seerr keeps listing the request after it's approved, so the list drawn again may still have it.
+        for (let i = 0; i < 30 && fakeArr.seerr.decisions.length === 0; i++) await sleep(500);
+        const made = fakeArr.seerr.decisions.map((d) => `${d.action} ${d.id}`).join(', ');
+        expect(made === 'approve 12', 'Seerr saw: ' + made);
+        expect(errs.length === 0, errs.join(' | '));
+        return 'Film 550 listed, request 12 approved';
+    } finally {
+        await ctx2.close();
+        await api('POST', `/Plugins/${plugin.Id}/Configuration`, cfg);
+        await api('POST', '/MedicPicks/Admin/SeerrKey', { Key: '' });
+        seerrServer.close();
+    }
+});
+
+await check('My picks opens inside Jellyfin only while that setting is on', async () => {
+    const id = 'b34ec5d1-b70f-435f-b77d-9b76979b03c7';
+    const cfg = await ok(`/Plugins/${id}/Configuration`);
+    const webPage = async () => (await fetch(JF + '/web/index.html')).text();
+    expect((await webPage()).includes('id="medic-picks-inapp"'), 'the web app\'s page has no in-app script');
+    const script = await fetch(JF + '/MedicPicks/InApp.js');
+    expect(script.status === 200 && (script.headers.get('content-type') || '').startsWith('text/javascript'), `InApp.js: ${script.status} ${script.headers.get('content-type')}`);
+    try {
+        expect((await api('POST', `/Plugins/${id}/Configuration`, { ...cfg, OpenInApp: false })).status < 300, 'saving settings failed');
+        expect(!(await webPage()).includes('medic-picks-inapp'), 'the script is still added with the setting off');
+        const ctx2 = await browser.newContext({ locale: 'en-GB' });
+        try {
+            const p = await adminPage(ctx2);
+            const [other] = await Promise.all([
+                ctx2.waitForEvent('page', { timeout: 15000 }),
+                p.click('header a[href$="/MedicPicks/Page"]', { timeout: 30000 })
+            ]);
+            expect(/\/MedicPicks\/Page/.test(other.url()), 'opened ' + other.url());
+        } finally {
+            await ctx2.close();
+        }
+    } finally {
+        await api('POST', `/Plugins/${id}/Configuration`, cfg);
+    }
+    return 'added with the setting on, and the full page in a new tab with it off';
 });
 
 await check('schedule Preview: choosing per task updates the plan', async () => {

@@ -58,6 +58,17 @@ public sealed class PicksControllerTests : IDisposable
     }
 
     [Fact]
+    public void Serves_the_in_app_script_as_a_script_that_is_checked_on_every_load()
+    {
+        var file = Assert.IsType<FileStreamResult>(_controller.GetInAppScript());
+
+        Assert.Equal("text/javascript; charset=utf-8", file.ContentType);
+        Assert.Contains("#/mypicks", new StreamReader(file.FileStream).ReadToEnd(), StringComparison.Ordinal);
+        Assert.Equal("no-cache", _controller.Response.Headers.CacheControl.ToString());
+        Assert.Equal("nosniff", _controller.Response.Headers.XContentTypeOptions.ToString());
+    }
+
+    [Fact]
     public async Task Stored_Discover_picks_are_served_while_Discover_is_on_for_the_person()
     {
         Save(new PluginConfiguration { EnableDiscover = true });
