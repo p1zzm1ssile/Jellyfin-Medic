@@ -1583,7 +1583,9 @@ await check('Medic IPTV tab: when its script can\'t load, the tab says so, the o
         await p.unroute(/\/JellyfinMedic\/Assets\/medic-iptv\.js/);
         await p.click('#JellyfinMedicPage .so-tab[data-tab="iptv"]');
         await p.waitForSelector('#md-iptv .so-panel, #md-iptv p', { timeout: 30000 });
-        expect(errs.length === 0, errs.join(' | '));
+        // The web app throws CancelledError when one navigation replaces another; the other page checks ignore it too.
+        const ours = errs.filter((e) => !/ResizeObserver|^CancelledError/i.test(e));
+        expect(ours.length === 0, ours.join(' | '));
         return 'error shown, then loaded on the next visit';
     } finally {
         await ctx.close();
