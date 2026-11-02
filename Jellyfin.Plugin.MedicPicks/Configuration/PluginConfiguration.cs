@@ -60,6 +60,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Add a link to the picks page to every user's Jellyfin menu (web, Desktop, Android and iOS apps).</summary>
     public bool AddMenuLink { get; set; } = true;
 
+    /// <summary>
+    /// Open that link as a page inside Jellyfin, in the apps that run the server's web client, instead of a page of its
+    /// own in a new tab or window.
+    /// </summary>
+    public bool OpenInApp { get; set; } = true;
+
     /// <summary>Text of that menu link.</summary>
     public string MenuLinkName { get; set; } = "My picks";
 

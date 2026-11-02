@@ -53,10 +53,10 @@ public class PicksAccessTests
     }
 
     [Fact]
-    public void Only_the_page_itself_needs_no_sign_in()
+    public void Only_the_page_and_its_in_app_script_need_no_sign_in()
     {
         var open = Actions().Where(a => a.Action.GetCustomAttribute<AllowAnonymousAttribute>() is not null).Select(a => a.Route);
 
-        Assert.Equal(new[] { Prefix + "/Page" }, open);
+        Assert.Equal(new[] { Prefix + "/InApp.js", Prefix + "/Page" }, open.Order(StringComparer.Ordinal));
     }
 }

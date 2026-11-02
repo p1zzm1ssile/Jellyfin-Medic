@@ -1850,6 +1850,70 @@ await check('My picks page opens signed in', async () => {
     expect(errors.length === 0, errors.join(' | '));
 });
 
+await check('My picks opens inside Jellyfin: the menu link shows the picks in the app, a title opens in the app, and Back comes back', async () => {
+    const ctx2 = await browser.newContext({ locale: 'en-GB' });
+    try {
+        const p = await adminPage(ctx2);
+        const errs = [];
+        const opened = [];
+        p.on('pageerror', (e) => errs.push(e.message));
+        ctx2.on('page', (other) => opened.push(other.url()));
+        const me = await ok('/MedicPicks/Me');
+        expect(me.inLibrary?.length, 'no picks to show: ' + JSON.stringify(me).slice(0, 200));
+        await p.click('header a[href$="/MedicPicks/Page"]', { timeout: 30000 });
+        await p.waitForSelector('#medicPicksInApp .card', { timeout: 30000 });
+        expect(/#\/mypicks$/.test(p.url()), 'not on #/mypicks: ' + p.url());
+        expect(opened.length === 0, 'opened a new tab: ' + opened.join(', '));
+        // Inside the app's own frame, under its top bar, with the web app's own card markup.
+        expect(await p.locator('header.MuiAppBar-root:visible, .skinHeader:visible').count() > 0, 'the app\'s top bar is gone');
+        const titles = await p.$$eval('#medicPicksInApp .cardText-first', (l) => l.map((t) => t.textContent));
+        expect(titles.includes(me.inLibrary[0].name), `"${me.inLibrary[0].name}" not shown: ${titles.join(', ')}`);
+        expect(!(await p.isVisible('#fallbackPage h1:text("Page not found")')), '"Page not found" still shows');
+        expect(await p.title() === 'My picks', 'title: ' + await p.title());
+        // The full page, for choices, hiding and requests, opens in the same window.
+        expect(await p.getAttribute('#medicPicksInApp .medicPicksFull', 'target') === null, 'the full page opens elsewhere');
+        await p.click('#medicPicksInApp a.cardImageContainer');
+        await p.waitForURL(/#\/details\?id=/, { timeout: 15000 });
+        await p.goBack();
+        await p.waitForSelector('#medicPicksInApp .card', { timeout: 15000 });
+        // Opened straight from its address too, as after a refresh.
+        await p.reload();
+        await p.waitForSelector('#medicPicksInApp .card', { timeout: 30000 });
+        expect(await p.$$eval('#medicPicksInApp', (l) => l.length) === 1, 'drawn more than once');
+        expect(errs.length === 0, errs.join(' | '));
+        return `${titles.length} picks in the app`;
+    } finally {
+        await ctx2.close();
+    }
+});
+
+await check('My picks opens inside Jellyfin only while that setting is on', async () => {
+    const id = 'b34ec5d1-b70f-435f-b77d-9b76979b03c7';
+    const cfg = await ok(`/Plugins/${id}/Configuration`);
+    const webPage = async () => (await fetch(JF + '/web/index.html')).text();
+    expect((await webPage()).includes('id="medic-picks-inapp"'), 'the web app\'s page has no in-app script');
+    const script = await fetch(JF + '/MedicPicks/InApp.js');
+    expect(script.status === 200 && (script.headers.get('content-type') || '').startsWith('text/javascript'), `InApp.js: ${script.status} ${script.headers.get('content-type')}`);
+    try {
+        expect((await api('POST', `/Plugins/${id}/Configuration`, { ...cfg, OpenInApp: false })).status < 300, 'saving settings failed');
+        expect(!(await webPage()).includes('medic-picks-inapp'), 'the script is still added with the setting off');
+        const ctx2 = await browser.newContext({ locale: 'en-GB' });
+        try {
+            const p = await adminPage(ctx2);
+            const [other] = await Promise.all([
+                ctx2.waitForEvent('page', { timeout: 15000 }),
+                p.click('header a[href$="/MedicPicks/Page"]', { timeout: 30000 })
+            ]);
+            expect(/\/MedicPicks\/Page/.test(other.url()), 'opened ' + other.url());
+        } finally {
+            await ctx2.close();
+        }
+    } finally {
+        await api('POST', `/Plugins/${id}/Configuration`, cfg);
+    }
+    return 'added with the setting on, and the full page in a new tab with it off';
+});
+
 await check('schedule Preview: choosing per task updates the plan', async () => {
     errors.length = 0;
     await page.goto(JF + '/web/index.html#/configurationpage?name=JellyfinMedic');

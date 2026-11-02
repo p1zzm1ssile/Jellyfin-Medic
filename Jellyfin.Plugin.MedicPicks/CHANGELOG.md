@@ -3,6 +3,13 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
+## Unreleased
+
+### Added
+- **My picks opens inside Jellyfin.** The menu link opened the picks page in a new browser tab, and in the apps it was handed to something outside Jellyfin. It now opens the picks as a page of the app, under its own top bar and in each person's theme: the titles on your server, the ones linked to what they've watched and the ones not on the server yet, each opening its own page in the app, with Back coming back to the picks. Choices, hiding, refreshing and requests are on the full page for now, a button away. This works in browsers and the apps that run the server's web client (the Android and iOS apps, Jellyfin Desktop); when the page can't be drawn inside the app, the full page opens in the same window. To keep the old behaviour, untick "Open My picks inside Jellyfin" in Medic Picks' settings. First step of #171.
+
+Thanks @camarigor for the design of the in-app page (#171).
+
 ## [1.2.6] – 2026-10-17
 
 ### Changed

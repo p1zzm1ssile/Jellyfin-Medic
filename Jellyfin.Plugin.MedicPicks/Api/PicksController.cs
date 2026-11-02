@@ -471,6 +471,25 @@ public class PicksController : ControllerBase
         return Content(reader.ReadToEnd().Replace("__MEDIC_PICKS_VERSION__", version, StringComparison.Ordinal), MediaTypeNames.Text.Html);
     }
 
+    /// <summary>
+    /// The script that opens My picks inside the web client (see Web/MenuLink.cs). Loaded by a script tag, which
+    /// carries no sign-in; it's the same for every server and asks for the picks with the person's own sign-in.
+    /// </summary>
+    [HttpGet("InApp.js")]
+    [AllowAnonymous]
+    public ActionResult GetInAppScript()
+    {
+        var stream = GetType().Assembly.GetManifestResourceStream("Jellyfin.Plugin.MedicPicks.Web.inapp.js");
+        if (stream is null)
+        {
+            return NotFound();
+        }
+
+        Response.Headers.CacheControl = "no-cache";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        return File(stream, "text/javascript; charset=utf-8");
+    }
+
     [HttpGet("Admin/Status")]
     [Authorize(Policy = AdminPolicy)]
     public ActionResult GetStatus()
