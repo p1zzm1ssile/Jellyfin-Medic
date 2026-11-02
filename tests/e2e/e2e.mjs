@@ -1887,6 +1887,85 @@ await check('My picks opens inside Jellyfin: the menu link shows the picks in th
     }
 });
 
+await check('My picks inside Jellyfin: choices rebuild the picks, Ignore takes a title away until "Show them again", and Show me different ones works', async () => {
+    const ctx2 = await browser.newContext({ locale: 'en-GB' });
+    const before = (await ok('/MedicPicks/Me')).preferences;
+    try {
+        const p = await adminPage(ctx2);
+        const errs = [];
+        p.on('pageerror', (e) => errs.push(e.message));
+        await p.goto(JF + '/web/index.html#/mypicks');
+        await p.waitForSelector('#medicPicksInApp .card', { timeout: 30000 });
+        const cards = () => p.$$eval('#medicPicksInApp .medicPicksRow:not([hidden]) .card', (l) => l.length);
+        const settled = () => p.waitForFunction(() => /Updated just now|Couldn|Still/.test(document.querySelector('#medicPicksInApp .medicPicksNote')?.textContent || '')
+            && !document.querySelector('#medicPicksInApp button[type="submit"]').disabled, null, { timeout: 120000 });
+        const n0 = await cards();
+        const first = await p.textContent('#medicPicksInApp .medicPicksRow:not([hidden]) .card .cardText-first');
+        await p.locator('#medicPicksInApp .card button:has-text("Ignore")').first().click();
+        await p.waitForFunction((n) => document.querySelectorAll('#medicPicksInApp .medicPicksRow:not([hidden]) .card').length === n - 1, n0, { timeout: 15000 });
+        const hidden = (await ok('/MedicPicks/Me')).preferences;
+        expect(hidden.hiddenItems.length + hidden.hiddenTmdb.length === 1, 'not saved as ignored: ' + JSON.stringify(hidden));
+
+        await p.click('#medicPicksInApp .medicPicksChoices > summary');
+        expect(await p.isVisible('#medicPicksInApp .medicPicksForm button:has-text("Show them again")'), 'no "Show them again" after Ignore');
+        await p.selectOption('#medicPicksShow', 'movies');
+        await p.click('#medicPicksInApp button[type="submit"]');
+        await settled();
+        expect((await ok('/MedicPicks/Me')).preferences.kind === 'movies', 'the choice wasn\'t saved');
+        const after = await p.$$eval('#medicPicksInApp .cardText-first', (l) => l.map((t) => t.textContent));
+        expect(!after.includes(first), `"${first}" is back although it was ignored`);
+
+        await p.click('#medicPicksInApp .medicPicksForm button:has-text("Show them again")');
+        await settled();
+        const shown = (await ok('/MedicPicks/Me')).preferences;
+        expect(shown.hiddenItems.length + shown.hiddenTmdb.length === 0, 'still ignored: ' + JSON.stringify(shown));
+
+        await p.click('#medicPicksInApp .medicPicksForm button:has-text("Show me different ones")');
+        await settled();
+        expect(/Updated just now/.test(await p.textContent('#medicPicksInApp .medicPicksNote')), 'Show me different ones: ' + await p.textContent('#medicPicksInApp .medicPicksNote'));
+        expect(errs.length === 0, errs.join(' | '));
+        return `${n0} picks, one ignored and brought back, films only, then different ones`;
+    } finally {
+        await ctx2.close();
+        await api('POST', '/MedicPicks/Me/Preferences', { kind: before.kind, count: before.count, dubbedOnly: before.dubbedOnly, genres: before.genres });
+        await api('POST', '/MedicPicks/Me/Unhide', {});
+    }
+});
+
+await check('My picks inside Jellyfin: My requests shows Seerr\'s requests, and an admin approves from it', async () => {
+    const seerrServer = await fakeArr.startSeerr(P(18999));
+    const plugin = (await ok('/Plugins')).find((x) => x.Name === 'Medic Picks');
+    const cfg = await ok(`/Plugins/${plugin.Id}/Configuration`);
+    await api('POST', `/Plugins/${plugin.Id}/Configuration`, { ...cfg, JellyseerrUrl: `http://host.docker.internal:${P(18999)}`, ShowRequests: true });
+    await api('POST', '/MedicPicks/Admin/SeerrKey', { Key: 'e2e-seerr-key' });
+    const ctx2 = await browser.newContext({ locale: 'en-GB' });
+    try {
+        fakeArr.seerr.decisions.length = 0;
+        const p = await adminPage(ctx2);
+        const errs = [];
+        p.on('pageerror', (e) => errs.push(e.message));
+        await p.goto(JF + '/web/index.html#/mypicks');
+        const mine = p.locator('#medicPicksInApp .medicPicksRow', { hasText: 'My requests' });
+        await mine.locator('.card').first().waitFor({ timeout: 30000 });
+        expect((await mine.textContent()).includes('Film 550'), 'My requests: ' + await mine.textContent());
+        const waiting = p.locator('#medicPicksInApp .medicPicksRow', { hasText: 'Waiting for your approval' });
+        await waiting.locator('.card').first().waitFor({ timeout: 30000 });
+        const card = waiting.locator('.card', { hasText: 'Film 551' });
+        await card.locator('button:has-text("Approve")').click();
+        // This pretend Seerr keeps listing the request after it's approved, so the list drawn again may still have it.
+        for (let i = 0; i < 30 && fakeArr.seerr.decisions.length === 0; i++) await sleep(500);
+        const made = fakeArr.seerr.decisions.map((d) => `${d.action} ${d.id}`).join(', ');
+        expect(made === 'approve 12', 'Seerr saw: ' + made);
+        expect(errs.length === 0, errs.join(' | '));
+        return 'Film 550 listed, request 12 approved';
+    } finally {
+        await ctx2.close();
+        await api('POST', `/Plugins/${plugin.Id}/Configuration`, cfg);
+        await api('POST', '/MedicPicks/Admin/SeerrKey', { Key: '' });
+        seerrServer.close();
+    }
+});
+
 await check('My picks opens inside Jellyfin only while that setting is on', async () => {
     const id = 'b34ec5d1-b70f-435f-b77d-9b76979b03c7';
     const cfg = await ok(`/Plugins/${id}/Configuration`);
