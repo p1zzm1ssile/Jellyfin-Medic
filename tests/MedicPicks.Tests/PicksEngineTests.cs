@@ -40,6 +40,42 @@ public sealed class PicksEngineTests
         Assert.Equal(Later, title.LastPlayed);
     }
 
+    [Theory]
+    [InlineData("Avengers: Infinity War", 2018, "Avengers - Infinity War", 2018)]
+    [InlineData("The Matrix", 1999, "Matrix", 1999)]
+    [InlineData("Constantine", 2005, "constantine", 2005)]
+    public void Copies_of_a_film_with_no_tmdb_id_are_the_same_title(string name, int year, string otherName, int otherYear)
+    {
+        var a = new Movie { Id = Guid.NewGuid(), Name = name, ProductionYear = year };
+        var b = new Movie { Id = Guid.NewGuid(), Name = otherName, ProductionYear = otherYear };
+
+        Assert.Equal(PicksEngine.SameTitleKey(a), PicksEngine.SameTitleKey(b));
+    }
+
+    [Fact]
+    public void Copies_with_the_same_tmdb_id_are_the_same_title_whatever_their_names()
+    {
+        var a = new Movie { Id = Guid.NewGuid(), Name = "Constantine", ProductionYear = 2005 };
+        var b = new Movie { Id = Guid.NewGuid(), Name = "Constantine (Director's Cut)", ProductionYear = 2005 };
+        a.ProviderIds["Tmdb"] = "561";
+        b.ProviderIds["Tmdb"] = "561";
+
+        Assert.Equal(PicksEngine.SameTitleKey(a), PicksEngine.SameTitleKey(b));
+    }
+
+    [Fact]
+    public void A_remake_a_sequel_and_a_series_of_the_same_name_are_different_titles()
+    {
+        var film = new Movie { Id = Guid.NewGuid(), Name = "Dune", ProductionYear = 2021 };
+        var remake = new Movie { Id = Guid.NewGuid(), Name = "Dune", ProductionYear = 1984 };
+        var sequel = new Movie { Id = Guid.NewGuid(), Name = "Dune: Part Two", ProductionYear = 2021 };
+        var series = new Series { Id = Guid.NewGuid(), Name = "Dune", ProductionYear = 2021 };
+
+        var keys = new[] { film, remake, sequel, (BaseItem)series }.Select(PicksEngine.SameTitleKey).ToList();
+
+        Assert.Equal(4, keys.Distinct().Count());
+    }
+
     // Finds a series as Jellyfin 12.2's library does, which refuses an empty id.
     private static Func<Guid, BaseItem?> Library(params Series[] series) => id =>
         id == Guid.Empty

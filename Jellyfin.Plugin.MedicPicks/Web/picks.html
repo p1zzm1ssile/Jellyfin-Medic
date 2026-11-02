@@ -76,16 +76,21 @@
   }
   .section-note { color: var(--muted); margin: 0 0 18px; max-width: 65ch; }
 
+  /* A row of posters that scrolls sideways, as on Jellyfin's Home screen. */
   .shelf {
     list-style: none;
     margin: 0;
-    padding: 0;
+    padding: 0 0 12px;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 28px 18px;
+    grid-auto-flow: column;
+    grid-auto-columns: 160px;
+    gap: 18px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
   }
+  .shelf > li { scroll-snap-align: start; }
   @media (max-width: 420px) {
-    .shelf { grid-template-columns: repeat(2, 1fr); gap: 24px 14px; }
+    .shelf { grid-auto-columns: 42vw; gap: 14px; }
   }
 
   .pick { display: flex; flex-direction: column; min-width: 0; }
