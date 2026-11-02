@@ -96,6 +96,15 @@ class MessageTests(unittest.TestCase):
         msg = gd.build_message([("image", "dubarr", 5)], ["image foo: boom"], {}, utc("2026-11-02 12:15:00"))
         self.assertIn("⚠️ Couldn't read:\n• image foo: boom", msg)
 
+    def test_open_issues_are_listed_with_a_total(self):
+        issues = [("Dubarr", 3), ("Jellyfin-Medic", 1)]
+        msg = gd.build_message([("image", "dubarr", 5)], [], {}, utc("2026-11-02 12:15:00"), issues)
+        self.assertIn("🐛 Open issues: 4\n• Dubarr: 3\n• Jellyfin-Medic: 1", msg)
+
+    def test_no_open_issues_still_says_so(self):
+        msg = gd.build_message([("image", "dubarr", 5)], [], {}, utc("2026-11-02 12:15:00"), [])
+        self.assertIn("🐛 Open issues: 0", msg)
+
 
 class DayStartTests(unittest.TestCase):
     def test_falls_back_to_the_last_run_before_a_day_with_no_runs(self):

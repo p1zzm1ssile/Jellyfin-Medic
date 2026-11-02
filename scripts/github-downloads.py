@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Logs download counts for everything a GitHub user publishes and sends a summary to Telegram.
 
-Counts two things:
+Counts two things, and lists the open issues across the user's repos:
   - container images (ghcr.io): total pulls, read off each public package page,
     because GitHub's packages API doesn't expose download counts
   - release downloads: the download_count of every release asset, per repo, split per plugin
@@ -98,6 +98,21 @@ def release_downloads(user):
     return counts
 
 
+def open_issues(user):
+    """Open issues (not pull requests) per repo across everything the user owns, most first."""
+    per_repo = {}
+    page = 1
+    while True:
+        q = urllib.parse.quote(f"user:{user} is:issue is:open archived:false")
+        found = fetch(f"https://api.github.com/search/issues?q={q}&per_page=100&page={page}", api=True)
+        for item in found["items"]:
+            repo = item["repository_url"].rsplit("/", 1)[1]
+            per_repo[repo] = per_repo.get(repo, 0) + 1
+        if len(found["items"]) < 100 or page * 100 >= found["total_count"]:
+            return sorted(per_repo.items(), key=lambda r: (-r[1], r[0].lower()))
+        page += 1
+
+
 def history(csv_path):
     """Every count logged so far, per line, oldest first, with its time in UK time."""
     rows = {}
@@ -124,7 +139,7 @@ def day_start(logged, day):
     return before
 
 
-def build_message(counts, errors, hist, now):
+def build_message(counts, errors, hist, now, issues=None):
     """The Telegram summary. Each line shows the change since the last run. The total shows
     the change since midnight, and the first run of a new day shows the whole of the day
     before instead. Days are counted from the first run after midnight rather than the clock,
@@ -159,6 +174,8 @@ def build_message(counts, errors, hist, now):
         lines += ["", f"Total: {total:,} (+{total - start:,} for the whole of {day:%a %d %b})"]
     else:
         lines += ["", f"Total: {total:,} (+{total - start:,} today since 00:00)"]
+    if issues is not None:
+        lines += ["", f"🐛 Open issues: {sum(n for _, n in issues):,}"] + [f"• {repo}: {n}" for repo, n in issues]
     if errors:
         lines += ["", "⚠️ Couldn't read:"] + [f"• {e}" for e in errors]
     return "\n".join(lines)
@@ -193,6 +210,12 @@ def main():
     except Exception as e:
         errors.append(f"release downloads: {e}")
 
+    issues = None
+    try:
+        issues = open_issues(user)
+    except Exception as e:
+        errors.append(f"open issues: {e}")
+
     if not counts:
         print("\n".join(errors) or "Nothing to count", file=sys.stderr)
         sys.exit(1)
@@ -206,7 +229,7 @@ def main():
         for kind, name, n in counts:
             w.writerow([now.strftime(TIME_FORMAT), kind, name, n])
 
-    message = build_message(counts, errors, hist, now)
+    message = build_message(counts, errors, hist, now, issues)
     print(message)
     send_telegram(message)
 
