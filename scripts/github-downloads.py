@@ -20,8 +20,12 @@ import sys
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import github_http
+
+UK = ZoneInfo("Europe/London")
+TIME_FORMAT = "%Y-%m-%d %H:%M:%S"  # the CSV keeps UTC times
 
 
 def fetch(url, api=False):
@@ -94,18 +98,70 @@ def release_downloads(user):
     return counts
 
 
-def previous(csv_path, since):
-    """Each line's count as it stood a day ago: the last row logged at or before `since`,
-    or the first row when the line is newer than that. The workflow runs every 4 hours,
-    so comparing with the previous run alone shows +0 almost every time."""
-    last = {}
+def history(csv_path):
+    """Every count logged so far, per line, oldest first, with its time in UK time."""
+    rows = {}
     if os.path.exists(csv_path):
         with open(csv_path, newline="") as f:
             for row in csv.DictReader(f):
-                key = (row["Kind"], row["Name"])
-                if key not in last or row["Timestamp"] <= since:
-                    last[key] = int(row["Downloads"])
-    return last
+                when = datetime.strptime(row["Timestamp"], TIME_FORMAT).replace(tzinfo=timezone.utc).astimezone(UK)
+                rows.setdefault((row["Kind"], row["Name"]), []).append((when, int(row["Downloads"])))
+    for logged in rows.values():
+        logged.sort(key=lambda r: r[0])
+    return rows
+
+
+def day_start(logged, day):
+    """A line's count at the first run on `day` (UK date), or at the last run before it
+    when nothing ran that day. None when the line was first seen after `day`."""
+    before = None
+    for when, n in logged:
+        if when.date() == day:
+            return n
+        if when.date() > day:
+            return before
+        before = n
+    return before
+
+
+def build_message(counts, errors, hist, now):
+    """The Telegram summary. Each line shows the change since the last run. The total shows
+    the change since midnight, and the first run of a new day shows the whole of the day
+    before instead. Days are counted from the first run after midnight rather than the clock,
+    because GitHub often starts scheduled runs late."""
+    now = now.astimezone(UK)
+    today = now.date()
+    last_run = max((logged[-1][0] for logged in hist.values()), default=None)
+    first_today = last_run is None or last_run.date() != today
+    day = today - timedelta(days=1) if first_today else today
+
+    def line(kind, name, n):
+        logged = hist.get((kind, name))
+        return f"• {name}: {n:,}" + (f" (+{n - logged[-1][1]:,})" if logged else " (new)")
+
+    lines = [f"📊 GitHub downloads, {now:%a %d %b %Y %H:%M}"]
+    if last_run:
+        lines.append("Changes since the last run at " + (
+            f"{last_run:%H:%M}" if last_run.date() == today else f"{last_run:%a %d %b %H:%M}"))
+    for kind, title in (("image", "📦 Container images"), ("release", "🏷️ Release downloads")):
+        rows = [line(*c) for c in counts if c[0] == kind]
+        if rows:
+            lines += ["", title] + rows
+
+    total = sum(n for _, _, n in counts)
+    start = 0
+    for kind, name, n in counts:
+        at_start = day_start(hist.get((kind, name), []), day)
+        start += n if at_start is None else at_start  # a line new since then adds nothing
+    if not hist:
+        lines += ["", f"Total: {total:,}"]
+    elif first_today:
+        lines += ["", f"Total: {total:,} (+{total - start:,} for the whole of {day:%a %d %b})"]
+    else:
+        lines += ["", f"Total: {total:,} (+{total - start:,} today since 00:00)"]
+    if errors:
+        lines += ["", "⚠️ Couldn't read:"] + [f"• {e}" for e in errors]
+    return "\n".join(lines)
 
 
 def send_telegram(text):
@@ -120,7 +176,7 @@ def send_telegram(text):
 def main():
     user, csv_path = sys.argv[1], sys.argv[2]
     now = datetime.now(timezone.utc)
-    last = previous(csv_path, (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"))
+    hist = history(csv_path)
     counts, errors = [], []
 
     try:
@@ -148,24 +204,9 @@ def main():
         if new_file:
             w.writerow(["Timestamp", "Kind", "Name", "Downloads"])
         for kind, name, n in counts:
-            w.writerow([now.strftime("%Y-%m-%d %H:%M:%S"), kind, name, n])
+            w.writerow([now.strftime(TIME_FORMAT), kind, name, n])
 
-    def line(kind, name, n):
-        before = last.get((kind, name))
-        return f"• {name}: {n:,}" + (f" (+{n - before:,} in 24h)" if before is not None else " (new)")
-
-    lines = [f"📊 GitHub downloads, {now:%d %b %Y %H:%M} UTC"]
-    for kind, title in (("image", "📦 Container images"), ("release", "🏷️ Release downloads")):
-        rows = [line(*c) for c in counts if c[0] == kind]
-        if rows:
-            lines += ["", title] + rows
-    total = sum(n for _, _, n in counts)
-    total_before = sum(last.get((k, name), n) for k, name, n in counts)
-    lines += ["", f"Total: {total:,}" + (f" (+{total - total_before:,} in 24h)" if last else "")]
-    if errors:
-        lines += ["", "⚠️ Couldn't read:"] + [f"• {e}" for e in errors]
-
-    message = "\n".join(lines)
+    message = build_message(counts, errors, hist, now)
     print(message)
     send_telegram(message)
 

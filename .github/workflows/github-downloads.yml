@@ -1,5 +1,7 @@
-# Every 4 hours, logs the downloads of every container image and every repo's releases
-# under the account, and sends a summary to Telegram.
+# Every 6 hours, logs the downloads of every container image and every repo's releases
+# under the account, and sends a summary to Telegram: each line's change since the last run,
+# and a total for the day since midnight (the first run after midnight sends the whole of the
+# day before).
 # The history lives in downloads.csv on the package-stats branch, so main stays clean.
 # Needs two repo secrets: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
 # If an image is ever missing from the message, add its name to EXTRA_PACKAGES below.
@@ -8,9 +10,11 @@ name: GitHub downloads
 
 on:
   schedule:
-    # 03:00, 07:00, 11:00, 15:00, 19:00 and 23:00 UK winter time (GMT). Cron runs in UTC, so in
-    # summer (BST) these land an hour later, at 04:00, 08:00 and so on.
-    - cron: '0 3,7,11,15,19,23 * * *'
+    # 00:01, 06:01, 12:01 and 18:01 UK time, all year round (the timezone takes care of BST).
+    # GitHub often starts scheduled runs late, sometimes by an hour or more, so the day total
+    # doesn't rely on the clock: the first run after midnight closes off the day before.
+    - cron: '1 0,6,12,18 * * *'
+      timezone: 'Europe/London'
   workflow_dispatch:
 
 permissions:
