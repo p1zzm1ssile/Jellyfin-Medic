@@ -1,0 +1,79 @@
+name: Feature request
+description: An idea or an improvement for Jellyfin Medic, Medic Picks or Medic Profiles.
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest this. The more you say about the *problem*, the likelier it is that a
+        good *solution* lands.
+
+  - type: checkboxes
+    id: pre-flight
+    attributes:
+      label: Before you start
+      options:
+        - label: I've searched the existing issues, open and closed, and this isn't one of them.
+          required: true
+        - label: This would help other servers, not only mine.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would it solve?
+      description: |
+        Put it as "today I have to X, which is a pain because Y" rather than as the solution. A real example beats a
+        general requirement.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like it to do?
+      description: How you'd see it working. Sketches are welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What else have you tried or considered?
+      description: Workarounds, other plugins or tools, and why they fall short.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part does it touch?
+      multiple: true
+      options:
+        - "Jellyfin Medic: Dashboard"
+        - "Jellyfin Medic: Schedule and History"
+        - "Jellyfin Medic: Checks"
+        - "Jellyfin Medic: Tests"
+        - "Jellyfin Medic: IPTV"
+        - "Jellyfin Medic: Tracks"
+        - "Jellyfin Medic: Media report"
+        - "Jellyfin Medic: Plugins and Plugin directory"
+        - "Jellyfin Medic: Settings"
+        - Medic Picks
+        - Medic Profiles
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: build-it
+    attributes:
+      label: Building it
+      options:
+        - label: I'd like to build this myself, once we've agreed on it here and before I write any code.
+          required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?

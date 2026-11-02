@@ -1,0 +1,86 @@
+name: Refresh release notes
+
+# Rewrites the notes of releases that are already out from their changelog section, with the line
+# thanking contributors that new releases get, and puts the same text in manifest.json. For a release
+# made before credits were added, or after fixing a changelog entry. Run it from the Actions tab with
+# one or more tags, such as: v1.0.20 picks-v1.2.4 profiles-v1.1.2
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Release tags, separated by spaces (v1.0.20 picks-v1.2.4 profiles-v1.1.2)'
+        required: true
+
+permissions:
+  contents: write
+
+# Shared with the release workflows, so their manifest.json pushes take turns, every run waiting for
+# its turn ("queue: max", see release.yml).
+concurrency:
+  group: manifest-update
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Rewrite the notes and the manifest's changelog
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          set -euo pipefail
+          for TAG in $TAGS; do
+            case "$TAG" in
+              picks-v*)    FILE=Jellyfin.Plugin.MedicPicks/CHANGELOG.md;    GUID=b34ec5d1-b70f-435f-b77d-9b76979b03c7; VER="${TAG#picks-v}" ;;
+              profiles-v*) FILE=Jellyfin.Plugin.MedicProfiles/CHANGELOG.md; GUID=1eb65368-7b2e-4a55-8f2b-b56134f3fe68; VER="${TAG#profiles-v}" ;;
+              v*)          FILE=CHANGELOG.md;                               GUID=8d1f5c2e-6b4a-4f7e-9c3d-2a7b5e1f0c94; VER="${TAG#v}" ;;
+              *) echo "::error::$TAG isn't a release tag (v1.2.3, picks-v1.2.3 or profiles-v1.2.3)"; exit 1 ;;
+            esac
+            if ! [[ "$VER" =~ ^[0-9]+(\.[0-9]+){2,3}$ ]]; then
+              echo "::error::$TAG isn't a release tag (v1.2.3, picks-v1.2.3 or profiles-v1.2.3)"; exit 1
+            fi
+            if ! gh release view "$TAG" >/dev/null 2>&1; then
+              echo "::error::There is no release for $TAG."; exit 1
+            fi
+
+            python3 scripts/changelog_section.py "$FILE" "$VER" > CHANGES.md
+            CREDITS=$(python3 scripts/release_credits.py "$TAG" --changes CHANGES.md)
+            if [ -n "$CREDITS" ]; then printf '\n%s\n' "$CREDITS" >> CHANGES.md; fi
+
+            # Jellyfin Medic's notes end with the zip's checksum, which only the release run knows: keep it.
+            cp CHANGES.md NOTES.md
+            MD5_LINE=$(gh release view "$TAG" --json body -q .body | grep -E '^MD5 checksum:' || true)
+            if [ -n "$MD5_LINE" ]; then printf '\n%s\n' "$MD5_LINE" >> NOTES.md; fi
+            gh release edit "$TAG" --notes-file NOTES.md
+            echo "$TAG: notes rewritten. ${CREDITS:-Nobody else to thank.}"
+
+            IFS='.' read -r A B C D <<< "$VER"
+            python3 scripts/set_manifest_changelog.py --guid "$GUID" --version "$A.$B.$C.${D:-0}" --changelog-file CHANGES.md \
+              || echo "::warning::manifest.json has no $TAG, so only its release notes changed."
+          done
+
+      - name: Push manifest.json
+        shell: bash
+        env:
+          TAGS: ${{ inputs.tags }}
+        run: |
+          if git diff --quiet manifest.json; then echo "manifest.json already says this."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "chore: refresh the manifest changelog for $TAGS"
+          # Fail if no push gets through, instead of ending green on the last pull's status.
+          for _ in 1 2 3; do
+            if git push origin main; then exit 0; fi
+            git pull --rebase origin main
+          done
+          echo "::error::Couldn't push manifest.json to main after 3 tries."; exit 1

@@ -1,0 +1,65 @@
+# Every 6 hours, logs the downloads of every container image and every repo's releases
+# under the account, and sends a summary to Telegram: each line's change since the last run,
+# and a total for the day since midnight (the first run after midnight sends the whole of the
+# day before). It also lists the open issues on every repo under the account.
+# The history lives in downloads.csv on the package-stats branch, so main stays clean.
+# Needs two repo secrets: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
+# If an image is ever missing from the message, add its name to EXTRA_PACKAGES below.
+
+name: GitHub downloads
+
+on:
+  schedule:
+    # 00:01, 06:01, 12:01 and 18:01 UK time, all year round (the timezone takes care of BST).
+    # GitHub often starts scheduled runs late, sometimes by an hour or more, so the day total
+    # doesn't rely on the clock: the first run after midnight closes off the day before.
+    - cron: '1 0,6,12,18 * * *'
+      timezone: 'Europe/London'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: package-stats
+  cancel-in-progress: false
+
+env:
+  OWNER: 'P1zzm1ssile'
+  CSV: 'downloads.csv'
+  EXTRA_PACKAGES: ''
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the stats branch
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --heads origin package-stats >/dev/null; then
+            git fetch --depth 1 origin package-stats
+            git worktree add stats origin/package-stats
+          else
+            git worktree add --detach stats
+            git -C stats checkout --orphan package-stats
+            git -C stats rm -rfq .
+          fi
+
+      - name: Log downloads and send to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/github-downloads.py "$OWNER" "stats/$CSV"
+
+      - name: Save the history
+        shell: bash
+        run: |
+          cd stats
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$CSV"
+          git commit -qm "Log downloads"
+          git push origin HEAD:package-stats

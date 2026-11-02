@@ -1,0 +1,311 @@
+/* Every rule is scoped to this page so nothing leaks into the rest of the Jellyfin dashboard. */
+#JellyfinMedicPage { color: #fff; }
+#JellyfinMedicPage .so-muted { color: #aaa; }
+#JellyfinMedicPage .so-small { font-size: 0.85em; }
+#JellyfinMedicPage .so-intro { margin: 0 0 14px; }
+
+#JellyfinMedicPage .so-topbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; }
+#JellyfinMedicPage .so-title { margin: 0; display: flex; align-items: center; gap: 10px; }
+#JellyfinMedicPage .so-top-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+#JellyfinMedicPage .so-btn { color: #fff; min-height: 40px; padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer; font: inherit; }
+#JellyfinMedicPage .so-btn:disabled { opacity: 0.45; cursor: default; }
+#JellyfinMedicPage .so-btn-accent { background: #1f6fd1; }
+#JellyfinMedicPage .so-btn-plain { background: transparent; border: 1px solid #3a3e46 !important; }
+#JellyfinMedicPage .so-seg, #JellyfinMedicPage .so-filter { background: #333; color: #ccc; border: 1px solid #555; padding: 6px 12px; font: inherit; cursor: pointer; }
+#JellyfinMedicPage .so-seg:first-child { border-radius: 4px 0 0 4px; }
+#JellyfinMedicPage .so-seg:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+#JellyfinMedicPage .so-seg[aria-pressed="true"], #JellyfinMedicPage .so-filter[aria-pressed="true"] { background: #00a4dc; border-color: #00a4dc; color: #fff; }
+#JellyfinMedicPage .so-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+#JellyfinMedicPage .so-filter { border-radius: 4px; }
+#JellyfinMedicPage button:focus-visible, #JellyfinMedicPage .so-input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+#JellyfinMedicPage .so-tabs { display: flex; gap: 4px; border-bottom: 1px solid #444; margin-bottom: 16px; flex-wrap: wrap; }
+#JellyfinMedicPage .so-tab { background: none; border: none; color: #aaa; font: inherit; padding: 10px 14px; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+#JellyfinMedicPage .so-tab[aria-selected="true"] { color: #fff; border-bottom-color: #00a4dc; }
+
+#JellyfinMedicPage .so-status { padding: 12px; border-radius: 4px; margin-bottom: 14px; font-weight: 500; }
+#JellyfinMedicPage .so-status.info { background: #134e6f; }
+#JellyfinMedicPage .so-status.error { background: #7a1f1f; }
+
+#JellyfinMedicPage .so-panel { background: #1b1d22; padding: 16px 20px; border-radius: 12px; border: 1px solid #2a2d34; margin-bottom: 18px; }
+#JellyfinMedicPage .so-panel h3 { margin: 0 0 12px; }
+#JellyfinMedicPage .so-scroll { overflow-x: auto; }
+
+#JellyfinMedicPage .so-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+#JellyfinMedicPage .so-count { background: rgba(0, 0, 0, 0.3); border: 1px solid #3a3a3a; border-left: 5px solid #555; border-radius: 8px; padding: 14px 16px; text-align: left; color: #fff; font: inherit; cursor: pointer; }
+#JellyfinMedicPage .so-count strong { display: block; font-size: 1.9em; line-height: 1.1; }
+#JellyfinMedicPage .so-count.sev-Problem { border-left-color: #ff6b6b; }
+#JellyfinMedicPage .so-count.sev-Improve { border-left-color: #f0b429; }
+#JellyfinMedicPage .so-count.sev-Tip { border-left-color: #4fb3ff; }
+#JellyfinMedicPage .so-count.sev-Good { border-left-color: #52b788; }
+
+#JellyfinMedicPage .so-area-title { margin: 18px 0 8px; color: #00a4dc; }
+#JellyfinMedicPage .so-card { background: #1b1d22; border: 1px solid #2a2d34; border-left: 5px solid #555; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
+#JellyfinMedicPage .so-card.sev-Problem { border-left-color: #ff6b6b; }
+#JellyfinMedicPage .so-card.sev-Improve { border-left-color: #f0b429; }
+#JellyfinMedicPage .so-card.sev-Tip { border-left-color: #4fb3ff; }
+#JellyfinMedicPage .so-card.sev-Good { border-left-color: #52b788; }
+#JellyfinMedicPage .so-card h4 { margin: 4px 0 8px; font-size: 1.02em; }
+#JellyfinMedicPage .so-badge { display: inline-block; font-size: 0.75em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 10px; background: #444; margin-right: 8px; }
+#JellyfinMedicPage .sev-Problem .so-badge { background: #7a1f1f; }
+#JellyfinMedicPage .sev-Improve .so-badge { background: #6b4e00; }
+#JellyfinMedicPage .sev-Tip .so-badge { background: #134e6f; }
+#JellyfinMedicPage .sev-Good .so-badge { background: #1f642a; }
+#JellyfinMedicPage .so-area { font-size: 0.8em; color: #aaa; }
+#JellyfinMedicPage .so-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 8px; font-size: 0.92em; }
+#JellyfinMedicPage .md-dups { margin: 8px 0; }
+#JellyfinMedicPage .md-dups summary { cursor: pointer; }
+#JellyfinMedicPage .md-dups .so-input { margin: 8px 0; max-width: 320px; }
+#JellyfinMedicPage .md-dup-list { list-style: none; padding: 0; margin: 0; max-height: 420px; overflow-y: auto; }
+#JellyfinMedicPage .md-dup-list li { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+#JellyfinMedicPage .so-kv dt { color: #aaa; }
+#JellyfinMedicPage .so-kv dd { margin: 0; word-break: break-word; }
+#JellyfinMedicPage .so-suggest { color: #52b788; }
+#JellyfinMedicPage .so-why { margin: 0 0 6px; color: #ddd; font-size: 0.92em; }
+#JellyfinMedicPage .so-where { margin: 0; color: #aaa; font-size: 0.85em; }
+#JellyfinMedicPage .md-activity { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #00a4dc; background: rgba(0, 164, 220, 0.12); }
+#JellyfinMedicPage .md-activity[hidden] { display: none; }
+#JellyfinMedicPage .md-week p { margin: 2px 0; }
+#JellyfinMedicPage .md-week details { margin-top: 6px; }
+#JellyfinMedicPage .md-pager { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+#JellyfinMedicPage .md-chip { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 0.78em; border: 1px solid currentColor; }
+#JellyfinMedicPage .md-chip-bad { color: #ff8a80; }
+#JellyfinMedicPage .md-chip-set { color: #7fe0a4; }
+#JellyfinMedicPage .md-dot { display: inline-flex; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: #fff; flex: none; }
+#JellyfinMedicPage .md-dot.red { background: #d9534f; }
+#JellyfinMedicPage .md-dot.yellow { background: #e0a800; color: #1a1a1a; }
+#JellyfinMedicPage .md-dot.green { background: #2e9d5b; }
+#JellyfinMedicPage .md-setting-advice { margin: 4px 0 0; font-size: 0.85em; color: #c8ccd4; }
+#JellyfinMedicPage .md-setting-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+#JellyfinMedicPage .md-where-link { color: #00a4dc; text-decoration: underline; text-underline-offset: 2px; }
+#JellyfinMedicPage .md-where-link:hover { color: #4fc3f7; }
+#JellyfinMedicPage .md-where-link:focus-visible { outline: 2px solid #00a4dc; outline-offset: 2px; border-radius: 2px; }
+
+#JellyfinMedicPage .so-specs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+#JellyfinMedicPage .so-spec-group h4 { margin: 0 0 6px; color: #00a4dc; }
+
+#JellyfinMedicPage .so-table { width: 100%; border-collapse: collapse; text-align: left; }
+#JellyfinMedicPage .so-table th, #JellyfinMedicPage .so-table td { padding: 7px 10px; border-bottom: 1px solid #333; font-size: 0.9em; vertical-align: top; word-break: break-word; }
+#JellyfinMedicPage .so-table th { color: #00a4dc; white-space: nowrap; }
+
+#JellyfinMedicPage .so-plugin-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+#JellyfinMedicPage .so-plugin-head h3 { margin: 0; }
+#JellyfinMedicPage details summary { cursor: pointer; color: #00a4dc; margin-top: 8px; }
+
+#JellyfinMedicPage .so-settings-tools { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+#JellyfinMedicPage .so-input { background: #222; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 8px; font: inherit; }
+#JellyfinMedicPage #so-settings-search { flex: 1; min-width: 200px; }
+
+#JellyfinMedicPage .so-heatmap { border-collapse: separate; border-spacing: 3px; font-size: 0.8em; }
+#JellyfinMedicPage .so-heatmap th { color: #aaa; font-weight: 500; padding: 2px 4px; white-space: nowrap; }
+#JellyfinMedicPage .so-heatmap td { width: 26px; height: 22px; border-radius: 3px; background: #262626; }
+#JellyfinMedicPage .so-test-result { margin-top: 12px; }
+#JellyfinMedicPage .so-advice { margin: 6px 0 0; padding-left: 18px; color: #ddd; font-size: 0.92em; }
+#JellyfinMedicPage .so-speed-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
+#JellyfinMedicPage .so-speed-grid div { background: rgba(0, 0, 0, 0.3); border: 1px solid #3a3a3a; border-radius: 6px; padding: 10px 12px; }
+#JellyfinMedicPage .so-speed-grid strong { display: block; font-size: 1.5em; }
+#JellyfinMedicPage .so-viewers { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+#JellyfinMedicPage .so-card.is-ignored { opacity: 0.6; }
+#JellyfinMedicPage .so-card.is-target { outline: 2px solid #8cc8ff; outline-offset: 2px; }
+#JellyfinMedicPage .so-ignore-btn { float: right; background: #333; color: #ccc; border: 1px solid #555; border-radius: 4px; padding: 4px 10px; font: inherit; font-size: 0.8em; cursor: pointer; margin-left: 10px; }
+#JellyfinMedicPage .so-ignore-btn:hover { color: #fff; border-color: #888; }
+#JellyfinMedicPage .so-ignored-note { margin: 8px 0 0; font-size: 0.85em; color: #aaa; }
+
+/* ---------- Jellyfin Medic layout ---------- */
+#JellyfinMedicPage .md-row { display: flex; align-items: center; gap: 10px; }
+#JellyfinMedicPage .md-space { justify-content: space-between; }
+#JellyfinMedicPage .md-wrap { flex-wrap: wrap; }
+#JellyfinMedicPage .md-checked { margin: 0 0 12px; }
+#JellyfinMedicPage .md-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 18px; }
+#JellyfinMedicPage .md-tile { background: #1b1d22; border: 1px solid #2a2d34; border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+#JellyfinMedicPage .md-wide { grid-column: 1 / -1; }
+/* The Dashboard: lines of tiles that always fill their width, so no column or line is left empty. */
+#JellyfinMedicPage .md-board { display: flex; flex-direction: column; gap: 16px; margin-bottom: 18px; container-type: inline-size; }
+#JellyfinMedicPage .md-line { display: flex; flex-wrap: wrap; gap: 16px; }
+#JellyfinMedicPage .md-line > .md-tile { flex: 1 1 260px; box-sizing: border-box; overflow-wrap: anywhere; }
+#JellyfinMedicPage .md-line > .md-w2 { flex: 2 1 520px; }
+#JellyfinMedicPage .md-line > .md-wide { flex-basis: 100%; }
+#JellyfinMedicPage .md-line > .md-tile > .md-goto:last-child { margin-top: auto; }
+@container (max-width: 1400px) {
+    #JellyfinMedicPage .md-line > .md-tile { flex-basis: calc(50% - 8px); }
+    #JellyfinMedicPage .md-line > .md-w2, #JellyfinMedicPage .md-line > .md-wide { flex-basis: 100%; }
+}
+@container (max-width: 900px) {
+    /* One column in order of priority: the lines step aside so the tiles can be ordered across them. */
+    #JellyfinMedicPage .md-line { display: contents; }
+    #JellyfinMedicPage .md-line > .md-tile { flex: 0 0 auto; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-now"] { order: 1; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-issues"] { order: 2; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-today"] { order: 3; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-load"] { order: 4; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-disks"] { order: 5; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-week"] { order: 6; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-busy"] { order: 7; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-why"] { order: 8; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-trend"] { order: 9; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-net"] { order: 10; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-errors"] { order: 11; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-people"] { order: 12; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-updates"] { order: 13; }
+    #JellyfinMedicPage .md-tile[aria-labelledby="md-t-maint"] { order: 14; }
+}
+#JellyfinMedicPage .md-tile-head { margin: 0; font-size: 0.75em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #a7adb8; }
+#JellyfinMedicPage .md-big { margin: 0; font-size: 1.7em; font-weight: 600; line-height: 1.2; }
+#JellyfinMedicPage .md-goto { align-self: flex-start; }
+#JellyfinMedicPage .md-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+#JellyfinMedicPage .md-count { display: flex; flex-direction: column; gap: 2px; padding: 10px; background: #15171b; border-radius: 8px; border: none; color: #c4c9d2; font: inherit; text-align: left; cursor: pointer; }
+#JellyfinMedicPage .md-count strong { font-family: ui-monospace, monospace; font-size: 1.4em; }
+#JellyfinMedicPage .md-count.sev-Problem strong { color: #ff8a8e; }
+#JellyfinMedicPage .md-count.sev-Improve strong { color: #ffc766; }
+#JellyfinMedicPage .md-count.sev-Tip strong { color: #8cc8ff; }
+#JellyfinMedicPage .md-count.sev-Ignored strong { color: #a3a9b3; }
+#JellyfinMedicPage .md-axis { position: relative; height: 14px; font-family: ui-monospace, monospace; font-size: 0.72em; color: #8e95a1; }
+#JellyfinMedicPage .md-axis span { position: absolute; top: 0; white-space: nowrap; }
+#JellyfinMedicPage .md-now-line { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #ff4040; }
+/* Load: four small line charts with the monitor's alert lines. */
+#JellyfinMedicPage .md-load { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+#JellyfinMedicPage .md-meter { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+#JellyfinMedicPage .md-meter-head { display: flex; justify-content: space-between; gap: 8px; font-size: 0.8em; color: #a7adb8; }
+#JellyfinMedicPage .md-meter-head strong { color: #e6e8ec; font-family: ui-monospace, monospace; }
+#JellyfinMedicPage .md-meter svg, #JellyfinMedicPage .md-trend svg { width: 100%; display: block; background: #15171b; border-radius: 6px; }
+#JellyfinMedicPage .md-meter svg { height: 36px; }
+#JellyfinMedicPage .md-line-value { fill: none; stroke: #5fd0b3; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+#JellyfinMedicPage .md-line-alert { stroke: #ff9a9e; stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+/* Today: planned runs (outlined) above the runs that happened (filled), on one 24-hour axis. */
+#JellyfinMedicPage .md-today-summary { margin: 0; font-weight: 600; }
+#JellyfinMedicPage .md-day { position: relative; height: 84px; background: #15171b; border-radius: 6px; overflow: hidden; }
+/* The lane names sit beside the timeline, so they never cover a run or a mark. */
+#JellyfinMedicPage .md-day-wrap { display: flex; gap: 6px; }
+#JellyfinMedicPage .md-day-wrap .md-day { flex: 1 1 auto; min-width: 0; }
+#JellyfinMedicPage .md-day-lanes { position: relative; flex: 0 0 44px; height: 84px; font-size: 0.68em; color: #8e95a1; }
+#JellyfinMedicPage .md-day-lanes span { position: absolute; left: 0; line-height: 14px; }
+#JellyfinMedicPage .md-day-lanes span:first-child { top: 24px; }
+#JellyfinMedicPage .md-day-lanes span:last-child { top: 56px; }
+#JellyfinMedicPage .md-day-axis { margin-left: 50px; }
+#JellyfinMedicPage .md-day-block { position: absolute; height: 22px; min-width: 6px; padding: 0 3px; border: 0; border-radius: 4px; font: 600 0.68em/22px ui-monospace, monospace; color: #10131a; overflow: hidden; white-space: nowrap; cursor: pointer; }
+#JellyfinMedicPage .md-day-block.md-planned { top: 24px; height: 14px; min-width: 8px; background: transparent; border: 2px solid #5fd0b3; line-height: 10px; }
+#JellyfinMedicPage .md-day-block.md-planned.md-plan-missed { border-style: dashed; }
+/* Filled like a stopped run: every run for this plan was cancelled before it finished. */
+#JellyfinMedicPage .md-day-block.md-planned.md-plan-cancelled { background: #5a6370; }
+#JellyfinMedicPage .md-day-block.md-actual { top: 52px; }
+#JellyfinMedicPage .md-day-block.md-run-failed { background: #d9534f; color: #fff; min-width: 44px; z-index: 1; }
+#JellyfinMedicPage .md-day-block.md-run-stopped { background: #5a6370; color: #e6e8ec; min-width: 52px; z-index: 1; }
+#JellyfinMedicPage .md-day-block.md-run-running { box-shadow: inset 0 0 0 2px #e6e8ec; }
+#JellyfinMedicPage .md-day-block:focus-visible, #JellyfinMedicPage .md-day-mark:focus-visible, #JellyfinMedicPage .md-busy-cell:focus-visible { outline: 2px solid #8cc8ff; outline-offset: 1px; }
+#JellyfinMedicPage .md-day-mark { position: absolute; width: 8px; height: 8px; margin-left: -4px; padding: 0; border: 0; border-radius: 2px; cursor: pointer; }
+#JellyfinMedicPage .md-day-mark.md-spike { top: 6px; background: #ff9a9e; }
+#JellyfinMedicPage .md-day-mark.md-guard { top: 76px; background: #ffd27a; transform: rotate(45deg); }
+#JellyfinMedicPage .md-sw-planned { box-shadow: inset 0 0 0 2px #8e95a1; }
+#JellyfinMedicPage .md-sw-ran { background: #8e95a1; }
+#JellyfinMedicPage .md-sw-stopped { background: #5a6370; }
+#JellyfinMedicPage .md-sw-failed { background: #d9534f; }
+#JellyfinMedicPage .md-sw-spike { background: #ff9a9e; }
+#JellyfinMedicPage .md-sw-guard { background: #ffd27a; transform: rotate(45deg) scale(0.7); }
+/* Busy hours: 7 days by 24 hours. */
+#JellyfinMedicPage .md-busy { display: grid; grid-template-columns: 34px repeat(24, minmax(0, 1fr)); gap: 2px; font-size: 0.68em; color: #8e95a1; }
+/* The hour and day labels stay whole in narrow columns (tiles let long names wrap anywhere). */
+#JellyfinMedicPage .md-busy > span:not(.md-busy-cell) { white-space: nowrap; }
+#JellyfinMedicPage .md-busy-cell { position: relative; height: 18px; padding: 0; border: 0; border-radius: 3px; background: #15171b; }
+#JellyfinMedicPage .md-busy-cell.md-busy-on { box-shadow: inset 0 0 0 1px #5a6370; }
+#JellyfinMedicPage .md-busy-cell.md-busy-clash { box-shadow: inset 0 0 0 2px #ffb648; }
+#JellyfinMedicPage button.md-busy-cell { cursor: pointer; }
+#JellyfinMedicPage .md-busy-dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #e6e8ec; }
+/* Why it transcodes, Disk trend, Repeated log errors, People. */
+#JellyfinMedicPage .md-why { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+#JellyfinMedicPage .md-why li { display: flex; flex-direction: column; gap: 4px; }
+#JellyfinMedicPage .md-trend { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+#JellyfinMedicPage .md-trend-drive { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#JellyfinMedicPage .md-trend svg { height: 64px; }
+#JellyfinMedicPage .md-line-projection { fill: none; stroke: #ffd27a; stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+#JellyfinMedicPage .md-line-freed { stroke: #8cc8ff; stroke-width: 1; vector-effect: non-scaling-stroke; }
+#JellyfinMedicPage .md-errors li, #JellyfinMedicPage .md-people-group { display: flex; flex-direction: column; gap: 2px; }
+#JellyfinMedicPage .md-people { display: flex; flex-direction: column; gap: 8px; }
+#JellyfinMedicPage .md-issues { list-style: none; margin: 0; padding: 0; }
+#JellyfinMedicPage .md-issues li { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid #262930; flex-wrap: wrap; }
+#JellyfinMedicPage .md-issue-text { flex: 1 1 340px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#JellyfinMedicPage .md-pill { display: inline-flex; justify-content: center; min-width: 96px; padding: 3px 10px; border-radius: 12px; font-size: 0.72em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+#JellyfinMedicPage .md-pill.sev-Problem { background: #4a1f22; color: #ff9a9e; }
+#JellyfinMedicPage .md-pill.sev-Improve { background: #4a3a14; color: #ffd27a; }
+#JellyfinMedicPage .md-pill.sev-Tip { background: #16324d; color: #9fd0ff; }
+#JellyfinMedicPage .md-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+#JellyfinMedicPage .md-list li { display: flex; justify-content: space-between; gap: 12px; }
+#JellyfinMedicPage .md-num-ok { color: #7fe0b5; }
+#JellyfinMedicPage .md-num-warn { color: #ffd27a; }
+#JellyfinMedicPage .md-num-bad { color: #ff9a9e; }
+#JellyfinMedicPage .md-details summary { color: #e6e8ec; font-weight: 600; margin: 0; }
+#JellyfinMedicPage .md-details[open] summary { margin-bottom: 12px; }
+#JellyfinMedicPage .md-icon-btn { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid #3a3e46; border-radius: 8px; color: #c4c9d2; cursor: pointer; }
+#JellyfinMedicPage .md-icon-btn:disabled { opacity: 0.35; cursor: default; }
+#JellyfinMedicPage .md-range { color: #c4c9d2; }
+#JellyfinMedicPage .md-seg { display: inline-flex; background: #1f2228; border: 1px solid #30343c; border-radius: 10px; padding: 3px; }
+#JellyfinMedicPage .md-seg button { min-height: 34px; padding: 0 14px; border: none; border-radius: 8px; background: transparent; color: #b9bfc9; font: inherit; cursor: pointer; }
+#JellyfinMedicPage .md-seg button[aria-pressed="true"] { background: #3a4150; color: #fff; }
+#JellyfinMedicPage .md-banner { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 10px; background: #2b2412; border: 1px solid #5a4716; color: #ffd78a; flex-wrap: wrap; margin: 10px 0; }
+#JellyfinMedicPage .md-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85em; color: #c4c9d2; margin: 10px 0 14px; }
+#JellyfinMedicPage .md-legend span { display: inline-flex; align-items: center; gap: 8px; }
+#JellyfinMedicPage .md-sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; }
+#JellyfinMedicPage .md-hatch { background: repeating-linear-gradient(135deg, #ffb648 0 4px, #c97a18 4px 8px); }
+#JellyfinMedicPage .md-failed { width: 12px; height: 12px; background: #2a2d34; box-shadow: 0 0 0 2px #ff5a5f; }
+#JellyfinMedicPage .md-busy-sw { background: rgba(255, 120, 80, 0.35); }
+#JellyfinMedicPage .md-sched-body { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 18px; }
+#JellyfinMedicPage .md-timeline-card { flex: 1 1 720px; min-width: 0; background: #1b1d22; border: 1px solid #2a2d34; border-radius: 12px; padding: 12px 14px; }
+#JellyfinMedicPage .md-timeline { position: relative; min-width: 700px; }
+#JellyfinMedicPage .md-tl-head { position: relative; height: 26px; margin-left: 84px; font-family: ui-monospace, monospace; font-size: 0.72em; color: #8e95a1; }
+#JellyfinMedicPage .md-tl-head span { position: absolute; top: 4px; white-space: nowrap; }
+#JellyfinMedicPage .md-tl-row { display: flex; border-top: 1px solid #262930; }
+#JellyfinMedicPage .md-tl-row.is-today { background: #1f232a; }
+#JellyfinMedicPage .md-tl-row.is-past { opacity: 0.6; }
+#JellyfinMedicPage .md-tl-day { width: 84px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 6px; box-sizing: border-box; }
+#JellyfinMedicPage .md-tl-day strong { font-weight: 600; }
+#JellyfinMedicPage .md-tl-day span { font-size: 0.78em; color: #9aa1ac; }
+#JellyfinMedicPage .md-tl-row.is-today .md-tl-day strong { color: #7cc0ff; }
+#JellyfinMedicPage .md-tl-track { position: relative; flex-grow: 1; }
+#JellyfinMedicPage .md-tl-busy { position: absolute; top: 0; bottom: 0; background: rgb(255, 120, 80); pointer-events: none; }
+#JellyfinMedicPage .md-tl-avoid { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 6px, transparent 6px 12px); pointer-events: none; }
+#JellyfinMedicPage .md-tl-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #2a2d34; pointer-events: none; }
+#JellyfinMedicPage .md-tl-block { position: absolute; height: 26px; box-sizing: border-box; border: none; border-radius: 5px; padding: 0 6px; font-size: 0.72em; line-height: 26px; font-weight: 500; font-family: inherit; color: #111317; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+/* The chosen block: more than a ring, which is hard to see on light colours. */
+#JellyfinMedicPage .md-tl-block.is-selected { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; filter: brightness(1.15); z-index: 2; }
+#JellyfinMedicPage .md-tl-note { font-size: 0.72em; color: #9aa1ac; }
+#JellyfinMedicPage .md-tl-now { position: absolute; top: 20px; bottom: 0; width: 2px; margin-left: -1px; background: #ff4040; pointer-events: none; }
+#JellyfinMedicPage .md-tl-now-label { position: absolute; top: 0; transform: translateX(-50%); background: #c62828; color: #fff; font: 600 0.72em/18px ui-monospace, monospace; padding: 0 6px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
+#JellyfinMedicPage .md-detail { flex: 0 1 320px; min-width: 260px; background: #1b1d22; border: 1px solid #2a2d34; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; }
+#JellyfinMedicPage .md-detail h4 { margin: 0; font-size: 1.15em; }
+#JellyfinMedicPage .md-detail-type { display: flex; align-items: center; gap: 8px; color: #a7adb8; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.06em; }
+#JellyfinMedicPage .md-note { margin: 0; padding: 10px 12px; background: #23262d; border-radius: 8px; color: #d3d7de; font-size: 0.9em; line-height: 1.5; }
+#JellyfinMedicPage .md-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+#JellyfinMedicPage .md-inline-head { margin: 0; }
+#JellyfinMedicPage .md-form { display: flex; flex-direction: column; gap: 12px; }
+#JellyfinMedicPage .md-num { width: 90px; }
+#JellyfinMedicPage .md-export { width: 100%; min-height: 280px; font-family: ui-monospace, monospace; font-size: 0.8em; box-sizing: border-box; margin: 8px 0; }
+#JellyfinMedicPage .md-bar { height: 8px; background: #2a2d34; border-radius: 4px; overflow: hidden; min-width: 80px; }
+#JellyfinMedicPage .md-bar i { display: block; height: 100%; background: #6aa8ff; }
+#JellyfinMedicPage .md-setting { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-bottom: 1px solid #23262d; }
+#JellyfinMedicPage .md-help { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; border: 1px solid #3a3e46; background: transparent; color: #9fd0ff; font: 600 13px/1 'IBM Plex Sans', sans-serif; cursor: pointer; }
+#JellyfinMedicPage .md-help:hover, #JellyfinMedicPage .md-help[aria-expanded="true"] { background: #16324d; color: #cfe8ff; }
+#JellyfinMedicPage .md-help-text { margin: 0; padding: 10px 12px; background: #15171b; border-left: 3px solid #4fb3ff; border-radius: 6px; color: #c4c9d2; font-size: 0.88em; line-height: 1.5; }
+#JellyfinMedicPage .md-dir-cat { margin: 18px 0 8px; color: #7cc0ff; font-size: 0.95em; }
+#JellyfinMedicPage .md-dir-item { padding: 10px 0; border-top: 1px solid #262930; }
+#JellyfinMedicPage .md-dir-item a { font-weight: 600; }
+#JellyfinMedicPage .md-dir-desc { color: #c4c9d2; font-size: 0.9em; margin: 4px 0 0; }
+#JellyfinMedicPage .md-dir-tag { display: inline-block; font-size: 0.72em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 10px; margin-left: 8px; background: #333; color: #ccc; }
+#JellyfinMedicPage .md-dir-tag.Stale { background: #4a3a14; color: #ffd27a; }
+#JellyfinMedicPage .md-dir-tag.Beta { background: #16324d; color: #9fd0ff; }
+#JellyfinMedicPage .md-dir-tag.Paid { background: #3a2a4a; color: #d8b3ff; }
+#JellyfinMedicPage .md-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px; }
+#JellyfinMedicPage .md-modal-box { background: #1b1d22; border: 1px solid #2a2d34; border-radius: 12px; padding: 22px 24px; max-width: 540px; width: 100%; max-height: 80vh; overflow: auto; }
+#JellyfinMedicPage .md-modal-box h2 { margin: 0 0 12px; }
+#JellyfinMedicPage .md-modal-box h4 { margin: 14px 0 6px; color: #9fd0ff; }
+#JellyfinMedicPage .md-modal-box ul { margin: 0; padding-left: 18px; }
+#JellyfinMedicPage .md-modal-box li { margin: 3px 0; color: #d3d7de; }
+#JellyfinMedicPage .md-maint { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+#JellyfinMedicPage .md-maint-col { display: flex; flex-direction: column; gap: 8px; }
+#JellyfinMedicPage .md-expose-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+#JellyfinMedicPage .md-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8em; color: #a7adb8; }
+#JellyfinMedicPage .md-field.md-grow { flex: 1 1 200px; }
+#JellyfinMedicPage .md-field .so-input { min-width: 90px; }
+#JellyfinMedicPage .md-field.md-grow .so-input { width: 100%; box-sizing: border-box; }
+#JellyfinMedicPage .md-fulltext { margin-top: 6px; padding: 8px 10px; background: #15171b; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 0.82em; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; }
+#JellyfinMedicPage .md-warn-text { color: #ffd27a; }
+#JellyfinMedicPage .md-ok-text { color: #7fe0b5; }
+#JellyfinMedicPage .md-bad-text { color: #ff9a9e; }

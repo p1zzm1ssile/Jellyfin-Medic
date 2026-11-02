@@ -1,0 +1,61 @@
+# Every 15 minutes, sends a Telegram message for each new issue opened on any repo under the
+# account (not pull requests, and not issues you opened yourself).
+# Which issues have been sent lives in issues-seen.json on the issue-alerts-state branch, so main stays clean.
+# Uses the same two repo secrets as GitHub downloads: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
+
+name: GitHub issues
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: issue-alerts
+  cancel-in-progress: false
+
+env:
+  OWNER: 'P1zzm1ssile'
+  STATE: 'issues-seen.json'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+
+      - name: Check out the state branch
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --heads origin issue-alerts-state >/dev/null; then
+            git fetch --depth 1 origin issue-alerts-state
+            git worktree add state origin/issue-alerts-state
+          else
+            git worktree add --detach state
+            git -C state checkout --orphan issue-alerts-state
+            git -C state rm -rfq .
+          fi
+
+      - name: Send new issues to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/github-issues.py "$OWNER" "state/$STATE"
+
+      - name: Save what was sent
+        shell: bash
+        run: |
+          cd state
+          git add "$STATE"
+          git diff --cached --quiet && exit 0
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -qm "Note sent issues"
+          git push origin HEAD:issue-alerts-state

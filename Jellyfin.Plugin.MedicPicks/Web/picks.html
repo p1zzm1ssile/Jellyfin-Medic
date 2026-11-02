@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Your picks</title>
+<style>
+  :root {
+    --bg: #141a2a;
+    --surface: #1d2538;
+    --text: #e9edf5;
+    --muted: #9aa6bd;
+    --line: #2c3650;
+    --tag: #f3e3b3;
+    --tag-ink: #2a2318;
+    --accent: #00a4dc;
+    --brand: linear-gradient(90deg, #aa5cc3, #00a4dc);
+    --radius-poster: 6px;
+    --body: "Segoe UI", Roboto, "Noto Sans", system-ui, -apple-system, sans-serif;
+    --display: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", "Segoe UI", sans-serif;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f2f4f9;
+      --surface: #ffffff;
+      --text: #141a2a;
+      --muted: #56607a;
+      --line: #d9deea;
+      --accent: #0079a8;
+    }
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body { font: 16px/1.5 var(--body); -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 16px 20px 48px; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .back { text-decoration: none; font-weight: 600; padding: 8px 0; }
+  .updated { color: var(--muted); font-size: 0.875rem; }
+
+  h1 {
+    font-family: var(--display);
+    font-stretch: condensed;
+    font-weight: 700;
+    font-size: clamp(2.25rem, 7vw, 4rem);
+    line-height: 1;
+    letter-spacing: -0.01em;
+    margin: 28px 0 8px;
+  }
+  h1::after {
+    content: "";
+    display: block;
+    width: 72px;
+    height: 4px;
+    margin-top: 14px;
+    border-radius: 2px;
+    background: var(--brand);
+  }
+  .lede { color: var(--muted); max-width: 60ch; margin: 0 0 8px; }
+
+  section { margin-top: 40px; }
+  h2 {
+    font-family: var(--display);
+    font-stretch: condensed;
+    font-weight: 700;
+    font-size: 1.75rem;
+    line-height: 1.1;
+    margin: 0 0 4px;
+  }
+  .section-note { color: var(--muted); margin: 0 0 18px; max-width: 65ch; }
+
+  .shelf {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 28px 18px;
+  }
+  @media (max-width: 420px) {
+    .shelf { grid-template-columns: repeat(2, 1fr); gap: 24px 14px; }
+  }
+
+  .pick { display: flex; flex-direction: column; min-width: 0; }
+  .poster-link { display: block; color: inherit; text-decoration: none; }
+  .poster {
+    aspect-ratio: 2 / 3;
+    width: 100%;
+    border-radius: var(--radius-poster);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    object-fit: cover;
+    display: block;
+  }
+  .poster.missing {
+    display: flex;
+    align-items: flex-end;
+    padding: 10px;
+    font-family: var(--display);
+    font-stretch: condensed;
+    font-weight: 700;
+    font-size: 1.1rem;
+    line-height: 1.15;
+    color: var(--muted);
+  }
+  .title { font-weight: 600; margin: 10px 0 0; line-height: 1.3; overflow-wrap: anywhere; }
+  .year { color: var(--muted); font-weight: 400; }
+
+  /* The shelf talker: the one loud thing on the page. */
+  .talker {
+    margin-top: 8px;
+    background: var(--tag);
+    color: var(--tag-ink);
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    padding: 7px 9px 8px;
+    border-radius: 2px 2px 8px 2px;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  }
+
+  .overview { color: var(--muted); font-size: 0.8125rem; margin: 8px 0 0; }
+  .overview summary { cursor: pointer; color: var(--text); }
+
+  .action {
+    margin-top: 10px;
+    align-self: flex-start;
+    display: inline-block;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-decoration: none;
+  }
+  .action:hover { background: var(--accent); color: var(--bg); }
+
+  .prefs { margin: 20px 0 0; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; max-width: 760px; }
+  .prefs-row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  .prefs-row + .prefs-row, .genres { margin-top: 12px; }
+  .field { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; }
+  .field select {
+    font: inherit; font-weight: 400; color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-height: 36px;
+  }
+  .genres summary { cursor: pointer; font-weight: 600; }
+  .genre-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; margin-top: 10px; }
+  .genre-group { margin: 14px 0 0; font-weight: 600; color: var(--muted); font-size: 0.875rem; }
+  .genre-list label { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; min-height: 28px; }
+  .genre-list input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .link-btn { background: none; border: 0; padding: 4px 0; color: var(--accent); font: inherit; font-size: 0.875rem; cursor: pointer; text-decoration: underline; }
+  .not-interested { align-self: flex-start; margin-top: 6px; font-size: 0.8125rem; color: var(--muted); text-align: left; }
+  .toggle { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; cursor: pointer; }
+  .toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .prefs-note { color: var(--muted); font-size: 0.875rem; }
+  .chip { align-self: flex-start; margin-top: 8px; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  button.action { background: transparent; font: inherit; font-weight: 600; font-size: 0.875rem; cursor: pointer; }
+  button.action:disabled { cursor: default; opacity: 0.75; }
+  .request-msg { font-size: 0.8125rem; color: var(--muted); margin: 6px 0 0; }
+
+
+  /* Requests: a compact list, not a shelf, since it's about status rather than browsing. */
+  .requests { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; max-width: 760px; }
+  .req {
+    display: grid; grid-template-columns: 56px 1fr auto; gap: 4px 14px; align-items: center;
+    padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  }
+  .req > * { grid-column: 2; }
+  .req .poster { grid-column: 1; grid-row: 1 / span 3; align-self: start; width: 56px; border-radius: 4px; }
+  .req .poster.missing { font-size: 0.7rem; padding: 4px; overflow: hidden; overflow-wrap: anywhere; }
+  .req-title { font-weight: 600; margin: 0; line-height: 1.3; overflow-wrap: anywhere; }
+  .req-state { margin: 0; font-size: 0.875rem; color: var(--muted); }
+  .req-state strong { color: var(--text); font-weight: 600; }
+  .req[data-state="trouble"] { border-color: #c98a2b; }
+  .req[data-state="trouble"] .req-state strong { color: #e0a54a; }
+  .req[data-state="available"] .req-state strong, .req[data-state="partial"] .req-state strong { color: #4cc38a; }
+  .req > .req-actions { grid-column: 3; grid-row: 1 / span 3; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .req-actions .action { margin-top: 0; }
+  .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; max-width: 320px; }
+  .bar > span { display: block; height: 100%; background: var(--brand); }
+  .req-msg { font-size: 0.8125rem; color: var(--muted); margin: 0; }
+  @media (max-width: 520px) {
+    .req { grid-template-columns: 48px 1fr; }
+    .req .poster { width: 48px; }
+    .req > .req-actions { grid-row: auto; grid-column: 2; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  }
+
+  .message {
+    margin-top: 40px;
+    padding: 20px;
+    border-left: 4px solid var(--accent);
+    background: var(--surface);
+    max-width: 60ch;
+  }
+  .message p { margin: 0 0 8px; }
+  .message p:last-child { margin: 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="back" href="../web/">Back to Jellyfin</a>
+    <span class="updated" id="updated"></span>
+  </div>
+
+  <h1 id="heading">Your picks</h1>
+  <p class="lede" id="lede">Chosen from what you've been watching. They're rebuilt every night.</p>
+  <form class="prefs" id="prefs" hidden>
+    <div class="prefs-row">
+      <label class="field"><span>Show</span>
+        <select id="kind">
+          <option value="all">Films and series</option>
+          <option value="movies">Films only</option>
+          <option value="series">Series only</option>
+        </select>
+      </label>
+      <label class="field"><span>How many</span><select id="count"></select></label>
+      <label class="toggle"><input type="checkbox" id="dub-only"> <span>Dubbed audio only</span></label>
+    </div>
+    <details class="genres" id="genres-box" hidden>
+      <summary id="genres-summary">Genres: any</summary>
+      <div class="genre-list" id="genre-list"></div>
+      <p class="genre-group" id="seasonal-heading" hidden>Seasonal</p>
+      <div class="genre-list" id="genre-seasonal"></div>
+      <button type="button" class="link-btn" id="genres-clear">Clear genres</button>
+    </details>
+    <div class="prefs-row">
+      <button type="submit" class="action" id="apply">Update my picks</button>
+      <button type="button" class="link-btn" id="more">Show me different ones</button>
+      <span class="prefs-note" id="prefs-note" aria-live="polite"></span>
+    </div>
+    <p class="prefs-note" id="few-note" hidden></p>
+    <p class="prefs-note" id="hidden-note" hidden>
+      <span id="hidden-count"></span>
+      <button type="button" class="link-btn" id="unhide">Show them again</button>
+    </p>
+  </form>
+
+  <div class="message" id="message" hidden></div>
+
+  <section id="approvals-section" hidden>
+    <h2>Waiting for your approval</h2>
+    <p class="section-note">Everyone&rsquo;s requests waiting for approval in Seerr. You see these because you&rsquo;re an admin.</p>
+    <ul class="requests" id="approvals"></ul>
+  </section>
+
+  <section id="requests-section" hidden>
+    <h2>My requests</h2>
+    <p class="section-note" id="requests-note">What you&rsquo;ve asked for and where it&rsquo;s got to. This updates by itself while anything is downloading.</p>
+    <ul class="requests" id="requests"></ul>
+  </section>
+
+  <section id="library-section" hidden>
+    <h2>On your server</h2>
+    <p class="section-note" id="library-note">Ready to watch now.</p>
+    <ul class="shelf" id="library"></ul>
+  </section>
+
+  <section id="linked-section" hidden>
+    <h2>Linked to what you&rsquo;ve watched</h2>
+    <p class="section-note">From the same world: a series&rsquo; films, the rest of a collection, the same franchise. On your server now.</p>
+    <ul class="shelf" id="linked"></ul>
+  </section>
+
+  <section id="discover-section" hidden>
+    <h2>Not on the server yet</h2>
+    <p class="section-note" id="discover-note"></p>
+    <ul class="shelf" id="discover"></ul>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var VERSION = '__MEDIC_PICKS_VERSION__'; // filled in with the plugin's version when the page is served
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function show(id) { document.getElementById(id).hidden = false; }
+
+  function message(lines) {
+    var box = document.getElementById('message');
+    box.textContent = '';
+    lines.forEach(function (line) { box.appendChild(el('p', null, line)); });
+    box.hidden = false;
+  }
+
+  // The Jellyfin web client (also used by Jellyfin Desktop and the Android/iOS apps)
+  // keeps the signed-in session in localStorage on this same address.
+  function getSession() {
+    try {
+      var creds = JSON.parse(localStorage.getItem('jellyfin_credentials') || '{}');
+      var servers = (creds.Servers || []).filter(function (s) { return s.AccessToken && s.UserId; });
+      servers.sort(function (a, b) { return (b.DateLastAccessed || 0) - (a.DateLastAccessed || 0); });
+      return servers[0] || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function authHeader(session) {
+    var deviceId = 'medic-picks-web';
+    try { deviceId = localStorage.getItem('_deviceId2') || deviceId; } catch (e) { /* ignore */ }
+    var q = function (v) { return String(v).replace(/"/g, ''); };
+    return 'MediaBrowser Client="Medic Picks", Device="Web", DeviceId="' + q(deviceId) +
+      '", Version="' + VERSION + '", Token="' + q(session.AccessToken) + '"';
+  }
+
+  function getJson(url, session) {
+    return fetch(url, { headers: { 'Authorization': authHeader(session), 'Accept': 'application/json' } })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 403) throw new Error('auth');
+        if (!r.ok) throw new Error('http ' + r.status);
+        return r.json();
+      });
+  }
+
+  function titleLine(name, year) {
+    var p = el('p', 'title', name);
+    if (year) {
+      p.appendChild(document.createTextNode(' '));
+      p.appendChild(el('span', 'year', '(' + year + ')'));
+    }
+    return p;
+  }
+
+  function poster(src, alt, fallbackText) {
+    if (!src) {
+      return el('div', 'poster missing', fallbackText);
+    }
+    var img = el('img', 'poster');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.alt = alt;
+    img.src = src;
+    img.addEventListener('error', function () {
+      img.replaceWith(el('div', 'poster missing', fallbackText));
+    });
+    return img;
+  }
+
+  function renderLibrary(items, session, listId) {
+    var list = document.getElementById(listId || 'library');
+    items.forEach(function (pick) {
+      var li = el('li', 'pick');
+      var link = el('a', 'poster-link');
+      link.href = '../web/#/details?id=' + encodeURIComponent(pick.itemId) +
+        (session.Id ? '&serverId=' + encodeURIComponent(session.Id) : '');
+      link.appendChild(poster('../Items/' + encodeURIComponent(pick.itemId) + '/Images/Primary?fillWidth=320&quality=90',
+        'Poster for ' + pick.name, pick.name));
+      link.appendChild(titleLine(pick.name, pick.year));
+      li.appendChild(link);
+      if (pick.reason) li.appendChild(el('div', 'talker', pick.reason));
+      li.appendChild(notInterested(li, { itemId: pick.itemId }, session));
+      list.appendChild(li);
+    });
+  }
+
+  function postJson(url, body, session) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': authHeader(session), 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (r.status === 401 || r.status === 403) throw new Error('auth');
+      if (!r.ok) throw new Error('http ' + r.status);
+      return r.status === 204 ? null : r.json();
+    });
+  }
+
+  var hiddenCount = 0;
+
+  function updateHiddenNote() {
+    document.getElementById('hidden-count').textContent =
+      hiddenCount === 1 ? 'You\u2019ve ignored 1 title, so it won\u2019t be recommended again.' : 'You\u2019ve ignored ' + hiddenCount + ' titles, so they won\u2019t be recommended again.';
+    document.getElementById('hidden-note').hidden = hiddenCount === 0;
+  }
+
+  // "Ignore": hides the title straight away, and it's never recommended again (until "Show them again").
+  function notInterested(li, body, session) {
+    var btn = el('button', 'link-btn not-interested', 'Ignore \u2013 don\u2019t recommend again');
+    btn.type = 'button';
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      postJson('Me/Hide', body, session)
+        .then(function () {
+          li.remove();
+          hiddenCount++;
+          updateHiddenNote();
+        })
+        .catch(function () {
+          btn.disabled = false;
+          btn.textContent = 'Couldn\u2019t ignore it. Try again';
+        });
+    });
+    return btn;
+  }
+
+  function requestButton(pick, type, session) {
+    var wrap = document.createDocumentFragment();
+    var btn = el('button', 'action', 'Request');
+    btn.type = 'button';
+    var note = el('p', 'request-msg');
+    note.setAttribute('aria-live', 'polite');
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      btn.textContent = 'Requesting\u2026';
+      note.textContent = '';
+      postJson('Request', { tmdbId: pick.tmdbId, mediaType: type }, session)
+        .then(function (r) {
+          var st = r && r.status;
+          if (st === 'approved' || st === 'requested' || st === 'exists') {
+            btn.textContent = st === 'exists' ? 'Already requested' : 'Requested \u2713';
+            note.textContent = st === 'exists' ? '' : r.message;
+            refreshRequests();
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Request';
+            note.textContent = (r && r.message) || 'Couldn\u2019t request it just now.';
+          }
+        })
+        .catch(function () {
+          btn.disabled = false;
+          btn.textContent = 'Request';
+          note.textContent = 'Couldn\u2019t request it just now.';
+        });
+    });
+    wrap.appendChild(btn);
+    wrap.appendChild(note);
+    return wrap;
+  }
+
+  function renderDiscover(items, data, session) {
+    var list = document.getElementById('discover');
+    var prefs = data.preferences || {};
+    items.forEach(function (pick) {
+      var li = el('li', 'pick');
+      var src = pick.posterPath ? 'https://image.tmdb.org/t/p/w342' + pick.posterPath : null;
+      li.appendChild(poster(src, 'Poster for ' + pick.title, pick.title));
+      li.appendChild(titleLine(pick.title, pick.year));
+      if (pick.becauseOf) li.appendChild(el('div', 'talker', 'Because you watched ' + pick.becauseOf));
+      if (prefs.dubbedOnly && pick.originalLanguage && pick.originalLanguage !== data.dubLanguageCode) {
+        li.appendChild(el('span', 'chip', (data.dubLanguage || 'English') + ' audio not confirmed'));
+      }
+
+      if (pick.overview) {
+        var details = el('details', 'overview');
+        details.appendChild(el('summary', null, 'What it\u2019s about'));
+        details.appendChild(el('p', null, pick.overview));
+        li.appendChild(details);
+      }
+
+      var type = pick.mediaType === 'tv' ? 'tv' : 'movie';
+      if (data.requestMode === 'direct') {
+        li.appendChild(requestButton(pick, type, session));
+      } else {
+        var action = el('a', 'action');
+        action.rel = 'noopener';
+        action.target = '_blank';
+        if (data.requestMode === 'link' && data.seerrUrl) {
+          action.href = data.seerrUrl + '/' + type + '/' + encodeURIComponent(pick.tmdbId);
+          action.textContent = 'Request in Seerr';
+        } else {
+          action.href = 'https://www.themoviedb.org/' + type + '/' + encodeURIComponent(pick.tmdbId);
+          action.textContent = 'Read more on TMDb';
+        }
+        li.appendChild(action);
+      }
+      li.appendChild(notInterested(li, { tmdbId: pick.tmdbId, mediaType: type }, session));
+      list.appendChild(li);
+    });
+  }
+
+
+  // ---- Requests: where each of this person's Seerr requests has got to ----
+
+  var isAdmin = false;
+  var requestsTimer = null;
+  var MOVING = ['downloading', 'partial', 'queued', 'searching', 'pending', 'trouble'];
+
+  function formatEta(iso) {
+    var when = new Date(iso);
+    var mins = Math.round((when - new Date()) / 60000);
+    if (!(mins > 0)) return 'should be ready any moment';
+    var sameDay = when.toDateString() === new Date().toDateString();
+    var at = sameDay
+      ? when.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+      : when.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    var left = mins < 60 ? mins + ' min' : mins < 48 * 60 ? Math.round(mins / 60) + ' h' : Math.round(mins / 1440) + ' days';
+    return 'ready around ' + at + ' (about ' + left + ')';
+  }
+
+  function requestPoster(r) {
+    var src = r.posterPath ? 'https://image.tmdb.org/t/p/w154' + r.posterPath : null;
+    return poster(src, 'Poster for ' + r.title, r.title);
+  }
+
+  function requestRow(r) {
+    var li = el('li', 'req');
+    li.setAttribute('data-state', r.state);
+    li.appendChild(requestPoster(r));
+
+    var title = el('p', 'req-title', r.title);
+    if (r.year) {
+      title.appendChild(document.createTextNode(' '));
+      title.appendChild(el('span', 'year', '(' + r.year + ')'));
+    }
+    if (r.is4k) title.appendChild(document.createTextNode(' · 4K'));
+    li.appendChild(title);
+
+    var state = el('p', 'req-state');
+    state.appendChild(el('strong', null, r.stateText));
+    var extra = [];
+    if (r.detail) extra.push(r.detail);
+    if (r.progress != null && (r.state === 'downloading' || r.state === 'partial')) extra.push(r.progress + '%');
+    if (r.etaUtc && (r.state === 'downloading' || r.state === 'partial')) extra.push(formatEta(r.etaUtc));
+    if (r.requestedBy) extra.push('asked for by ' + r.requestedBy);
+    if (extra.length) state.appendChild(document.createTextNode(' · ' + extra.join(' · ')));
+    li.appendChild(state);
+
+    if (r.progress != null && (r.state === 'downloading' || r.state === 'partial')) {
+      var bar = el('div', 'bar');
+      bar.setAttribute('role', 'progressbar');
+      bar.setAttribute('aria-valuemin', '0');
+      bar.setAttribute('aria-valuemax', '100');
+      bar.setAttribute('aria-valuenow', String(r.progress));
+      bar.setAttribute('aria-label', 'Downloaded');
+      var fill = el('span');
+      fill.style.width = r.progress + '%';
+      bar.appendChild(fill);
+      li.appendChild(bar);
+    }
+    return li;
+  }
+
+  function playLink(r) {
+    var a = el('a', 'action', 'Play');
+    a.href = '../web/#/details?id=' + encodeURIComponent(r.playItemId) +
+      (session.Id ? '&serverId=' + encodeURIComponent(session.Id) : '');
+    return a;
+  }
+
+  function renderRequests(data) {
+    var list = document.getElementById('requests');
+    list.textContent = '';
+    if (!data || !data.enabled) {
+      document.getElementById('requests-section').hidden = true;
+      return false;
+    }
+
+    var note = document.getElementById('requests-note');
+    if (!data.linked) {
+      note.textContent = 'Sign in to Seerr once with your Jellyfin login, and your requests will show here.';
+    } else if (!data.reachable) {
+      note.textContent = 'Couldn’t reach Seerr just now, so your requests can’t be shown. This page tries again by itself.';
+    } else {
+      note.textContent = 'What you’ve asked for and where it’s got to. This updates by itself while anything is downloading.';
+    }
+
+    var rows = data.requests || [];
+    rows.forEach(function (r) {
+      var li = requestRow(r);
+      if (r.playItemId) {
+        var actions = el('div', 'req-actions');
+        actions.appendChild(playLink(r));
+        li.appendChild(actions);
+      }
+      list.appendChild(li);
+    });
+
+    // Show the section when there's something to show, or something to explain.
+    document.getElementById('requests-section').hidden = rows.length === 0 && data.linked && data.reachable;
+    return !data.reachable || rows.some(function (r) { return MOVING.indexOf(r.state) >= 0; });
+  }
+
+  function approvalButtons(r, li) {
+    var actions = el('div', 'req-actions');
+    var msg = el('p', 'req-msg');
+    msg.setAttribute('aria-live', 'polite');
+    function button(text, verb) {
+      var b = el('button', 'action', text);
+      b.type = 'button';
+      b.addEventListener('click', function () {
+        actions.querySelectorAll('button').forEach(function (x) { x.disabled = true; });
+        msg.textContent = verb === 'Approve' ? 'Approving…' : 'Declining…';
+        postJson('Admin/Requests/' + encodeURIComponent(r.id) + '/' + verb, {}, session)
+          .then(function (res) {
+            if (res && res.ok) {
+              li.remove();
+              if (!document.getElementById('approvals').children.length) {
+                document.getElementById('approvals-section').hidden = true;
+              }
+              refreshRequests();
+            } else {
+              msg.textContent = (res && res.message) || 'That didn’t work. Try again.';
+              actions.querySelectorAll('button').forEach(function (x) { x.disabled = false; });
+            }
+          })
+          .catch(function () {
+            msg.textContent = 'That didn’t work. Try again.';
+            actions.querySelectorAll('button').forEach(function (x) { x.disabled = false; });
+          });
+      });
+      return b;
+    }
+    actions.appendChild(button('Approve', 'Approve'));
+    actions.appendChild(button('Decline', 'Decline'));
+    actions.appendChild(msg);
+    return actions;
+  }
+
+  function renderApprovals(data) {
+    var list = document.getElementById('approvals');
+    list.textContent = '';
+    var rows = (data && data.enabled && data.requests) || [];
+    rows.forEach(function (r) {
+      var li = requestRow(r);
+      li.appendChild(approvalButtons(r, li));
+      list.appendChild(li);
+    });
+    document.getElementById('approvals-section').hidden = rows.length === 0;
+  }
+
+  function refreshRequests() {
+    clearTimeout(requestsTimer);
+    var mine = getJson('Me/Requests', session).then(renderRequests).catch(function () { return false; });
+    var theirs = isAdmin
+      ? getJson('Admin/Requests', session).then(function (d) { renderApprovals(d); return rowsOf(d).length > 0; }).catch(function () { return false; })
+      : Promise.resolve(false);
+    return Promise.all([mine, theirs]).then(function (moving) {
+      // Keep it current while something's on its way; stop once everything has settled.
+      if (moving[0] || moving[1]) {
+        requestsTimer = setTimeout(function () {
+          if (document.hidden) {
+            document.addEventListener('visibilitychange', function again() {
+              document.removeEventListener('visibilitychange', again);
+              refreshRequests();
+            });
+          } else {
+            refreshRequests();
+          }
+        }, 60000);
+      }
+    });
+  }
+
+  function rowsOf(d) { return (d && d.enabled && d.requests) || []; }
+
+  var session = getSession();
+  if (!session) {
+    message([
+      'Sign in to Jellyfin first, then open this page again.',
+      'If you\u2019re already signed in, open Jellyfin in this same browser or app and come back from the menu link.'
+    ]);
+    return;
+  }
+
+  getJson('../Users/Me', session)
+    .then(function (me) {
+      if (me && me.Name) {
+        document.getElementById('heading').textContent = 'Picks for ' + me.Name;
+        document.title = 'Picks for ' + me.Name;
+      }
+      isAdmin = !!(me && me.Policy && me.Policy.IsAdministrator);
+    })
+    .catch(function () { /* the heading falls back to "Your picks" */ })
+    .then(refreshRequests);
+
+  var lastGenerated = null;
+
+  function render(data) {
+    lastGenerated = data.generatedUtc || null;
+    document.getElementById('message').hidden = true;
+    document.getElementById('library').textContent = '';
+    document.getElementById('discover').textContent = '';
+    document.getElementById('linked').textContent = '';
+    document.getElementById('library-section').hidden = true;
+    document.getElementById('linked-section').hidden = true;
+    document.getElementById('discover-section').hidden = true;
+
+    if (data.generatedUtc) {
+      var when = new Date(data.generatedUtc);
+      document.getElementById('updated').textContent =
+        'Updated ' + when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+
+    var prefs = data.preferences || {};
+    fillPrefs(data, prefs);
+    show('prefs');
+
+    var lib = data.inLibrary || [];
+    var disc = data.discover || [];
+    var linked = data.linked || [];
+
+    // Say so when fewer titles match than were asked for, so it doesn't look as if nothing happened.
+    var wanted = prefs.count || data.defaultCount || 0;
+    var fewNote = document.getElementById('few-note');
+    fewNote.hidden = !(lib.length && wanted && lib.length < wanted);
+    fewNote.textContent = lib.length === 1
+      ? 'Only 1 title on the server matches these choices. Choose more genres, or films and series, to see more.'
+      : 'Only ' + lib.length + ' titles on the server match these choices. Choose more genres, or films and series, to see more.';
+
+    if (lib.length) {
+      if (data.playlistName) {
+        document.getElementById('library-note').textContent =
+          'Ready to watch now. They\u2019re also in your playlist \u201c' + data.playlistName +
+          '\u201d, which you\u2019ll find in every Jellyfin app.';
+      }
+      renderLibrary(lib, session);
+      show('library-section');
+    }
+
+    if (linked.length) {
+      renderLibrary(linked, session, 'linked');
+      show('linked-section');
+    }
+
+    if (disc.length) {
+      document.getElementById('discover-note').textContent = data.requestMode === 'direct'
+        ? 'Press Request and it goes straight to Seerr under your own account, so your usual request limits apply.'
+        : data.requestMode === 'link'
+          ? 'Ask for any of these in Seerr, and they\u2019ll be added once they\u2019re approved.'
+          : 'Titles you might like that aren\u2019t here. Mention any you\u2019d want to whoever runs this server.';
+      renderDiscover(disc, data, session);
+      show('discover-section');
+    }
+
+    if (!lib.length && !disc.length && !linked.length) {
+      message([data.note || 'Nothing to suggest yet. Picks are built overnight from what you watch.']);
+    }
+  }
+
+  function load() {
+    return getJson('Me', session).then(render);
+  }
+
+  function dubNote(data) {
+    return 'Dubbed audio only: on your server, only titles with ' + (data.dubLanguage || 'English') +
+      ' audio. Titles not on the server yet that may not have it are marked.';
+  }
+
+  var lastData = null;
+
+  function fillPrefs(data, prefs) {
+    lastData = data;
+    document.getElementById('kind').value = prefs.kind || 'all';
+    document.getElementById('dub-only').checked = !!prefs.dubbedOnly;
+
+    var choices = data.countChoices || [5, 10, 15, 20, 25, 30];
+    var count = prefs.count || data.defaultCount || 20;
+    if (choices.indexOf(count) < 0) {
+      // The server's default isn't one of the choices: pick the nearest.
+      count = choices.reduce(function (a, b) { return Math.abs(b - count) < Math.abs(a - count) ? b : a; });
+    }
+    var select = document.getElementById('count');
+    select.textContent = '';
+    choices.forEach(function (n) {
+      var o = el('option', null, String(n));
+      o.value = String(n);
+      select.appendChild(o);
+    });
+    select.value = String(count);
+
+    var lower = function (list) { return list.map(function (x) { return x.toLowerCase(); }); };
+    var chosen = lower(prefs.genres || []);
+    var seasonal = (data.seasonalGenres || []).slice();
+    var genres = (data.availableGenres || []).slice();
+    // Keep any saved choice that's no longer in either list, so it can still be unticked.
+    (prefs.genres || []).forEach(function (g) {
+      if (lower(genres).indexOf(g.toLowerCase()) < 0 && lower(seasonal).indexOf(g.toLowerCase()) < 0) genres.push(g);
+    });
+
+    function fill(id, names) {
+      var list = document.getElementById(id);
+      list.textContent = '';
+      names.forEach(function (g) {
+        var label = el('label');
+        var box = el('input');
+        box.type = 'checkbox';
+        box.value = g;
+        box.checked = chosen.indexOf(g.toLowerCase()) >= 0;
+        box.addEventListener('change', genreSummary);
+        label.appendChild(box);
+        label.appendChild(el('span', null, g));
+        list.appendChild(label);
+      });
+    }
+
+    fill('genre-list', genres);
+    fill('genre-seasonal', seasonal);
+    document.getElementById('seasonal-heading').hidden = seasonal.length === 0;
+    document.getElementById('genres-box').hidden = genres.length + seasonal.length === 0;
+    genreSummary();
+
+    hiddenCount = (prefs.hiddenItems || []).length + (prefs.hiddenTmdb || []).length;
+    updateHiddenNote();
+    document.getElementById('prefs-note').textContent = prefs.dubbedOnly ? dubNote(data) : '';
+  }
+
+  function chosenGenres() {
+    return Array.prototype.slice.call(document.querySelectorAll('#genres-box input:checked'))
+      .map(function (b) { return b.value; });
+  }
+
+  function genreSummary() {
+    var g = chosenGenres();
+    document.getElementById('genres-summary').textContent =
+      g.length === 0 ? 'Genres: any' : 'Genres: ' + (g.length <= 3 ? g.join(', ') : g.length + ' chosen');
+  }
+
+  document.getElementById('genres-clear').addEventListener('click', function () {
+    document.querySelectorAll('#genres-box input').forEach(function (b) { b.checked = false; });
+    genreSummary();
+  });
+
+  // Saving the choices rebuilds this person's picks straight away. Poll until the server says the rebuild
+  // has finished (it saves part-way through, so a new timestamp alone isn't enough), for up to 3 minutes.
+  // A rebuild that works always saves a new timestamp, so a finished one without it failed.
+  function rebuildAndWait(send, busyText) {
+    var note = document.getElementById('prefs-note');
+    var buttons = [document.getElementById('apply'), document.getElementById('more')];
+    var setBusy = function (busy) { buttons.forEach(function (b) { b.disabled = busy; }); };
+    setBusy(true);
+    note.textContent = busyText;
+    var before = lastGenerated;
+    var started = Date.now();
+    send()
+      .then(function () {
+        (function poll() {
+          var secs = Math.round((Date.now() - started) / 1000);
+          getJson('Me', session).then(function (data) {
+            var done = !data.rebuilding;
+            if (done || secs >= 180) {
+              render(data);
+              setBusy(false);
+              var n = (data.inLibrary || []).length + (data.linked || []).length + (data.discover || []).length;
+              note.textContent = !done
+                ? 'Still working on your picks. They\u2019ll appear when you reload this page.'
+                : (data.generatedUtc || null) !== before
+                  ? 'Updated just now: ' + n + (n === 1 ? ' pick.' : ' picks.')
+                  : 'Couldn\u2019t update your picks just now, so they\u2019re as they were.';
+            } else {
+              note.textContent = busyText + (secs >= 5 ? ' (' + secs + 's)' : '');
+              setTimeout(poll, 1500);
+            }
+          }).catch(function () {
+            setBusy(false);
+            note.textContent = 'Couldn\u2019t check on your picks just now. Reload the page to see them.';
+          });
+        })();
+      })
+      .catch(function () {
+        setBusy(false);
+        note.textContent = 'Couldn\u2019t save that just now. Try again.';
+      });
+  }
+
+  document.getElementById('prefs').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var body = {
+      kind: document.getElementById('kind').value,
+      count: parseInt(document.getElementById('count').value, 10) || 0,
+      dubbedOnly: document.getElementById('dub-only').checked,
+      genres: chosenGenres()
+    };
+    rebuildAndWait(function () { return postJson('Me/Preferences', body, session); }, 'Updating your picks\u2026');
+  });
+
+  document.getElementById('more').addEventListener('click', function () {
+    rebuildAndWait(function () { return postJson('Me/More', {}, session); }, 'Finding different ones\u2026');
+  });
+
+  document.getElementById('unhide').addEventListener('click', function () {
+    rebuildAndWait(function () { return postJson('Me/Unhide', {}, session); }, 'Bringing ignored titles back\u2026');
+  });
+
+  document.getElementById('dub-only').addEventListener('change', function () {
+    document.getElementById('prefs-note').textContent = this.checked && lastData ? dubNote(lastData) : '';
+  });
+
+  load().catch(function (err) {
+    if (err && err.message === 'auth') {
+      message(['Your Jellyfin sign-in has expired. Sign in again, then reopen this page.']);
+    } else {
+      message([
+        'Picks couldn\u2019t be loaded from the server.',
+        'Check that the Medic Picks plugin is installed and enabled, then reload this page.'
+      ]);
+    }
+  });
+})();
+</script>
+</body>
+</html>

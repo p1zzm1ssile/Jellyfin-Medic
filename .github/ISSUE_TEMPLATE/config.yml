@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Something private, or a security problem
+    url: https://github.com/P1zzm1ssile/Jellyfin-Medic#about-this-project
+    about: Please don't open a public issue. Email the address under "About this project" in the README.
+  - name: A problem with Jellyfin itself
+    url: https://github.com/jellyfin/jellyfin/issues
+    about: If it isn't one of these plugins, report it to Jellyfin.

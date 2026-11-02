@@ -1,0 +1,873 @@
+using MediaBrowser.Common.Api;
+using MediaBrowser.Common.Configuration;
+using MediaBrowser.Common.Plugins;
+using MediaBrowser.Common.Updates;
+using MediaBrowser.Controller;
+using MediaBrowser.Controller.Configuration;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Controller.Session;
+using MediaBrowser.Model.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using System.Text;
+using JellyfinMedic.Services;
+
+namespace JellyfinMedic.Api;
+
+[ApiController]
+[Route("JellyfinMedic")]
+[Authorize(Policy = Policies.RequiresElevation)] // Admins only: shows server paths and settings, and runs tests.
+public class MedicController : ControllerBase
+{
+    // Only one test at a time, so two tests can't compete for the GPU or the connection.
+    private static readonly SemaphoreSlim TestLock = new(1, 1);
+
+    private readonly IServerConfigurationManager _config;
+    private readonly IApplicationPaths _paths;
+    private readonly ILibraryManager _library;
+    private readonly IPluginManager _pluginManager;
+    private readonly IMediaEncoder _mediaEncoder;
+    private readonly IUserManager _users;
+    private readonly ISessionManager _sessions;
+    private readonly IInstallationManager _installs;
+    private readonly object? _activity;
+    private readonly ITaskManager _tasks;
+    private readonly IServerApplicationHost _host;
+    private readonly DiagnosticsEngine _engine;
+
+    public MedicController(
+        IServerConfigurationManager config,
+        IApplicationPaths paths,
+        ILibraryManager library,
+        ITaskManager tasks,
+        IPluginManager pluginManager,
+        IServerApplicationHost host,
+        IMediaEncoder mediaEncoder,
+        IUserManager users,
+        ISessionManager sessions,
+        IInstallationManager installs,
+        IServiceProvider services,
+        ILoggerFactory loggerFactory)
+    {
+        _users = users;
+        _activity = SecurityAuditor.ResolveActivityManager(services);
+        _sessions = sessions;
+        _installs = installs;
+        _tasks = tasks;
+        _host = host;
+        TrackLanguages.Init(paths.PluginConfigurationsPath);
+        WeeklyLedger.Init(paths.PluginConfigurationsPath);
+        _config = config;
+        _paths = paths;
+        _library = library;
+        _pluginManager = pluginManager;
+        _mediaEncoder = mediaEncoder;
+        _engine = new DiagnosticsEngine(config, paths, library, tasks, pluginManager, host, loggerFactory.CreateLogger<DiagnosticsEngine>());
+    }
+
+    /// <summary>Full check: specs plus every finding, most serious first.</summary>
+    [HttpGet("Report")]
+    public async Task<ActionResult<DiagnosticReport>> GetReport(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await BuildReportAsync(cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The browser closed the connection, so nobody reads the answer. Letting the exception out would
+            // have Jellyfin log it as a Medic error. 499 is the usual code for a request the client gave up on.
+            return StatusCode(StatusCodes.Status499ClientClosedRequest);
+        }
+    }
+
+    private async Task<DiagnosticReport> BuildReportAsync(CancellationToken cancellationToken)
+    {
+        var usage = UsageAnalyzer.Summarise(UsageStore.Load(_paths));
+        var plugins = PluginAuditor.Audit(_pluginManager, _paths, _engine.CreatePluginContext());
+        var links = _engine.LinksToCheck();
+        var linkResults = await LinkChecker.CheckAsync(links.Select(l => l.Url), cancellationToken).ConfigureAwait(false);
+
+        var settings = Plugin.Instance?.Configuration ?? new PluginConfiguration();
+        var (userSummary, userFindings) = UserAuditor.Audit(_users, settings.InactiveUserDays);
+        var repeated = LogScanner.Scan(_paths.LogDirectoryPath, _paths.PluginConfigurationsPath);
+        var updates = await UpdateChecker.AvailableAsync(_installs, cancellationToken).ConfigureAwait(false);
+        var userList = UserList.All(_users);
+
+        var extra = new List<Finding>();
+        extra.AddRange(userFindings);
+        extra.AddRange(await SecurityAuditor.AuditAsync(_activity, _users, userList, cancellationToken).ConfigureAwait(false));
+        extra.AddRange(LogScanner.Findings(repeated, LogScanner.CountingFrom(_paths.PluginConfigurationsPath)));
+        extra.AddRange(IptvAnalyzer.Findings());
+        if (updates.Count > 0)
+        {
+            extra.Add(new Finding
+            {
+                Area = "Plugins",
+                Severity = Sev.Tip,
+                Title = updates.Count == 1 ? "A plugin update is available" : $"{updates.Count} plugin updates are available",
+                Id = "plugins.updates",
+                Current = string.Join(", ", updates),
+                Recommended = "Install them, then restart Jellyfin",
+                Why = "Updates often fix bugs and keep plugins working with new Jellyfin versions.",
+                Where = "Dashboard → Plugins, or run the Update Plugins task"
+            });
+        }
+
+        if (RestartForUpdatesTask.RestartPending(_host))
+        {
+            extra.Add(new Finding
+            {
+                Area = "Plugins",
+                Severity = Sev.Tip,
+                Title = "Jellyfin is waiting for a restart to finish installing updates",
+                Current = "Restart pending",
+                Recommended = "Let Medic restart it at a quiet time, or restart now",
+                Why = "Updated plugins don't take effect until Jellyfin restarts. Medic's \"Restart Jellyfin for waiting updates\" task does it when nobody's watching and nothing else is running. Set its time under Scheduled Tasks, or restart straight away from the Dashboard.",
+                Where = "Dashboard → Scheduled Tasks"
+            });
+        }
+
+        var report = _engine.Run(usage, plugins, links, linkResults, extra);
+        SettingLinks.Attach(report.Findings);
+        WeeklyLedger.Snapshot(report.Findings);
+        report.Users = userSummary;
+        report.Updates = updates;
+        report.RepeatedErrors = repeated;
+        return report;
+    }
+
+    /// <summary>Every core and library setting, with passwords and keys hidden.</summary>
+    [HttpGet("JellyfinSettings")]
+    public ActionResult<List<SettingRow>> GetSettings() => Ok(_engine.AllSettings());
+
+    // ---------- Dashboard, IPTV, export and Medic's own settings ----------
+
+    /// <summary>What Jellyfin is doing right now. Cheap enough to refresh every few seconds.</summary>
+    [HttpGet("Now")]
+    public ActionResult<NowSnapshot> GetNow() => Ok(ServerNow.Snapshot(_sessions, _tasks, _paths));
+
+    private const string WhatsNewPrefix = "whatsnew:";
+
+    /// <summary>Banners for admins on the home page: serious errors, a restart waiting, and what's new after an update.</summary>
+    [HttpGet("Alerts")]
+    public ActionResult<List<AdminAlert>> GetAlerts()
+    {
+        var alerts = AdminAlerts.Current(_paths.LogDirectoryPath, _host, Plugin.Instance?.Configuration ?? new PluginConfiguration());
+        var seen = CurrentUserId() is { } id ? SeenStore.Get(_paths.PluginConfigurationsPath, id) : null;
+        if (seen is not null && WhatsNewAlert(seen.SeenVersion) is { } whatsNew)
+        {
+            alerts.Add(whatsNew);
+        }
+
+        // Leave out the ones this person has already dismissed, on any device.
+        var dismissed = seen?.DismissedAlerts ?? new List<string>();
+        return Ok(alerts.Where(a => !dismissed.Contains(a.Id, StringComparer.Ordinal)).ToList());
+    }
+
+    /// <summary>
+    /// A "Medic was updated" banner, until this person has seen what's new in this version, here or
+    /// in Medic itself. Lists the headline of each change; Medic's page has the full notes.
+    /// </summary>
+    private static AdminAlert? WhatsNewAlert(string? seenVersion)
+    {
+        string version = Plugin.VersionText;
+        if (string.Equals(seenVersion, version, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var entry = ChangelogReader.Read(1).FirstOrDefault(e => e.Version == version);
+        if (entry is null)
+        {
+            return null;
+        }
+
+        var headlines = entry.Lines
+            .Where(l => l.StartsWith("- ", StringComparison.Ordinal))
+            .Select(l =>
+            {
+                string t = l[2..].Trim();
+                int start = t.IndexOf("**", StringComparison.Ordinal);
+                int end = start >= 0 ? t.IndexOf("**", start + 2, StringComparison.Ordinal) : -1;
+                return (end > start ? t[(start + 2)..end] : t).Replace("**", string.Empty, StringComparison.Ordinal).Trim();
+            })
+            .Where(t => t.Length > 0)
+            .ToList();
+        string detail = headlines.Count == 0
+            ? "Open Medic to see what's changed."
+            : string.Join(" ", headlines.Take(3).Select(h => h.EndsWith('.') ? h : h + ".")) + (headlines.Count > 3 ? $" And {headlines.Count - 3} more." : string.Empty);
+
+        return new AdminAlert
+        {
+            Id = WhatsNewPrefix + version,
+            Kind = "whatsnew",
+            Title = $"Jellyfin Medic {version}: what's new",
+            Detail = detail
+        };
+    }
+
+    /// <summary>Dismisses a banner for this person on every device. A new occurrence (another day) brings it back.</summary>
+    [HttpPost("Alerts/Dismiss")]
+    public ActionResult<object> DismissAlert([FromQuery] string id)
+    {
+        if (CurrentUserId() is not { } user || string.IsNullOrWhiteSpace(id) || id.Length > 200)
+        {
+            return BadRequest();
+        }
+
+        SeenStore.Update(_paths.PluginConfigurationsPath, user, s =>
+        {
+            s.DismissedAlerts.Add(id);
+            // Closing the "what's new" banner counts as having seen it, so Medic's page doesn't show it again.
+            if (id.StartsWith(WhatsNewPrefix, StringComparison.Ordinal))
+            {
+                s.SeenVersion = id[WhatsNewPrefix.Length..];
+            }
+        });
+        return Ok(new { Success = true });
+    }
+
+    /// <summary>Spells of heavy CPU, memory, disk or GPU use in the last 14 days, and what was running.</summary>
+    [HttpGet("ResourceEvents")]
+    public ActionResult<List<ResourceEvent>> GetResourceEvents() => Ok(ResourceLog.Load(_paths));
+
+    /// <summary>Recent times the load guard stopped or restarted a task under memory pressure.</summary>
+    [HttpGet("LoadGuard")]
+    public ActionResult<List<LoadGuardEvent>> GetLoadGuard() => Ok(LoadGuardLog.Load(_paths));
+
+    // ---------- Media report (read-only) ----------
+
+    /// <summary>The last media report, build progress, and the transcode log.</summary>
+    [HttpGet("MediaReport")]
+    public ActionResult<MediaReportStatus> GetMediaReport() => Ok(MediaReport.Status(_paths));
+
+    /// <summary>Starts building a fresh media report in the background.</summary>
+    [HttpPost("MediaReport/Build")]
+    public ActionResult<MediaReportStatus> BuildMediaReport()
+    {
+        string hw = SettingsReader.Text(_config.GetConfiguration("encoding"), "HardwareAccelerationType") ?? "none";
+        MediaReport.Start(_library, _engine.Libraries, _paths, hw);
+        return Ok(MediaReport.Status(_paths));
+    }
+
+    // ---------- Track cleaner ----------
+
+    /// <summary>Scans local files and previews which audio/subtitle tracks would be removed.</summary>
+    [HttpGet("Tracks/Scan")]
+    public ActionResult<TrackScanResult> TracksScan()
+    {
+        var cfg = Plugin.Instance?.Configuration ?? new PluginConfiguration();
+        return Ok(TrackCleaner.Scan(_library, _engine.Libraries, cfg));
+    }
+
+    /// <summary>Starts a scan in the background; poll Tracks/Scan/Status for progress and the result.</summary>
+    [HttpPost("Tracks/Scan/Start")]
+    public ActionResult<TrackScanStatus> TracksScanStart()
+    {
+        var cfg = Plugin.Instance?.Configuration ?? new PluginConfiguration();
+        TrackCleaner.StartScan(_library, _engine.Libraries, cfg);
+        return Ok(TrackCleaner.ScanStatus());
+    }
+
+    /// <summary>Tracks with no language from the last scan, a page at a time. kind: all, audio or subtitle.</summary>
+    [HttpGet("Tracks/Scan/Untagged")]
+    public ActionResult<PagedList<UntaggedTrack>> TracksUntagged([FromQuery] int page = 1, [FromQuery] int size = 25, [FromQuery] string kind = "all", [FromQuery] string? search = null) =>
+        Ok(TrackCleaner.UntaggedPage(page, size, kind, search));
+
+    /// <summary>Files that would change, from the last scan, a page at a time.</summary>
+    [HttpGet("Tracks/Scan/Changes")]
+    public ActionResult<PagedList<FilePlan>> TracksChanges([FromQuery] int page = 1, [FromQuery] int size = 25, [FromQuery] string? search = null) =>
+        Ok(TrackCleaner.ChangesPage(page, size, search));
+
+    /// <summary>Sets the language of a track inside a film (written in on the next strip). An empty language clears it.</summary>
+    [HttpPost("Tracks/SetLanguage")]
+    public ActionResult<object> TracksSetLanguage([FromQuery] string path, [FromQuery] int index, [FromQuery] string? language)
+    {
+        var (ok, message) = TrackCleaner.SetLanguage(path ?? string.Empty, index, language ?? string.Empty);
+        return Ok(new { Ok = ok, Message = message });
+    }
+
+    /// <summary>
+    /// Sets the language of many tracks inside films at once: every match for the current filter, or just one page.
+    /// Separate subtitle files aren't included; rename those one by one.
+    /// </summary>
+    [HttpPost("Tracks/SetLanguageBulk")]
+    public ActionResult<object> TracksSetLanguageBulk(
+        [FromQuery] string? language,
+        [FromQuery] string kind = "all",
+        [FromQuery] string? search = null,
+        [FromQuery] bool onlyAudioTrack = true,
+        [FromQuery] bool skipAnime = true,
+        [FromQuery] int page = 0,
+        [FromQuery] int size = 25)
+    {
+        var (count, message) = TrackCleaner.SetLanguageBulk(language ?? string.Empty, kind, search, onlyAudioTrack, skipAnime, page, size);
+        return Ok(new { Count = count, Message = message });
+    }
+
+    /// <summary>Renames a separate subtitle file so Jellyfin knows its language.</summary>
+    [HttpPost("Tracks/RenameSubtitle")]
+    public ActionResult<object> TracksRenameSubtitle([FromQuery] string path, [FromQuery] string? language)
+    {
+        var (ok, message, newName) = TrackCleaner.RenameSubtitle(path ?? string.Empty, language ?? "eng");
+        return Ok(new { Ok = ok, Message = message, NewName = newName });
+    }
+
+    /// <summary>The background scan's progress, and the last finished scan.</summary>
+    [HttpGet("Tracks/Scan/Status")]
+    public ActionResult<TrackScanStatus> TracksScanStatus() => Ok(TrackCleaner.ScanStatus());
+
+    /// <summary>Starts a run. dryRun=true (default) only reports; dryRun=false actually remuxes.</summary>
+    [HttpPost("Tracks/Run")]
+    public ActionResult<object> TracksRun([FromQuery] bool dryRun = true)
+    {
+        var cfg = Plugin.Instance?.Configuration ?? new PluginConfiguration();
+        string? ffmpeg = FfmpegPath();
+        if (!dryRun && ffmpeg is null)
+        {
+            return Problem("FFmpeg couldn't be found, so tracks can't be stripped.");
+        }
+
+        if (TrackCleaner.CurrentProgress().Running)
+        {
+            return StatusCode(StatusCodes.Status409Conflict, "A track run is already going.");
+        }
+
+        var sessions = _sessions;
+        TrackCleaner.WatchingCount = () => sessions.Sessions.Count(x => SettingsReader.Get(x, "NowPlayingItem") is not null);
+        TrackCleaner.ChangesFile = TrackChangesFile();
+        _ = TrackCleaner.RunAsync(_library, _engine.Libraries, ffmpeg ?? string.Empty, cfg, dryRun);
+        return Ok(new { Started = true, DryRun = dryRun });
+    }
+
+    /// <summary>Pauses the run once the files already in progress finish.</summary>
+    [HttpPost("Tracks/Pause")]
+    public ActionResult<object> TracksPause()
+    {
+        TrackCleaner.Pause();
+        // A body, as the page's requests expect JSON and take an empty answer as a failure.
+        return Ok(new { Paused = true });
+    }
+
+    [HttpPost("Tracks/Resume")]
+    public ActionResult<object> TracksResume()
+    {
+        TrackCleaner.Resume();
+        // A body, as the page's requests expect JSON and take an empty answer as a failure.
+        return Ok(new { Paused = false });
+    }
+
+    [HttpGet("Tracks/Progress")]
+    public ActionResult<TrackRunProgress> TracksProgress() => Ok(TrackCleaner.CurrentProgress());
+
+    [HttpPost("Tracks/Stop")]
+    public ActionResult<object> TracksStop()
+    {
+        TrackCleaner.Stop();
+        return Ok(new { Stopped = true });
+    }
+
+    /// <summary>Puts titles left with several copies by earlier versions back to a single file.</summary>
+    [HttpPost("Tracks/TidyCopies")]
+    public async Task<ActionResult<object>> TracksTidyCopies([FromQuery] bool deleteOriginals = false)
+    {
+        if (TrackCleaner.CurrentProgress().Running)
+        {
+            return StatusCode(StatusCodes.Status409Conflict, "Wait for the track run to finish first.");
+        }
+
+        // Each earlier copy is read before it takes the original's place, and that needs FFprobe.
+        string? ffmpeg = FfmpegPath();
+        string? ffprobe = ffmpeg is null ? null : TrackCleaner.FfprobePath(ffmpeg);
+        if (ffprobe is null)
+        {
+            return Problem("FFprobe couldn't be found, so the earlier copies can't be checked and nothing was tidied.");
+        }
+
+        var (titles, copies, freed, left) = await TrackCleaner.TidyEarlierCopies(_library, _engine.Libraries, ffprobe, deleteOriginals).ConfigureAwait(false);
+        WeeklyLedger.AddFreed("Duplicate files", freed);
+        TrackCleaner.ClearScan();
+        return Ok(new { Titles = titles, CopiesDeleted = copies, Freed = freed, FreedText = SystemProbe.Size(freed), LeftTitles = left });
+    }
+
+    /// <summary>How many originals Medic is keeping, and how much space they take.</summary>
+    [HttpGet("Tracks/KeptOriginals")]
+    public ActionResult<object> TracksKeptOriginals(CancellationToken cancellationToken)
+    {
+        var (files, bytes, orphans, orphanBytes) = TrackCleaner.KeptOriginals(_library, _engine.Libraries, cancellationToken);
+        return Ok(new
+        {
+            Files = files, Bytes = bytes, SizeText = SystemProbe.Size(bytes),
+            Orphans = orphans, OrphanBytes = orphanBytes, OrphanSizeText = SystemProbe.Size(orphanBytes)
+        });
+    }
+
+    /// <summary>The files earlier track runs changed, newest first.</summary>
+    [HttpGet("Tracks/Changes")]
+    public ActionResult<object> TracksChanges([FromQuery] int count = 200)
+    {
+        TrackCleaner.ChangesFile = TrackChangesFile();
+        return Ok(TrackCleaner.RecentChanges(Math.Clamp(count, 1, 2000)));
+    }
+
+    private string TrackChangesFile() => Path.Combine(ScheduleStorage.DataDir(_paths), "track_changes.jsonl");
+
+    /// <summary>
+    /// Deletes the originals Medic kept in .medic-originals folders: only where the cleaned file is in place, or with
+    /// orphans, also those whose file was renamed or replaced since.
+    /// </summary>
+    [HttpPost("Tracks/DeleteOriginals")]
+    public ActionResult<object> TracksDeleteOriginals([FromQuery] bool orphans = false)
+    {
+        if (TrackCleaner.CurrentProgress().Running)
+        {
+            return StatusCode(StatusCodes.Status409Conflict, "Wait for the track run to finish first.");
+        }
+
+        var (deleted, freed) = TrackCleaner.DeleteOriginals(_library, _engine.Libraries, orphans);
+        WeeklyLedger.AddFreed("Kept originals", freed);
+        return Ok(new { Deleted = deleted, Freed = freed, FreedText = SystemProbe.Size(freed) });
+    }
+
+    /// <summary>The community plugin list from awesome-jellyfin (fetched live, credited to them).</summary>
+    [HttpGet("Directory")]
+    public async Task<ActionResult<PluginDirectory>> GetDirectory(CancellationToken cancellationToken) =>
+        Ok(await PluginDirectoryService.GetAsync(cancellationToken).ConfigureAwait(false));
+
+    /// <summary>Plugins worth adding, considering or removing, from this server's libraries, viewing and installed plugins.</summary>
+    [HttpGet("PluginSuggestions")]
+    public async Task<ActionResult<PluginAdvice>> GetPluginSuggestions(CancellationToken cancellationToken) =>
+        Ok(await PluginAdvisor.BuildAsync(_library, _users, _pluginManager, _installs, cancellationToken).ConfigureAwait(false));
+
+    /// <summary>
+    /// Medic's current version and its changelog, for the "what's new" panel after an update, with the
+    /// last version this person has seen it for (on any device). all=true returns every version.
+    /// </summary>
+    [HttpGet("Version")]
+    public ActionResult<object> GetVersion([FromQuery] bool all = false)
+    {
+        string version = Plugin.VersionText;
+        string? seen = CurrentUserId() is { } id ? SeenStore.Get(_paths.PluginConfigurationsPath, id).SeenVersion : null;
+        return Ok(new { Version = version, SeenVersion = seen, Changelog = ChangelogReader.Read(all ? int.MaxValue : 5) });
+    }
+
+    /// <summary>Records that this person has seen "What's new" for a version, so no other device shows it again.</summary>
+    [HttpPost("Version/Seen")]
+    public ActionResult<object> SetVersionSeen([FromQuery] string version)
+    {
+        if (CurrentUserId() is not { } id || string.IsNullOrWhiteSpace(version) || version.Length > 20)
+        {
+            return BadRequest();
+        }
+
+        SeenStore.Update(_paths.PluginConfigurationsPath, id, s => s.SeenVersion = version.Trim());
+        return Ok(new { Success = true });
+    }
+
+    private string? CurrentUserId() => User.Claims.FirstOrDefault(c => c.Type == "Jellyfin-UserId")?.Value;
+
+    /// <summary>The last IPTV analysis, if one has been run since Jellyfin started.</summary>
+    [HttpGet("Iptv")]
+    public ActionResult<IptvReport?> GetIptv() => Ok(IptvAnalyzer.Last);
+
+    /// <summary>Runs the IPTV analysis. Reads a lot, so it only runs when asked.</summary>
+    [HttpPost("Iptv")]
+    public async Task<ActionResult<IptvReport>> RunIptv(CancellationToken cancellationToken)
+    {
+        if (!await TestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            return StatusCode(StatusCodes.Status409Conflict, "A test or analysis is already running.");
+        }
+
+        try
+        {
+            return Ok(IptvAnalyzer.Analyse(_library, _users, _engine.Libraries));
+        }
+        finally
+        {
+            TestLock.Release();
+        }
+    }
+
+    /// <summary>Every plugin's settings with secrets masked, as text, for asking for help.</summary>
+    [HttpGet("Export")]
+    public ActionResult GetExport([FromQuery] bool includeSystem = false)
+    {
+        string version = SettingsReader.ServerVersion(_host);
+        var summary = includeSystem ? SystemSummary(version) : null;
+        string text = SettingsExporter.Build(_pluginManager, _paths, version, summary);
+        return Content(text, "text/plain", Encoding.UTF8);
+    }
+
+    /// <summary>
+    /// A short, anonymous picture of the server for tuning advice: hardware make and model (no
+    /// serial numbers), memory, OS, storage, library sizes and installed plugins. No names, paths,
+    /// addresses or accounts.
+    /// </summary>
+    private List<string> SystemSummary(string version)
+    {
+        var hw = SystemProbe.Probe();
+        var lines = new List<string>
+        {
+            "Jellyfin version: " + version,
+            "Operating system: " + System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+            "Running on: " + HostPlatform.Label,
+            "CPU: " + (hw.CpuModel ?? "unknown") + " (" + hw.CpuThreads + " threads)",
+            "GPU: " + hw.GpuDescription,
+            "Memory available to Jellyfin: " + SystemProbe.Gb(hw.MemoryGb),
+        };
+
+        if (hw.HostMemoryGb is { } host)
+        {
+            lines.Add("Memory in the machine: " + SystemProbe.Gb(host));
+        }
+
+        foreach (var (label, path) in new[] { ("Config/database drive", _paths.DataPath), ("Cache drive", _paths.CachePath) })
+        {
+            if (SystemProbe.Space(path) is { } s)
+            {
+                string fs = SystemProbe.Mount(path)?.FsType ?? "unknown";
+                lines.Add($"{label}: {SystemProbe.Gb(s.FreeGb)} free of {SystemProbe.Gb(s.TotalGb)} ({fs})");
+            }
+        }
+
+        long db = SystemProbe.FileSize(System.IO.Path.Combine(_paths.DataPath, "jellyfin.db"));
+        if (db > 0)
+        {
+            lines.Add("Database size: " + SystemProbe.Size(db));
+        }
+
+        try
+        {
+            foreach (var lib in _engine.Libraries)
+            {
+                lines.Add($"Library \"{lib.Name}\": {(lib.ItemCount?.ToString("N0") ?? "?")} items{(lib.IsStreamed ? " (IPTV/.strm)" : string.Empty)}");
+            }
+        }
+        catch
+        {
+            // Library counts aren't essential to the summary.
+        }
+
+        foreach (var plugin in _pluginManager.Plugins.Cast<object>().OrderBy(p => SettingsReader.Text(p, "Name"), StringComparer.OrdinalIgnoreCase))
+        {
+            lines.Add($"Plugin: {SettingsReader.Text(plugin, "Name")} {SettingsReader.Text(plugin, "Version")} ({SettingsReader.Text(plugin, "Manifest.Status")})");
+        }
+
+        return lines;
+    }
+
+    [HttpGet("MedicSettings")]
+    public ActionResult<MedicSettingsDto> GetMedicSettings()
+    {
+        var c = Plugin.Instance?.Configuration ?? new PluginConfiguration();
+        return Ok(new MedicSettingsDto
+        {
+            AvoidEnabled = c.AvoidEnabled, AvoidStartHour = c.AvoidStartHour, AvoidEndHour = c.AvoidEndHour,
+            AvoidStartMinute = BusyProfile.AvoidStartMinute(c), AvoidEndMinute = BusyProfile.AvoidEndMinute(c),
+            InactiveUserDays = c.InactiveUserDays, LoadGuardEnabled = c.LoadGuardEnabled,
+            MemoryCeilingPercent = c.MemoryCeilingPercent, ScheduleMode = c.ScheduleMode,
+            TracksKeepLanguages = c.TracksKeepLanguages, TracksUnknownLanguages = UnknownLanguages(c),
+            TracksRemoveUndetermined = c.TracksRemoveUndetermined,
+            TracksRemoveUntaggedSubtitles = c.TracksRemoveUntaggedSubtitles,
+            TracksKeepFirstUntaggedSubtitle = c.TracksKeepFirstUntaggedSubtitle,
+            TracksAllowRemovingOnlySubtitle = c.TracksAllowRemovingOnlySubtitle,
+            TracksWindowEnabled = c.TracksWindowEnabled,
+            TracksWindowStartHour = c.TracksWindowStartHour,
+            TracksWindowEndHour = c.TracksWindowEndHour,
+            TracksPauseWhileWatching = c.TracksPauseWhileWatching,
+            TracksReplaceInPlace = c.TracksReplaceInPlace, TracksConcurrentFiles = c.TracksConcurrentFiles,
+            TracksFfmpegThreads = c.TracksFfmpegThreads,
+            TracksExclude = c.TracksExclude ?? string.Empty,
+            AlertCriticalErrors = c.AlertCriticalErrors,
+            AlertRestartNeeded = c.AlertRestartNeeded
+        });
+    }
+
+    /// <summary>
+    /// Keep languages Medic doesn't know, as track cleanup compares them. They're saved anyway and still match a
+    /// track tagged exactly the same, so the page only warns, in case one is a typo.
+    /// </summary>
+    private static List<string> UnknownLanguages(PluginConfiguration c) =>
+        TrackCleaner.KeepLanguages(c).Where(code => code.Length > 0 && !LanguageCodes.IsKnown(code)).Order(StringComparer.Ordinal).ToList();
+
+    [HttpPost("MedicSettings")]
+    public ActionResult<MedicSettingsDto> SaveMedicSettings([FromBody] MedicSettingsDto settings)
+    {
+        if (settings is null)
+        {
+            return BadRequest();
+        }
+
+        if (Plugin.Instance is null)
+        {
+            return Problem("Medic isn't fully loaded yet. Try again in a moment.");
+        }
+
+        var c = Plugin.Instance.Configuration;
+        c.AvoidEnabled = settings.AvoidEnabled;
+        int avoidStart = Math.Clamp(settings.AvoidStartMinute ?? settings.AvoidStartHour * 60, 0, 1439) / 15 * 15;
+        int avoidEnd = (Math.Clamp(settings.AvoidEndMinute ?? settings.AvoidEndHour * 60, 0, 1440) % 1440) / 15 * 15;
+        c.AvoidStartMinute = avoidStart;
+        c.AvoidEndMinute = avoidEnd;
+        c.AvoidStartHour = avoidStart / 60;
+        c.AvoidEndHour = avoidEnd / 60;
+        c.InactiveUserDays = Math.Clamp(settings.InactiveUserDays, 7, 3650);
+        c.LoadGuardEnabled = settings.LoadGuardEnabled;
+        c.MemoryCeilingPercent = Math.Clamp(settings.MemoryCeilingPercent, 60, 95);
+        c.ScheduleMode = settings.ScheduleMode == "off" ? "off" : "suggest";
+        c.TracksKeepLanguages = string.IsNullOrWhiteSpace(settings.TracksKeepLanguages) ? "eng" : settings.TracksKeepLanguages.Trim();
+        c.TracksRemoveUndetermined = settings.TracksRemoveUndetermined;
+        c.TracksRemoveUntaggedSubtitles = settings.TracksRemoveUntaggedSubtitles;
+        c.TracksKeepFirstUntaggedSubtitle = settings.TracksKeepFirstUntaggedSubtitle;
+        c.TracksAllowRemovingOnlySubtitle = settings.TracksAllowRemovingOnlySubtitle;
+        c.TracksWindowEnabled = settings.TracksWindowEnabled;
+        c.TracksWindowStartHour = Math.Clamp(settings.TracksWindowStartHour, 0, 23);
+        c.TracksWindowEndHour = Math.Clamp(settings.TracksWindowEndHour, 0, 23);
+        c.TracksPauseWhileWatching = settings.TracksPauseWhileWatching;
+        c.TracksReplaceInPlace = settings.TracksReplaceInPlace;
+        c.TracksConcurrentFiles = Math.Clamp(settings.TracksConcurrentFiles, 1, 4);
+        c.TracksFfmpegThreads = Math.Clamp(settings.TracksFfmpegThreads, 0, 16);
+        c.TracksExclude = string.Join('\n', TrackCleaner.ExcludeList(settings.TracksExclude));
+        c.AlertCriticalErrors = settings.AlertCriticalErrors;
+        c.AlertRestartNeeded = settings.AlertRestartNeeded;
+        Plugin.Instance.SaveConfiguration();
+        TrackCleaner.ClearScan(); // the last track scan was made with the old settings
+        return GetMedicSettings();
+    }
+
+    /// <summary>Every installed plugin with its status, settings (secrets hidden) and findings.</summary>
+    [HttpGet("Plugins")]
+    public ActionResult<List<PluginReport>> GetPlugins()
+    {
+        var reports = PluginAuditor.Audit(_pluginManager, _paths, _engine.CreatePluginContext());
+        var ignored = IgnoreStore.Load(_paths);
+        foreach (var report in reports)
+        {
+            IgnoreStore.Apply(report.Findings, ignored);
+        }
+
+        return Ok(reports);
+    }
+
+    /// <summary>Ignore a finding the admin has checked and is happy with, or show it again.</summary>
+    [HttpPost("Ignore")]
+    public ActionResult<object> SetIgnored([FromQuery] string key, [FromQuery] bool ignored = true)
+    {
+        if (string.IsNullOrWhiteSpace(key) || key.Length > 500)
+        {
+            return BadRequest(new { Success = false });
+        }
+
+        IgnoreStore.Set(_paths, key, ignored);
+        return Ok(new { Success = true, Key = key, Ignored = ignored });
+    }
+
+    /// <summary>Viewing pattern recorded so far.</summary>
+    [HttpGet("Usage")]
+    public ActionResult<UsageSummary> GetUsage() => Ok(UsageAnalyzer.Summarise(UsageStore.Load(_paths)));
+
+    // ---------- Tests ----------
+
+    /// <summary>
+    /// After the page has played a film through Jellyfin's transcoder, reads the matching FFmpeg
+    /// log to see whether the GPU did the decoding, encoding and tone mapping.
+    /// </summary>
+    [HttpGet("TranscodeLog")]
+    public ActionResult<TranscodeLogResult> GetTranscodeLog([FromQuery] DateTime sinceUtc, [FromQuery] string? match) =>
+        Ok(TranscodeLogReader.Read(_paths.LogDirectoryPath, sinceUtc, match, ConfiguredAcceleration()));
+
+    /// <summary>Times trickplay/chapter-image style scanning of one film, GPU against CPU.</summary>
+    [HttpPost("DecodeTest")]
+    public async Task<ActionResult<DecodeTestResult>> RunDecodeTest([FromQuery] Guid itemId, CancellationToken cancellationToken)
+    {
+        string? path = _library.GetItemById(itemId)?.Path;
+        if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+        {
+            return NotFound("That film's file couldn't be found on the server.");
+        }
+
+        string? ffmpeg = FfmpegPath();
+        if (ffmpeg is null)
+        {
+            return Problem("FFmpeg couldn't be found, so the test can't run.");
+        }
+
+        if (!await TestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            return StatusCode(StatusCodes.Status409Conflict, "Another test is already running.");
+        }
+
+        try
+        {
+            var encoding = _config.GetConfiguration("encoding");
+            return Ok(await DecodeTest.RunAsync(
+                ffmpeg,
+                path,
+                ConfiguredAcceleration(),
+                SettingsReader.Text(encoding, "VaapiDevice"),
+                cancellationToken).ConfigureAwait(false));
+        }
+        finally
+        {
+            TestLock.Release();
+        }
+    }
+
+    /// <summary>Last saved internet speed test, if any.</summary>
+    [HttpGet("SpeedTest")]
+    public ActionResult<SpeedTestResult?> GetSpeedTest()
+    {
+        var last = SpeedStore.Load(_paths);
+        if (last is not null)
+        {
+            last.CurrentLimitBps = _config.Configuration.RemoteClientBitrateLimit;
+        }
+
+        return Ok(last);
+    }
+
+    /// <summary>Runs a new internet speed test from the server and saves the result.</summary>
+    [HttpPost("SpeedTest")]
+    public async Task<ActionResult<SpeedTestResult>> RunSpeedTest(CancellationToken cancellationToken)
+    {
+        if (!await TestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            return StatusCode(StatusCodes.Status409Conflict, "Another test is already running.");
+        }
+
+        try
+        {
+            var result = await SpeedTester.RunAsync(_config.Configuration.RemoteClientBitrateLimit, cancellationToken).ConfigureAwait(false);
+            if (result.Error is null)
+            {
+                SpeedStore.Save(_paths, result);
+            }
+
+            return Ok(result);
+        }
+        finally
+        {
+            TestLock.Release();
+        }
+    }
+
+    private string ConfiguredAcceleration()
+    {
+        string hw = SettingsReader.Text(_config.GetConfiguration("encoding"), "HardwareAccelerationType") ?? "none";
+        return string.IsNullOrWhiteSpace(hw) ? "none" : hw.Trim().ToLowerInvariant();
+    }
+
+    private string? FfmpegPath()
+    {
+        var encoding = _config.GetConfiguration("encoding");
+        foreach (var candidate in new[]
+                 {
+                     SettingsReader.Text(_mediaEncoder, "EncoderPath"),
+                     SettingsReader.Text(encoding, "EncoderAppPathDisplay"),
+                     SettingsReader.Text(encoding, "EncoderAppPath"),
+                     "/usr/lib/jellyfin-ffmpeg/ffmpeg"
+                 })
+        {
+            if (!string.IsNullOrWhiteSpace(candidate) && System.IO.File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    // ---------- Stop tasks, exposure, clean-up ----------
+
+    /// <summary>Stops every scheduled task that's currently running.</summary>
+    [HttpPost("StopRunningTasks")]
+    public ActionResult<object> StopRunningTasks()
+    {
+        var running = _tasks.ScheduledTasks.Where(t => t.State == TaskState.Running).ToList();
+        var stopped = new List<string>();
+        foreach (var task in running)
+        {
+            try
+            {
+                _tasks.Cancel(task);
+                stopped.Add(task.Name);
+            }
+            catch
+            {
+                // Already finishing; ignore.
+            }
+        }
+
+        return Ok(new { Success = true, Stopped = stopped.Count, Names = stopped });
+    }
+
+    /// <summary>
+    /// The address, port and protocol to offer in the exposure check: the domain, if known, and the public IP
+    /// only when <paramref name="publicIp"/> is set, since finding it asks a service on the internet.
+    /// </summary>
+    [HttpGet("ExposureDefaults")]
+    public async Task<ActionResult<ExposureDefaults>> GetExposureDefaults([FromQuery] bool publicIp = false, CancellationToken cancellationToken = default) =>
+        Ok(await ExposureChecker.DefaultsAsync(TryNetwork(), publicIp, cancellationToken).ConfigureAwait(false));
+
+    /// <summary>
+    /// Checks whether something answers at a host/port/protocol: from this server for a domain or plain http,
+    /// otherwise through a public port-checker, which gets only that address and port.
+    /// </summary>
+    [HttpPost("ExposureCheck")]
+    public async Task<ActionResult<ExposureResult>> ExposureCheck([FromQuery] string host, [FromQuery] int port = 443, [FromQuery] string protocol = "https", CancellationToken cancellationToken = default)
+    {
+        string? baseUrl = SettingsReader.Text(TryNetwork(), "BaseUrl");
+        return Ok(await ExposureChecker.CheckAsync(host, port, protocol, baseUrl, cancellationToken).ConfigureAwait(false));
+    }
+
+    private object? TryNetwork()
+    {
+        try
+        {
+            return _config.GetConfiguration("network");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The Dashboard's "This week": issues that appeared or went away, space freed, restarts.</summary>
+    [HttpGet("Weekly")]
+    public ActionResult<WeeklySummary> GetWeekly() => Ok(WeeklyLedger.Summary());
+
+    /// <summary>"Fixed it": starts counting repeated log errors again from now.</summary>
+    [HttpPost("Logs/ResetCount")]
+    public ActionResult<object> LogsResetCount()
+    {
+        LogScanner.ResetCount(_paths.PluginConfigurationsPath);
+        // A body, as the page's requests expect JSON and take an empty answer as a failure.
+        return Ok(new { Reset = true });
+    }
+
+    /// <summary>Disk space that can usually be freed safely.</summary>
+    [HttpGet("Cleanup")]
+    public ActionResult<CleanupReport> GetCleanup(CancellationToken cancellationToken) =>
+        Ok(Housekeeping.Scan(_paths, TranscodePath(), () => Housekeeping.KnownStrmPaths(_library, cancellationToken)));
+
+    /// <summary>Removes the leftover files of one kind, after the admin confirms on the page.</summary>
+    [HttpPost("Cleanup")]
+    public ActionResult<object> RunCleanup([FromQuery] string kind, CancellationToken cancellationToken)
+    {
+        var (ok, message, freed) = Housekeeping.Clean(kind ?? string.Empty, _paths, TranscodePath(), () => Housekeeping.KnownStrmPaths(_library, cancellationToken));
+        if (ok)
+        {
+            WeeklyLedger.AddFreed("Clean-ups", freed);
+        }
+
+        return Ok(new { Success = ok, Message = message, Freed = freed });
+    }
+
+    private string TranscodePath() => SettingsReader.TranscodePath(_config.GetConfiguration("encoding"), _paths.CachePath);
+}

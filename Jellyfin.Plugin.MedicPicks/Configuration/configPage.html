@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Medic Picks</title>
+</head>
+<body>
+<div id="MedicPicksConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+     data-require="emby-input,emby-button,emby-select,emby-checkbox">
+    <div data-role="content">
+        <div class="content-primary">
+            <h2 class="sectionTitle">Medic Picks</h2>
+            <p>Builds personal picks for every user from what they watch. Picks run nightly as the
+               <em>Build personal picks</em> scheduled task.</p>
+
+            <form id="MedicPicksConfigForm">
+                <h3>On your server</h3>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="EnableLibraryPicks" />
+                        <span>Suggest titles already on the server</span>
+                    </label>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" id="LibraryPickCount" min="1" max="100" label="Picks per user" />
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="EnableLinkedPicks" />
+                        <span>Suggest titles linked to what each person watched</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        A separate section with a series' films (and the other way round), the rest of a collection,
+                        and titles from the same franchise, such as Marvel series and films.
+                    </div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="CreatePlaylists" />
+                        <span>Give each user a private playlist of their picks</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        Playlists show in every Jellyfin app, including TV apps. Each one is visible only to its owner
+                        and is replaced on every run.
+                    </div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="PlaylistName" label="Playlist name" />
+                </div>
+
+                <h3>Not on the server yet</h3>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="EnableDiscover" />
+                        <span>Suggest titles that aren't on the server</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        Uses TMDb recommendations for each user's most-watched titles. Needs a free TMDb API key.
+                    </div>
+                </div>
+
+                <div class="inputContainer">
+                    <input is="emby-input" type="password" id="TmdbKey" autocomplete="off" label="TMDb API key or read access token" />
+                    <div class="fieldDescription" id="TmdbKeyStatus">Checking…</div>
+                </div>
+                <button is="emby-button" type="button" id="SaveTmdbKey" class="raised button-alt block">
+                    <span>Save key</span>
+                </button>
+                <button is="emby-button" type="button" id="ClearTmdbKey" class="raised button-alt block">
+                    <span>Remove key</span>
+                </button>
+
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" id="DiscoverPickCount" min="1" max="100" label="Discover picks per user" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="TmdbLanguage" label="Language for titles and summaries" />
+                    <div class="fieldDescription">For example en-GB or en-US.</div>
+                </div>
+                <h3>Seerr requests (optional)</h3>
+                <div class="inputContainer">
+                    <input is="emby-input" type="url" id="JellyseerrUrl" label="Seerr address" />
+                    <div class="fieldDescription">Seerr is the merged Overseerr and Jellyseerr. The address this server reaches it
+                        at. Save key and Test Seerr save it too. Moving it to another server removes the saved key, so paste
+                        the key again with the new address.</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="url" id="SeerrLinkUrl" label="Seerr address for viewers (optional)" />
+                    <div class="fieldDescription">If people open Seerr at a different address than this server uses
+                        (http://seerr:5055 inside Docker, say), put theirs here. Links to Seerr use it.</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="password" id="SeerrKey" autocomplete="off" label="Seerr API key (Seerr → Settings → General)" />
+                    <div class="fieldDescription" id="SeerrKeyStatus">Checking…</div>
+                </div>
+                <button is="emby-button" type="button" id="SaveSeerrKey" class="raised button-alt block"><span>Save key</span></button>
+                <button is="emby-button" type="button" id="ClearSeerrKey" class="raised button-alt block"><span>Remove key</span></button>
+                <button is="emby-button" type="button" id="TestSeerr" class="raised button-alt block"><span>Test Seerr</span></button>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="SeerrDirectRequests" />
+                        <span>Request straight from the My picks page</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        With a key saved, the Request button sends the request to Seerr as the person who pressed it, using
+                        their own Seerr account, so their permissions, request limits and auto-approval all apply.
+                        Each person needs to have signed in to Seerr once with their Jellyfin login. Without a key,
+                        the button opens the title in Seerr instead.
+                    </div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="ShowRequests" />
+                        <span>Show people their requests and where they've got to</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        A My requests section on the My picks page: waiting for approval, looking for a download,
+                        downloading (with progress and when it should be ready), or ready to watch. Progress comes from
+                        Sonarr and Radarr through Seerr, so they need to be set up in Seerr. Each person only sees their own.
+                        Admins also see everyone's requests waiting for approval there, with Approve and Decline.
+                    </div>
+                </div>
+
+                <h3>Who gets Discover picks</h3>
+                <div class="fieldDescription" style="margin-bottom:0.8em;">
+                    Untick children's accounts. Discover titles come from TMDb, so your parental controls can't filter them:
+                    accounts with parental controls (a maximum rating, or blocked or allowed tags) start unticked, and only get Discover if you tick them.
+                    Picks from your own library always follow each user's parental controls.
+                </div>
+                <div id="DiscoverUsers"></div>
+
+                <h3>Minimum history</h3>
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" id="MinimumWatchedTitles" min="1" max="50" label="Watched titles needed before picks are built" />
+                </div>
+
+            </form>
+
+            <h3>Run now</h3>
+            <p id="RunStatus"></p>
+            <button is="emby-button" type="button" id="RunNow" class="raised button-alt block">
+                <span>Build picks now</span>
+            </button>
+
+            <h3>Menu link</h3>
+            <div class="checkboxContainer checkboxContainer-withDescription">
+                <label>
+                    <input is="emby-checkbox" type="checkbox" id="AddMenuLink" form="MedicPicksConfigForm" />
+                    <span>Add a link to everyone's Jellyfin menu</span>
+                </label>
+                <div class="fieldDescription checkboxFieldDescription">
+                    Appears in the side menu of the web app, Jellyfin Desktop and the Android and iOS apps, with nothing
+                    to edit. People may need to refresh the page once to see it. TV apps such as Android TV, Swiftfin and
+                    Roku can't show extra pages, so those users get the private playlist instead.
+                </div>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" type="text" id="MenuLinkName" form="MedicPicksConfigForm" label="Menu link name" />
+            </div>
+            <p class="fieldDescription">The page itself is at <code id="PicksUrl"></code></p>
+
+            <div>
+                <button is="emby-button" type="submit" form="MedicPicksConfigForm" class="raised button-submit block emby-button">
+                    <span>Save</span>
+                </button>
+            </div>
+
+            <h3>Contact</h3>
+            <p class="fieldDescription">
+                Found a bug or have an idea? <a href="https://github.com/P1zzm1ssile/Jellyfin-Medic/issues/new/choose" target="_blank" rel="noopener">Report it on GitHub</a>,
+                where you can follow the fix, or <a href="https://github.com/P1zzm1ssile/Jellyfin-Medic/issues" target="_blank" rel="noopener">see the open issues</a>.
+                For anything that doesn't belong on a public page, email <a href="mailto:p1zzm1ssilerepo@gmail.com?subject=Medic%20Picks">p1zzm1ssilerepo@gmail.com</a>.
+            </p>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginId = 'b34ec5d1-b70f-435f-b77d-9b76979b03c7';
+            var page = document.querySelector('#MedicPicksConfigPage');
+
+            function $(id) { return page.querySelector('#' + id); }
+
+            // Who got Discover picks when the page loaded or last saved, to spot a change in either direction.
+            var savedDiscover = false;
+            var savedDisabled = [];
+
+            function refreshStatus() {
+                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('MedicPicks/Admin/Status'), dataType: 'json' })
+                    .then(function (s) {
+                        $('TmdbKeyStatus').textContent = !s.tmdbKeySet
+                            ? 'No key saved. Discover picks are off until you add one.'
+                            : !$('EnableDiscover').checked
+                                ? 'A key is saved, but Discover picks are switched off. Tick "Suggest titles that aren\'t on the server" above and save.'
+                                : 'A key is saved. It is stored separately from these settings and is never shown again.';
+                        $('RunStatus').textContent = s.usersWithPicks + ' user(s) have picks.';
+                        $('SeerrKeyStatus').textContent = !s.seerrKeySet
+                            ? 'No Seerr key saved. The Request button will open Seerr instead.'
+                            : !$('JellyseerrUrl').value.trim()
+                                ? 'A Seerr key is saved, but there\'s no Seerr address yet. Add it above and save.'
+                                : 'A Seerr key is saved. It is stored separately from these settings and is never shown again.';
+                    })
+                    .catch(function () { $('TmdbKeyStatus').textContent = 'Could not check the key.'; });
+            }
+
+            // Parental controls the server applies to an account; Discover can't follow them.
+            function hasLimits(u) {
+                var p = u.Policy || {};
+                return (p.MaxParentalRating !== null && p.MaxParentalRating !== undefined)
+                    || (p.BlockedTags || []).length > 0 || (p.AllowedTags || []).length > 0;
+            }
+
+            // Ids of the accounts unticked on the page now.
+            function untickedIds() {
+                return Array.prototype.slice.call(page.querySelectorAll('.discoverUser'))
+                    .filter(function (box) { return !box.checked; })
+                    .map(function (box) { return norm(box.getAttribute('data-userid')); });
+            }
+
+            function renderUsers(users, disabled, allowedLimited) {
+                var box = $('DiscoverUsers');
+                box.innerHTML = '';
+                users.forEach(function (u) {
+                    var limited = hasLimits(u);
+                    var wrap = document.createElement('div');
+                    wrap.className = 'checkboxContainer';
+                    var label = document.createElement('label');
+                    var input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.setAttribute('is', 'emby-checkbox');
+                    input.className = 'discoverUser';
+                    input.setAttribute('data-userid', u.Id);
+                    if (limited) input.setAttribute('data-limited', 'true');
+                    input.checked = limited ? allowedLimited.indexOf(norm(u.Id)) !== -1 : disabled.indexOf(norm(u.Id)) === -1;
+                    var span = document.createElement('span');
+                    span.textContent = u.Name + (limited ? ' (has parental controls)' : '');
+                    label.appendChild(input);
+                    label.appendChild(span);
+                    wrap.appendChild(label);
+                    box.appendChild(wrap);
+                });
+            }
+
+            function norm(id) { return String(id).replace(/-/g, '').toLowerCase(); }
+
+            page.addEventListener('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                var picksUrl = ApiClient.serverAddress() + '/MedicPicks/Page';
+                $('PicksUrl').textContent = picksUrl;
+
+                Promise.all([ApiClient.getPluginConfiguration(pluginId), ApiClient.getUsers()])
+                    .then(function (results) {
+                        var config = results[0];
+                        var users = results[1] || [];
+                        $('EnableLibraryPicks').checked = config.EnableLibraryPicks;
+                        $('LibraryPickCount').value = config.LibraryPickCount;
+                        $('CreatePlaylists').checked = config.CreatePlaylists;
+                        $('EnableLinkedPicks').checked = config.EnableLinkedPicks !== false;
+                        $('PlaylistName').value = config.PlaylistName || '';
+                        $('EnableDiscover').checked = config.EnableDiscover;
+                        savedDiscover = config.EnableDiscover;
+                        $('DiscoverPickCount').value = config.DiscoverPickCount;
+                        $('TmdbLanguage').value = config.TmdbLanguage || 'en-GB';
+                        $('JellyseerrUrl').value = config.JellyseerrUrl || '';
+                        $('SeerrLinkUrl').value = config.SeerrLinkUrl || '';
+                        $('SeerrDirectRequests').checked = config.SeerrDirectRequests !== false;
+                        $('ShowRequests').checked = config.ShowRequests !== false;
+                        $('MinimumWatchedTitles').value = config.MinimumWatchedTitles;
+                        $('AddMenuLink').checked = config.AddMenuLink !== false;
+                        $('MenuLinkName').value = config.MenuLinkName || 'My picks';
+                        renderUsers(users, (config.DiscoverDisabledUserIds || []).map(norm), (config.DiscoverAllowedLimitedUserIds || []).map(norm));
+                        savedDisabled = untickedIds();
+                        refreshStatus();
+                        Dashboard.hideLoadingMsg();
+                    })
+                    .catch(function () { Dashboard.hideLoadingMsg(); });
+            });
+
+            // Reads the form into the saved settings. Every button that saves something (Save, Save key,
+            // Test Seerr) saves the whole form, so an address typed next to a key is never lost.
+            function saveSettings() {
+                return ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    config.EnableLibraryPicks = $('EnableLibraryPicks').checked;
+                    config.LibraryPickCount = parseInt($('LibraryPickCount').value, 10) || 20;
+                    config.CreatePlaylists = $('CreatePlaylists').checked;
+                    config.EnableLinkedPicks = $('EnableLinkedPicks').checked;
+                    config.PlaylistName = $('PlaylistName').value.trim() || 'Picks for you';
+                    config.EnableDiscover = $('EnableDiscover').checked;
+                    config.DiscoverPickCount = parseInt($('DiscoverPickCount').value, 10) || 20;
+                    config.TmdbLanguage = $('TmdbLanguage').value.trim() || 'en-GB';
+                    config.JellyseerrUrl = $('JellyseerrUrl').value.trim();
+                    config.SeerrLinkUrl = $('SeerrLinkUrl').value.trim();
+                    config.SeerrDirectRequests = $('SeerrDirectRequests').checked;
+                    config.ShowRequests = $('ShowRequests').checked;
+                    config.MinimumWatchedTitles = parseInt($('MinimumWatchedTitles').value, 10) || 3;
+                    config.AddMenuLink = $('AddMenuLink').checked;
+                    config.MenuLinkName = $('MenuLinkName').value.trim() || 'My picks';
+                    var boxes = Array.prototype.slice.call(page.querySelectorAll('.discoverUser'));
+                    // An account with parental controls is off unless ticked, so it's kept in its own list.
+                    config.DiscoverDisabledUserIds = boxes
+                        .filter(function (box) { return !box.checked && !box.hasAttribute('data-limited'); })
+                        .map(function (box) { return box.getAttribute('data-userid'); });
+                    config.DiscoverAllowedLimitedUserIds = boxes
+                        .filter(function (box) { return box.checked && box.hasAttribute('data-limited'); })
+                        .map(function (box) { return box.getAttribute('data-userid'); });
+                    var disabled = untickedIds();
+                    var discoverChanged = config.EnableDiscover !== savedDiscover;
+                    // Only people ticked or unticked since the last save; with Discover off for everyone, nobody's picks change.
+                    var peopleChanged = !config.EnableDiscover ? [] : disabled
+                        .filter(function (id) { return savedDisabled.indexOf(id) === -1; })
+                        .concat(savedDisabled.filter(function (id) { return disabled.indexOf(id) === -1; }));
+                    return ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                        savedDiscover = config.EnableDiscover;
+                        savedDisabled = disabled;
+                        // Discover picks only change at a build, so start one for those affected rather than wait for tonight.
+                        if (discoverChanged) {
+                            ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('MedicPicks/Admin/Refresh') });
+                        } else if (peopleChanged.length) {
+                            ApiClient.ajax({
+                                type: 'POST',
+                                url: ApiClient.getUrl('MedicPicks/Admin/Rebuild'),
+                                data: JSON.stringify({ userIds: peopleChanged }),
+                                contentType: 'application/json'
+                            });
+                        }
+                        return result;
+                    });
+                });
+            }
+
+            // Saves the settings and any key typed but not yet saved with its own button: the TMDb key first,
+            // so a build started by switching Discover on can use it, and the Seerr key last, because saving
+            // a Seerr address on another server removes the key saved for the old one.
+            function saveAll() {
+                var tmdb = $('TmdbKey').value.trim();
+                var seerr = $('SeerrKey').value.trim();
+                return (tmdb ? postKey(tmdb).then(function () { $('TmdbKey').value = ''; }) : Promise.resolve())
+                    .then(saveSettings)
+                    .then(function (result) {
+                        if (!seerr) {
+                            return result;
+                        }
+                        return postSeerrKey(seerr).then(function () {
+                            $('SeerrKey').value = '';
+                            return result;
+                        });
+                    });
+            }
+
+            $('MedicPicksConfigForm').addEventListener('submit', function (e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                if ($('TmdbKey').value.trim()) {
+                    $('EnableDiscover').checked = true;
+                }
+                saveAll()
+                    .then(function (result) {
+                        refreshStatus();
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    })
+                    .catch(function () {
+                        Dashboard.hideLoadingMsg();
+                        Dashboard.alert('Couldn\'t save the settings. Try again.');
+                    });
+                return false;
+            });
+
+            function postSeerrKey(key) {
+                return ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('MedicPicks/Admin/SeerrKey'),
+                    data: JSON.stringify({ key: key }),
+                    contentType: 'application/json'
+                });
+            }
+
+            $('SaveSeerrKey').addEventListener('click', function () {
+                var key = $('SeerrKey').value.trim();
+                if (!key) {
+                    Dashboard.alert('Paste your Seerr API key first.');
+                    return;
+                }
+                // The address first: saving one on another server removes the old server's key.
+                saveSettings().then(function () { return postSeerrKey(key); }).then(function () {
+                    $('SeerrKey').value = '';
+                    refreshStatus();
+                    Dashboard.alert($('JellyseerrUrl').value.trim()
+                        ? 'Seerr key and address saved.'
+                        : 'Seerr key saved. Add the Seerr address too, or requests won\'t work.');
+                }).catch(function () { Dashboard.alert('The Seerr key wasn\'t saved. Try again.'); });
+            });
+
+            $('ClearSeerrKey').addEventListener('click', function () {
+                postSeerrKey(null).then(function () {
+                    refreshStatus();
+                    Dashboard.alert('Seerr key removed.');
+                }).catch(function () { Dashboard.alert('The Seerr key wasn\'t removed. Try again.'); });
+            });
+
+            $('TestSeerr').addEventListener('click', function () {
+                // Save first, so the test uses the address and key as they are on screen now.
+                saveAll()
+                    .then(function () {
+                        refreshStatus();
+                        return ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('MedicPicks/Admin/TestSeerr'), dataType: 'json' });
+                    })
+                    .then(function (r) { Dashboard.alert(r.message); })
+                    .catch(function () { Dashboard.alert('The test didn\'t finish. Check the Seerr address, then try again.'); });
+            });
+
+            function postKey(key) {
+                return ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('MedicPicks/Admin/TmdbKey'),
+                    data: JSON.stringify({ key: key }),
+                    contentType: 'application/json'
+                });
+            }
+
+            $('SaveTmdbKey').addEventListener('click', function () {
+                var key = $('TmdbKey').value.trim();
+                if (!key) {
+                    Dashboard.alert('Paste a TMDb API key or read access token first.');
+                    return;
+                }
+                // A TMDb key is only for Discover picks, so saving one switches them on.
+                var discoverWas = $('EnableDiscover').checked;
+                $('EnableDiscover').checked = true;
+                postKey(key).then(saveSettings).then(function () {
+                    $('TmdbKey').value = '';
+                    refreshStatus();
+                    Dashboard.alert('TMDb key saved and Discover picks switched on. Picks are being rebuilt now.');
+                }).catch(function () {
+                    $('EnableDiscover').checked = discoverWas;
+                    Dashboard.alert('The TMDb key wasn\'t saved. Try again.');
+                });
+            });
+
+            $('ClearTmdbKey').addEventListener('click', function () {
+                postKey(null).then(function () {
+                    refreshStatus();
+                    Dashboard.alert('TMDb key removed.');
+                }).catch(function () { Dashboard.alert('The TMDb key wasn\'t removed. Try again.'); });
+            });
+
+            $('RunNow').addEventListener('click', function () {
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('MedicPicks/Admin/Refresh') }).then(function () {
+                    Dashboard.alert('Building picks now. Progress shows under Scheduled Tasks.');
+                }).catch(function () { Dashboard.alert('Building picks didn\'t start. Try again.'); });
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>JellyfinMedic</RootNamespace>
+    <AssemblyName>JellyfinMedic</AssemblyName>
+    <AssemblyVersion>1.0.23.0</AssemblyVersion>
+    <FileVersion>1.0.23.0</FileVersion>
+  </PropertyGroup>
+
+  <!--
+    Compile against Jellyfin, but don't copy Jellyfin's own DLLs into the output.
+    The server already has them, and a second copy stops Jellyfin recognising the
+    plugin's page and background services. An exact version, so every build compiles
+    against the same Jellyfin; it matches the manifest's targetAbi (12.1.0.0).
+  -->
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="12.1.0">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="12.1.0">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="JellyfinMedic.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="medic.html" />
+    <!-- The page's styles, served by MedicAssetsController. -->
+    <EmbeddedResource Include="medic.css" />
+    <!-- The repository's CHANGELOG.md, kept once: the "What's new" panel reads it from here. -->
+    <EmbeddedResource Include="../../CHANGELOG.md" LogicalName="JellyfinMedic.CHANGELOG.md" />
+    <EmbeddedResource Include="assist.js" />
+    <EmbeddedResource Include="banner.js" />
+    <None Remove="thumb.png" />
+    <Content Remove="thumb.png" />
+  </ItemGroup>
+</Project>

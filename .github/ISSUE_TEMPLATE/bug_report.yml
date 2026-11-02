@@ -1,0 +1,177 @@
+name: Bug report
+description: Something in Jellyfin Medic, Medic Picks or Medic Profiles isn't working as expected.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. The more you fill in below, the sooner it can be found and fixed.
+
+        **Something private, or a security problem?** Please don't post it here: email the address under
+        [About this project](https://github.com/P1zzm1ssile/Jellyfin-Medic#about-this-project) instead.
+
+  - type: checkboxes
+    id: pre-flight
+    attributes:
+      label: Before you start
+      options:
+        - label: I've searched the existing issues, open and closed, and this isn't one of them.
+          required: true
+        - label: I'm on the **latest** version of the plugin, or I say below why I can't be.
+          required: true
+        - label: My Jellyfin is a version the plugin supports (**12.1 or later** for Jellyfin Medic, **12.0 or later** for Medic Picks and Medic Profiles).
+          required: true
+        - label: This isn't a security problem (those go by email, see above).
+          required: true
+
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: Which plugin?
+      multiple: true
+      options:
+        - Jellyfin Medic
+        - Medic Picks
+        - Medic Profiles
+        - The repository itself (CI, scripts, docs)
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: Under **Dashboard → Plugins**, next to the plugin's name.
+      placeholder: "e.g. 1.0.21.0"
+    validations:
+      required: true
+
+  - type: input
+    id: jellyfin-version
+    attributes:
+      label: Jellyfin server version
+      description: Under **Dashboard → About**. The full version, please.
+      placeholder: "e.g. 12.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where does Jellyfin run?
+      options:
+        - Unraid
+        - TrueNAS SCALE
+        - Proxmox
+        - Another Linux
+        - Windows
+        - macOS
+        - A NAS (Synology, QNAP or another)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How is Jellyfin installed?
+      options:
+        - "Docker: linuxserver.io image"
+        - "Docker: binhex image"
+        - "Docker: official jellyfin/jellyfin image"
+        - "Docker: another image"
+        - Linux package (apt or rpm)
+        - Windows or macOS installer
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reverse-proxy
+    attributes:
+      label: Is Jellyfin behind a reverse proxy?
+      options:
+        - "No, it's reached directly"
+        - Cloudflare (proxied)
+        - Cloudflare Tunnel
+        - Caddy
+        - nginx or Nginx Proxy Manager
+        - Traefik
+        - HAProxy
+        - Authelia, Authentik or another sign-in proxy
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it show?
+      multiple: true
+      options:
+        - "Jellyfin Medic: Dashboard tab"
+        - "Jellyfin Medic: Schedule or History tab"
+        - "Jellyfin Medic: Checks tab"
+        - "Jellyfin Medic: Tests, IPTV, Tracks or Media report tab"
+        - "Jellyfin Medic: Plugins, Plugin directory or Settings tab"
+        - Jellyfin Medic's banner on the home page
+        - Medic Picks settings
+        - The My picks page
+        - The Medic Picks playlist in a Jellyfin app
+        - The Medic Profiles page
+        - A scheduled task
+        - Only in the server log
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you saw. Copy any message word for word.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, so it can be seen happening on another server.
+      placeholder: |
+        1. Open ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Jellyfin log lines
+      description: |
+        From **Dashboard → Logs**, around the time it happened: lines that mention Jellyfin Medic, Medic Picks or
+        Medic Profiles, and any error or stack trace near them. Take out tokens, keys and addresses you don't want public.
+      render: text
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: Plugin settings that matter (optional)
+      description: |
+        For example "LoadGuard on, Seerr behind Authelia, qBittorrent 5.2". Never paste a key or a password
+        (TMDb, Seerr, Sonarr, Radarr, qBittorrent).
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, errors from the browser's console (F12), anything that helps.

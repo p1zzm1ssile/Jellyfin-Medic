@@ -1,0 +1,126 @@
+name: Tests
+
+# Unit tests, and the end-to-end tests that build the three plugins, run them in a real Jellyfin and
+# click through their pages. On pull requests, by hand, and before every release (the release
+# workflows call this one and only publish when it passes).
+on:
+  pull_request:
+    # A change to the downloads report or issue alerts alone doesn't touch the plugins, so it doesn't need
+    # the ten-minute build and Jellyfin run.
+    paths-ignore:
+      - 'scripts/github-downloads.py'
+      - '.github/workflows/github-downloads.yml'
+      - 'scripts/github-issues.py'
+      - '.github/workflows/github-issues.yml'
+  workflow_dispatch:
+  workflow_call:
+
+# It only reads the code.
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          # Every test project under tests/, so a new one is picked up without changing this file.
+          shopt -s nullglob
+          projects=(tests/*/*.Tests.csproj)
+          if [ ${#projects[@]} -eq 0 ]; then
+            echo "::error::No unit test projects under tests/"
+            exit 1
+          fi
+          # A test project renamed or moved a folder deeper would otherwise be skipped while the others pass.
+          missed=$(comm -23 <(find tests -name '*.csproj' | sort) <(printf '%s\n' "${projects[@]}" | sort))
+          if [ -n "$missed" ]; then
+            echo "::error::Not run, as unit test projects must be tests/<folder>/<name>.Tests.csproj: ${missed//$'\n'/, }"
+            exit 1
+          fi
+          for project in "${projects[@]}"; do
+            dotnet test "$project" -c Release
+            # Again 14 hours ahead of UTC, so code that leans on the machine's time zone shows up.
+            TZ=Pacific/Kiritimati dotnet test "$project" -c Release --no-build
+          done
+
+      - name: Run release script tests
+        run: python3 -m unittest discover -s scripts/tests -v
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install ffmpeg and Playwright
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          npm install --no-save --prefix "$RUNNER_TEMP/pw" playwright@1.56.1
+          npx --prefix "$RUNNER_TEMP/pw" playwright install --with-deps chromium
+
+      - name: Run tests
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/pw/node_modules/playwright
+        run: tests/e2e/run.sh
+
+      - name: Keep the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: tests/e2e/.logs
+          if-no-files-found: ignore
+
+  # The same checks on the oldest Jellyfin that Jellyfin Medic supports (its targetAbi is 12.1.0.0), so a call only
+  # newer Jellyfins have shows up before a release. Medic Picks and Profiles support 12.0, which can't run Jellyfin
+  # Medic, so the suite can't check them there.
+  e2e-oldest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install ffmpeg and Playwright
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          npm install --no-save --prefix "$RUNNER_TEMP/pw" playwright@1.56.1
+          npx --prefix "$RUNNER_TEMP/pw" playwright install --with-deps chromium
+
+      - name: Run tests
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/pw/node_modules/playwright
+          JELLYFIN_IMAGE: 'jellyfin/jellyfin:12.1@sha256:78d3ea1207d1322471fcac39a614f004f2ccf7e878f95ab2977d752f07e4dd7e'
+        run: tests/e2e/run.sh
+
+      - name: Keep the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs-jellyfin-12.1
+          path: tests/e2e/.logs
+          if-no-files-found: ignore
