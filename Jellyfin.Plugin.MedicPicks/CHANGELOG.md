@@ -8,6 +8,12 @@ Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 ### Added
 - **My picks opens inside Jellyfin.** The menu link opened the picks page in a new browser tab, and in the apps it was handed to something outside Jellyfin. It now opens the picks as a page of the app, under its own top bar and in each person's theme: the titles on your server, the ones linked to what they've watched and the ones not on the server yet, each opening its own page in the app, with Back coming back to the picks. Everything the full page does is there too: your choices (films or series, how many, genres, dubbed audio only), Update my picks and Show me different ones, Ignore and Show them again, Request, My requests, and Approve and Decline for admins. This works in browsers and the apps that run the server's web client (the Android and iOS apps, Jellyfin Desktop); when the page can't be drawn inside the app, the full page opens in the same window. To keep the old behaviour, untick "Open My picks inside Jellyfin" in Medic Picks' settings. First two steps of #171; the full page stays as the fallback.
 
+### Changed
+- **My picks look like the Home screen.** Picks are in rows of posters with their titles that scroll sideways, with arrows beside each row's title, instead of a list that turned into a grid. Picks that share a reason get a row of their own, such as "Because you watched The Avengers", all from your library. The full page's rows scroll sideways too, instead of wrapping into a grid.
+
+### Fixed
+- **Each title shows once.** A library with more than one copy of a film (two versions, or the same film named "Avengers: Infinity War" and "Avengers - Infinity War") could show it two or three times in the picks. Copies are now counted as one title, by their TMDb id or, without one, by name and year, and a title you've watched or hidden in one copy isn't picked in another.
+
 Thanks @camarigor for the design of the in-app page (#171).
 
 ## [1.2.6] – 2026-10-17

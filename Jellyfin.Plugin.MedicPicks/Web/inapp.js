@@ -138,13 +138,13 @@
         probe.src = url;
     }
 
-    // A card as the web app's library pages draw one: a portrait poster with its title, a second line, and any
+    // A card as the web app's Home page draws one in a row: a portrait poster with its title, a second line, and any
     // controls under it.
     function card(opts) {
-        var c = el('div', 'card portraitCard card-hoverable');
+        var c = el('div', 'card overflowPortraitCard card-hoverable');
         var box = el('div', 'cardBox cardBox-bottompadded');
         var scalable = el('div', 'cardScalable');
-        scalable.appendChild(el('div', 'cardPadder cardPadder-portrait'));
+        scalable.appendChild(el('div', 'cardPadder cardPadder-overflowPortrait'));
         var image = el(opts.href ? 'a' : 'div', 'cardImageContainer coveredImage cardContent defaultCardBackground defaultCardBackground1');
         if (opts.href) {
             image.href = opts.href;
@@ -165,11 +165,14 @@
         return c;
     }
 
-    // A section as the Home page draws one, with its cards wrapping as on a library page, so every pick can be
-    // reached without sideways scrolling.
+    // A row as the Home page draws one: a title, then cards that scroll sideways.
     function section(title, note) {
-        var s = el('div', 'verticalSection medicPicksRow');
-        s.appendChild(el('h2', 'sectionTitle sectionTitle-cards padded-left', title));
+        var s = el('div', 'verticalSection emby-scroller-container medicPicksRow');
+        var head = el('div', 'sectionTitleContainer medicPicksHead');
+        head.appendChild(el('h2', 'sectionTitle sectionTitle-cards padded-left', title));
+        s.arrows = arrowButtons();
+        head.appendChild(s.arrows.wrap);
+        s.appendChild(head);
         var p = el('p', 'fieldDescription padded-left padded-right');
         if (note) p.textContent = note;
         p.hidden = !note;
@@ -178,10 +181,70 @@
         return s;
     }
 
-    function cardList(cards) {
-        var items = el('div', 'itemsContainer vertical-wrap padded-left padded-right');
+    // A row that scrolls sideways, with the Home page's arrow buttons beside the row's title. The browser's own
+    // scrolling, so a mouse wheel, a touch screen and a TV remote's focus all move it.
+    function cardList(cards, s) {
+        var scroller = el('div', 'padded-top-focusscale padded-bottom-focusscale medicPicksScroller');
+        var items = el('div', 'itemsContainer focuscontainer-x');
         cards.forEach(function (c) { items.appendChild(c); });
-        return items;
+        scroller.appendChild(items);
+        var buttons = s && s.arrows;
+        if (buttons) {
+            var update = function () {
+                var room = scroller.scrollWidth - scroller.clientWidth;
+                buttons.wrap.hidden = room <= 2;
+                buttons.left.disabled = scroller.scrollLeft <= 2;
+                buttons.right.disabled = scroller.scrollLeft >= room - 2;
+            };
+            buttons.left.onclick = function () { scroller.scrollBy({ left: -scroller.clientWidth * 0.8, behavior: 'smooth' }); };
+            buttons.right.onclick = function () { scroller.scrollBy({ left: scroller.clientWidth * 0.8, behavior: 'smooth' }); };
+            scroller.addEventListener('scroll', update, { passive: true });
+            window.addEventListener('resize', update);
+            requestAnimationFrame(update);
+        }
+        return scroller;
+    }
+
+    function arrowButtons() {
+        var wrap = el('div', 'emby-scrollbuttons padded-right medicPicksArrows');
+        function arrow(direction, title, icon) {
+            var b = el('button', 'emby-scrollbuttons-button paper-icon-button-light', null, 'paper-icon-button-light');
+            b.type = 'button';
+            b.title = title;
+            b.setAttribute('data-direction', direction);
+            var span = el('span', 'material-icons ' + icon);
+            span.setAttribute('aria-hidden', 'true');
+            b.appendChild(span);
+            wrap.appendChild(b);
+            return b;
+        }
+        var left = arrow('left', 'Previous', 'chevron_left');
+        var right = arrow('right', 'Next', 'chevron_right');
+        wrap.hidden = true;
+        return { wrap: wrap, left: left, right: right };
+    }
+
+    // Picks in rows by why they were picked, as the Home page's "Because you watched" rows: each reason shared by at
+    // least `least` picks gets a row of its own, in the order of its best pick, and the rest share the first row.
+    function byReason(list, least) {
+        var groups = [];
+        var index = {};
+        list.forEach(function (pick) {
+            var reason = pick.reason || '';
+            if (!(reason in index)) { index[reason] = groups.length; groups.push({ reason: reason, picks: [] }); }
+            groups[index[reason]].picks.push(pick);
+        });
+        var rest = [];
+        var rows = [];
+        groups.forEach(function (g) {
+            if (g.reason && g.picks.length >= least) rows.push(g);
+            else rest = rest.concat(g.picks);
+        });
+        return { rest: rest, rows: rows };
+    }
+
+    function rowTitle(reason) {
+        return /^From /.test(reason) ? 'Because you watched ' + reason.slice(5) : reason;
     }
 
     function serverId() {
@@ -271,14 +334,16 @@
         var approvals = section('Waiting for your approval', 'Requests from people on this server that Seerr is holding for an admin.');
         var requests = section('My requests', null);
         var library = section('On your server', null);
-        var linked = section('Linked to what you’ve watched', null);
+        var libraryRows = el('div');
+        var linked = section('More linked to what you’ve watched', null);
+        var linkedRows = el('div');
         var discover = section('Not on the server yet', null);
         var message = el('p', 'padded-left padded-right medicPicksMessage');
         [approvals, requests, library, linked, discover].forEach(function (s) { s.hidden = true; });
         message.hidden = true;
 
         root.textContent = '';
-        [top, approvals, requests, message, library, linked, discover].forEach(function (n) { root.appendChild(n); });
+        [top, approvals, requests, message, library, libraryRows, linkedRows, linked, discover].forEach(function (n) { root.appendChild(n); });
 
         function alive() { return root.isConnected && onRoute(); }
 
@@ -388,9 +453,9 @@
             b.addEventListener('click', function () {
                 b.disabled = true;
                 postJson('Me/Hide', body).then(function () {
-                    var list = cardNode.parentNode;
+                    var row = cardNode.closest('.medicPicksRow');
                     cardNode.remove();
-                    if (list && !list.children.length) list.parentNode.hidden = true;
+                    if (row && !row.querySelector('.card')) row.hidden = true;
                     state.hidden++;
                     updateHiddenNote();
                 }).catch(function () {
@@ -432,12 +497,13 @@
             return wrap;
         }
 
-        function libraryCards(list) {
+        // In a row named after their reason, the cards show the year instead of repeating it.
+        function libraryCards(list, inReasonRow) {
             return list.map(function (pick) {
                 var c = card({
                     title: pick.name,
                     year: pick.year,
-                    second: pick.reason || (pick.year ? String(pick.year) : ''),
+                    second: inReasonRow ? (pick.year ? String(pick.year) : '') : (pick.reason || (pick.year ? String(pick.year) : '')),
                     href: detailsHref(pick.itemId),
                     image: api().getUrl('Items/' + encodeURIComponent(pick.itemId) + '/Images/Primary', { fillWidth: 320, quality: 90 })
                 });
@@ -487,10 +553,23 @@
         }
 
         function fill(s, cards) {
-            var old = s.querySelector('.itemsContainer');
+            var old = s.querySelector('.medicPicksScroller');
             if (old) old.remove();
-            s.appendChild(cardList(cards));
+            s.appendChild(cardList(cards, s));
             s.hidden = cards.length === 0;
+        }
+
+        // The rows for one kind of pick: the first row (`first`) for the picks that share no reason with others, then
+        // a row for each reason, placed in `extra`.
+        function fillGrouped(first, extra, list, least) {
+            var grouped = byReason(list, least);
+            fill(first, libraryCards(grouped.rest, false));
+            extra.textContent = '';
+            grouped.rows.forEach(function (g) {
+                var s = section(rowTitle(g.reason), null);
+                fill(s, libraryCards(g.picks, true));
+                extra.appendChild(s);
+            });
         }
 
         function render(data) {
@@ -513,8 +592,13 @@
                 ? 'Ready to watch now. They’re also in your playlist “' + data.playlistName + '”, which you’ll find in every Jellyfin app.'
                 : 'Ready to watch now.';
             library.note.hidden = false;
-            fill(library, libraryCards(lib));
-            fill(linked, libraryCards(link));
+            fillGrouped(library, libraryRows, lib, 3);
+            fillGrouped(linked, linkedRows, link, 2);
+            // With nothing left for the first row, its note moves to the first reason row.
+            if (library.hidden && libraryRows.firstChild) {
+                libraryRows.firstChild.note.textContent = library.note.textContent;
+                libraryRows.firstChild.note.hidden = false;
+            }
             discover.note.textContent = data.requestMode === 'direct'
                 ? 'Press Request and it goes straight to Seerr under your own account, so your usual request limits apply.'
                 : data.requestMode === 'link'
@@ -648,9 +732,8 @@
                     msg.textContent = verb === 'Approve' ? 'Approving…' : 'Declining…';
                     postJson('Admin/Requests/' + encodeURIComponent(r.id) + '/' + verb, {}).then(function (res) {
                         if (res && res.ok) {
-                            var list = c.parentNode;
                             c.remove();
-                            if (list && !list.children.length) approvals.hidden = true;
+                            if (!approvals.querySelector('.card')) approvals.hidden = true;
                             refreshRequests();
                         } else {
                             msg.textContent = (res && res.message) || 'That didn’t work. Try again.';
@@ -768,7 +851,13 @@
             '#medicPicksInApp .medicPicksActions .emby-button { margin: 0; }',
             '#medicPicksInApp .medicPicksControl { white-space: normal; padding: .1em 0; }',
             '#medicPicksInApp .medicPicksControl .emby-button { margin: 0; padding: .3em .6em; font-size: .9em; }',
-            '#medicPicksInApp .medicPicksFull { display: inline-block; margin-bottom: 1em; }'
+            '#medicPicksInApp .medicPicksFull { display: inline-block; margin-bottom: 1em; }',
+            '#medicPicksInApp .medicPicksScroller { overflow-x: auto; overflow-y: hidden; scroll-behavior: smooth; scrollbar-width: thin; }',
+            '#medicPicksInApp .medicPicksScroller > .itemsContainer { white-space: nowrap; padding-left: 3.3%; padding-right: 3.3%; }',
+            '#medicPicksInApp .medicPicksHead { display: flex; align-items: center; justify-content: space-between; }',
+            '#medicPicksInApp .medicPicksHead .sectionTitle { margin-bottom: 0; }',
+            '#medicPicksInApp .medicPicksArrows { display: flex; flex-shrink: 0; }',
+            '#medicPicksInApp .medicPicksArrows[hidden] { display: none; }'
         ].join('\n');
         document.head.appendChild(style);
     }

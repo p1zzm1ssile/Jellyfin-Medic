@@ -1850,7 +1850,7 @@ await check('My picks page opens signed in', async () => {
     expect(errors.length === 0, errors.join(' | '));
 });
 
-await check('My picks opens inside Jellyfin: the menu link shows the picks in the app, a title opens in the app, and Back comes back', async () => {
+await check('My picks opens inside Jellyfin: the menu link shows the picks in the app in Home-style rows, a title opens in the app, and Back comes back', async () => {
     const ctx2 = await browser.newContext({ locale: 'en-GB' });
     try {
         const p = await adminPage(ctx2);
@@ -1868,6 +1868,16 @@ await check('My picks opens inside Jellyfin: the menu link shows the picks in th
         expect(await p.locator('header.MuiAppBar-root:visible, .skinHeader:visible').count() > 0, 'the app\'s top bar is gone');
         const titles = await p.$$eval('#medicPicksInApp .cardText-first', (l) => l.map((t) => t.textContent));
         expect(titles.includes(me.inLibrary[0].name), `"${me.inLibrary[0].name}" not shown: ${titles.join(', ')}`);
+        expect(new Set(titles).size === titles.length, 'a title shows twice: ' + titles.join(', '));
+        // Rows as on the Home page: the cards sit side by side in one line, and the arrow beside the title scrolls it.
+        const row = p.locator('#medicPicksInApp .medicPicksRow:not([hidden])').first();
+        const tops = await row.locator('.card').evaluateAll((l) => [...new Set(l.map((c) => Math.round(c.getBoundingClientRect().top)))]);
+        expect(tops.length === 1, 'the first row wraps onto ' + tops.length + ' lines');
+        const scroller = row.locator('.medicPicksScroller');
+        if (await scroller.evaluate((e) => e.scrollWidth > e.clientWidth + 2)) {
+            await row.locator('.medicPicksArrows button[data-direction="right"]').click();
+            await p.waitForFunction((e) => e.scrollLeft > 0, await scroller.elementHandle(), { timeout: 5000 });
+        }
         expect(!(await p.isVisible('#fallbackPage h1:text("Page not found")')), '"Page not found" still shows');
         expect(await p.title() === 'My picks', 'title: ' + await p.title());
         // The full page, for choices, hiding and requests, opens in the same window.
