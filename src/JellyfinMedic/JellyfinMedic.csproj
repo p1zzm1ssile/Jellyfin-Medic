@@ -32,6 +32,8 @@
     <EmbeddedResource Include="medic.html" />
     <!-- The page's styles, served by MedicAssetsController. -->
     <EmbeddedResource Include="medic.css" />
+    <!-- Tabs of the page with a script of their own, also served by MedicAssetsController (tabs/iptv.js as medic-iptv.js). -->
+    <EmbeddedResource Include="tabs/*.js" LogicalName="JellyfinMedic.medic-%(Filename).js" />
     <!-- The repository's CHANGELOG.md, kept once: the "What's new" panel reads it from here. -->
     <EmbeddedResource Include="../../CHANGELOG.md" LogicalName="JellyfinMedic.CHANGELOG.md" />
     <EmbeddedResource Include="assist.js" />

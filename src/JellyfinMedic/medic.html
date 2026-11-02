@@ -876,6 +876,30 @@
 
             function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
 
+            // A tab whose script is a file of its own (tabs/<name>.js, served as medic-<name>.js), loaded the first time
+            // it's needed. Once per browser page, as Jellyfin's web app keeps this page while you move around it; a load
+            // that fails is tried again the next time.
+            function tabScript(name) {
+                const tabs = window.JellyfinMedicTabs = window.JellyfinMedicTabs || {};
+                const loading = window.JellyfinMedicTabScripts = window.JellyfinMedicTabScripts || {};
+                if (!loading[name]) {
+                    loading[name] = new Promise(function (resolve, reject) {
+                        const script = document.createElement('script');
+                        script.src = ApiClient.getUrl('JellyfinMedic/Assets/medic-' + name + '.js');
+                        script.onload = function () {
+                            if (typeof tabs[name] === 'function') { resolve(tabs[name]); return; }
+                            reject(new Error('medic-' + name + '.js loaded but set nothing up'));
+                        };
+                        script.onerror = function () { reject(new Error('Couldn\'t load medic-' + name + '.js')); };
+                        document.head.appendChild(script);
+                    }).catch(function (err) {
+                        delete loading[name];
+                        throw err;
+                    });
+                }
+                return loading[name];
+            }
+
             function init(page) {
                 const $ = function (id) { return page.querySelector('#' + id); };
                 const status = $('so-status');
@@ -895,7 +919,6 @@
                 let live = null;
                 let nowData = null;
                 let nowTimer = null;
-                let iptv = null;
                 let exportText = '';
 
                 // False once the admin has left this page; polls only run while it's shown (see Polling below).
@@ -2756,6 +2779,28 @@
                 let viewers = 2;
                 let testing = false;
 
+                // ---------- Tabs in files of their own ----------
+
+                // What a tab's script gets from the page (see tabs/iptv.js).
+                const tabContext = {
+                    $: $, el: el, pick: pick, fmtDateTime: fmtDateTime, getJson: getJson, postJson: postJson,
+                    isTesting: function () { return testing; }
+                };
+
+                // Each tab's part once it's set up, so the clock can redraw it; tabStarting holds the ones on their way.
+                const tabParts = {};
+                const tabStarting = {};
+                function tabPart(name) {
+                    if (tabParts[name]) return Promise.resolve(tabParts[name]);
+                    if (!tabStarting[name]) {
+                        tabStarting[name] = tabScript(name).then(function (start) {
+                            tabParts[name] = start(tabContext);
+                            return tabParts[name];
+                        }).finally(function () { delete tabStarting[name]; });
+                    }
+                    return tabStarting[name];
+                }
+
                 function setTesting(on) {
                     testing = on;
                     ['so-run-playback', 'so-run-decode', 'so-run-speed', 'so-rerun'].forEach(function (id) { $(id).disabled = on; });
@@ -3250,114 +3295,6 @@
                 }
 
                 $('md-errors-only').addEventListener('change', loadHistory);
-
-                // ---------- IPTV ----------
-
-                function renderIptv() {
-                    const box = $('md-iptv');
-                    box.innerHTML = '';
-                    if (!iptv) {
-                        box.appendChild(el('p', 'so-muted so-small', 'Not analysed since Jellyfin last started.'));
-                        return;
-                    }
-                    box.appendChild(el('p', 'so-muted so-small', 'Analysed ' + fmtDateTime(pick(iptv, 'GeneratedUtc')) + '. "Watched" is the most items in that group watched by any one person.'));
-                    const libs = pick(iptv, 'Libraries') || [];
-                    if (libs.length === 0) box.appendChild(el('p', 'so-muted', 'No IPTV (.strm) libraries were found.'));
-                    libs.forEach(function (lib) {
-                        const panel = el('div', 'so-panel');
-                        panel.appendChild(el('h3', null, pick(lib, 'Name') + ': ' + Number(pick(lib, 'Items') || 0).toLocaleString('en-GB') + ' items'));
-                        const table = el('table', 'so-table');
-                        const hr = el('tr');
-                        ['Genre', 'Items', 'Watched', 'Share of library'].forEach(function (h) { hr.appendChild(el('th', null, h)); });
-                        const thead = el('thead');
-                        thead.appendChild(hr);
-                        table.appendChild(thead);
-                        const body = el('tbody');
-                        (pick(lib, 'Genres') || []).forEach(function (g) {
-                            const tr = el('tr');
-                            tr.appendChild(el('td', null, pick(g, 'Name')));
-                            tr.appendChild(el('td', null, Number(pick(g, 'Items') || 0).toLocaleString('en-GB')));
-                            const w = pick(g, 'Watched') || 0;
-                            tr.appendChild(el('td', w === 0 && pick(g, 'Items') >= 500 ? 'md-warn-text' : null, Number(w).toLocaleString('en-GB')));
-                            const share = el('td');
-                            const bar = el('div', 'md-bar');
-                            const fill = el('i');
-                            fill.style.width = Math.round((pick(g, 'Share') || 0) * 100) + '%';
-                            bar.appendChild(fill);
-                            share.appendChild(bar);
-                            tr.appendChild(share);
-                            body.appendChild(tr);
-                        });
-                        table.appendChild(body);
-                        const wrap = el('div', 'so-scroll');
-                        wrap.appendChild(table);
-                        panel.appendChild(wrap);
-                        const countries = (pick(lib, 'Countries') || []).map(function (c) { return pick(c, 'Name') + ' ' + Math.round((pick(c, 'Share') || 0) * 100) + '%'; });
-                        if (countries.length) panel.appendChild(el('p', 'so-small so-muted', 'Where they come from (sampled): ' + countries.join(', ')));
-                        box.appendChild(panel);
-                    });
-
-                    const ch = pick(iptv, 'Channels') || {};
-                    const panel = el('div', 'so-panel');
-                    panel.appendChild(el('h3', null, 'Live channels'));
-                    if (!pick(ch, 'Total')) {
-                        panel.appendChild(el('p', 'so-muted', 'No live TV channels found.'));
-                    } else {
-                        const dl = el('dl', 'so-kv');
-                        function row(k, v) { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); }
-                        row('Channels', Number(pick(ch, 'Total')).toLocaleString('en-GB'));
-                        row('Shown more than once', Number(pick(ch, 'DuplicateGroups') || 0).toLocaleString('en-GB') + ' channels, ' + Number(pick(ch, 'ExtraCopies') || 0).toLocaleString('en-GB') + ' extra copies');
-                        row('Regional versions', Number(pick(ch, 'Regional') || 0).toLocaleString('en-GB'));
-                        panel.appendChild(dl);
-                        const ex = pick(ch, 'Examples') || [];
-                        if (ex.length) panel.appendChild(el('p', 'so-small so-muted', 'For example: ' + ex.join(', ')));
-                        const dups = pick(ch, 'Duplicates') || [];
-                        if (dups.length) {
-                            // Every channel with copies, and the name of each copy, so you can pick which to keep.
-                            const details = el('details', 'md-dups');
-                            details.appendChild(el('summary', null, 'Show all ' + dups.length.toLocaleString('en-GB') + ' channels with copies'));
-                            const filter = el('input', 'so-input');
-                            filter.type = 'search';
-                            filter.placeholder = 'Filter channels';
-                            filter.setAttribute('aria-label', 'Filter channels');
-                            details.appendChild(filter);
-                            const list = el('ul', 'md-dup-list');
-                            dups.forEach(function (d) {
-                                const li = el('li');
-                                li.appendChild(el('strong', null, pick(d, 'Name') + ' (' + (pick(d, 'Versions') || []).length + ')'));
-                                li.appendChild(el('span', 'so-small so-muted', (pick(d, 'Versions') || []).join(' · ')));
-                                li.dataset.text = (pick(d, 'Name') + ' ' + (pick(d, 'Versions') || []).join(' ')).toLowerCase();
-                                list.appendChild(li);
-                            });
-                            details.appendChild(list);
-                            filter.addEventListener('input', function () {
-                                const q = filter.value.trim().toLowerCase();
-                                list.querySelectorAll('li').forEach(function (li) { li.hidden = q !== '' && li.dataset.text.indexOf(q) < 0; });
-                            });
-                            panel.appendChild(details);
-                            panel.appendChild(el('p', 'md-note', 'Keep one version of each (usually the best quality your TVs can play) and hide or remove the rest in your IPTV plugin or provider.'));
-                        }
-                    }
-                    box.appendChild(panel);
-                }
-
-                $('md-run-iptv').addEventListener('click', async function () {
-                    if (testing) return;
-                    const btn = $('md-run-iptv');
-                    btn.disabled = true;
-                    $('md-iptv').innerHTML = '';
-                    $('md-iptv').appendChild(el('p', 'so-muted', 'Analysing your IPTV libraries… this can take a minute on a big catalogue.'));
-                    try {
-                        iptv = await postJson('/JellyfinMedic/Iptv');
-                        renderIptv();
-                    } catch (err) {
-                        console.error('Jellyfin Medic: IPTV analysis failed', err);
-                        $('md-iptv').innerHTML = '';
-                        $('md-iptv').appendChild(el('p', 'md-bad-text', 'The analysis couldn\'t run. If a test is running, wait for it to finish.'));
-                    } finally {
-                        btn.disabled = false;
-                    }
-                });
 
                 // ---------- Medic settings ----------
 
@@ -4903,8 +4840,7 @@
                         } else if (name === 'history') {
                             await loadHistory();
                         } else if (name === 'iptv') {
-                            if (!iptv) { iptv = await getJson('/JellyfinMedic/Iptv'); }
-                            renderIptv();
+                            await (await tabPart('iptv')).load();
                         } else if (name === 'tracks') {
                             await loadMedicSettings();
                             loadTracks();
@@ -4997,13 +4933,14 @@
                         function () { if (usage) renderUsage(); },
                         function () { if (plugins) renderPlugins(); },
                         function () { if (speedResult) renderSpeed(); },
-                        function () { if (iptv) renderIptv(); },
                         function () { if (directory) renderDirectory(); },
                         function () { if (tracksScan) renderTracksScan(); },
                         function () { if (mediaStatus) renderMedia(); },
                         function () { if (weekly) renderWeekly(); },
                         function () { if (activeTab === 'schedule') { loadAudit(); loadBackups(); } }
-                    ].forEach(function (part) {
+                    ].concat(Object.keys(tabParts).map(function (name) {
+                        return function () { tabParts[name].redrawTimes(); };
+                    })).forEach(function (part) {
                         try { part(); } catch (err) { console.error('Jellyfin Medic: could not redraw a part of the page', err); }
                     });
                 }

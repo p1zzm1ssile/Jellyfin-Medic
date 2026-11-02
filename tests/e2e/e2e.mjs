@@ -128,7 +128,7 @@ for (const path of medicGets) {
     await check(`GET ${path}`, async () => { await ok(path); });
 }
 
-await check('Jellyfin Medic serves its stylesheet to anyone, and nothing else from there', async () => {
+await check('Jellyfin Medic serves its stylesheet and tab scripts to anyone, and nothing else from there', async () => {
     // The page links it, and a stylesheet link carries no sign-in, so it's served without one.
     const css = await fetch(JF + '/JellyfinMedic/Assets/medic.css');
     const text = await css.text();
@@ -137,7 +137,12 @@ await check('Jellyfin Medic serves its stylesheet to anyone, and nothing else fr
     expect(css.headers.get('x-content-type-options') === 'nosniff', 'x-content-type-options: ' + css.headers.get('x-content-type-options'));
     expect((css.headers.get('cache-control') || '').includes('no-cache'), 'cache-control: ' + css.headers.get('cache-control'));
     expect(text.includes('#JellyfinMedicPage .so-topbar'), 'not the Medic stylesheet: ' + text.slice(0, 120));
-    for (const name of ['medic.html', 'assist.js', '..%2Fmedic.html']) {
+    // A tab's script, loaded by a script tag, which carries no sign-in either.
+    const js = await fetch(JF + '/JellyfinMedic/Assets/medic-iptv.js');
+    expect(js.status === 200, 'medic-iptv.js: ' + js.status);
+    expect((js.headers.get('content-type') || '').startsWith('text/javascript'), 'script content type: ' + js.headers.get('content-type'));
+    expect((await js.text()).includes('JellyfinMedicTabs'), 'not the IPTV tab\'s script');
+    for (const name of ['medic.html', 'assist.js', 'iptv.js', '..%2Fmedic.html']) {
         const other = await fetch(JF + '/JellyfinMedic/Assets/' + name);
         expect(other.status === 404, `${name}: ${other.status}`);
     }
@@ -1547,6 +1552,44 @@ await check('Jellyfin Medic page is styled by its stylesheet', async () => {
     await page.waitForFunction(() => getComputedStyle(document.querySelector('#JellyfinMedicPage .so-topbar')).display === 'flex', null, { timeout: 10000 });
     return 'top bar laid out as a row';
 });
+await check('Medic IPTV tab, from its own script: shows the last analysis, and Analyse IPTV draws it again', async () => {
+    // The IPTV check above analysed the M3U tuner's channels, so the tab opens on that analysis.
+    await medicTab('iptv');
+    await page.waitForSelector('#md-iptv .md-dups', { timeout: 30000 });
+    const shown = await page.textContent('#md-iptv');
+    expect(/BBC One[^(]*\(3\)/i.test(shown), 'BBC One and its 3 copies not listed: ' + shown.slice(0, 300));
+    await page.click('#md-iptv .md-dups summary');
+    await page.fill('#md-iptv .md-dups input[type="search"]', 'bbc one');
+    const visible = await page.$$eval('#md-iptv .md-dup-list li', (lis) => lis.filter((li) => !li.hidden).length);
+    expect(visible >= 1, 'the filter hid BBC One');
+    await page.click('#md-run-iptv');
+    await page.waitForFunction(() => !document.getElementById('md-run-iptv').disabled && !!document.querySelector('#md-iptv .md-dups'), null, { timeout: 120000 });
+    const scripts = await page.$$eval('script[src*="medic-iptv.js"]', (list) => list.length);
+    expect(scripts === 1, `the tab's script was added ${scripts} times`);
+    return 'analysis shown and redrawn';
+});
+
+await check('Medic IPTV tab: when its script can\'t load, the tab says so, the other tabs still work, and the next visit tries again', async () => {
+    const ctx = await browser.newContext({ locale: 'en-GB' });
+    try {
+        const p = await adminPage(ctx);
+        const errs = [];
+        p.on('pageerror', (e) => errs.push(e.message));
+        await p.route(/\/JellyfinMedic\/Assets\/medic-iptv\.js/, (route) => route.abort());
+        await medicTab('iptv', false, p);
+        await p.waitForFunction(() => /Couldn't load this tab/.test(document.querySelector('#JellyfinMedicPage #so-status')?.textContent || ''), null, { timeout: 30000 });
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="history"]');
+        await p.waitForFunction(() => !document.querySelector('#JellyfinMedicPage .so-tabpanel[data-panel="history"]').hidden, null, { timeout: 10000 });
+        await p.unroute(/\/JellyfinMedic\/Assets\/medic-iptv\.js/);
+        await p.click('#JellyfinMedicPage .so-tab[data-tab="iptv"]');
+        await p.waitForSelector('#md-iptv .so-panel, #md-iptv p', { timeout: 30000 });
+        expect(errs.length === 0, errs.join(' | '));
+        return 'error shown, then loaded on the next visit';
+    } finally {
+        await ctx.close();
+    }
+});
+
 await openPage('Medic Profiles', '/configurationpage?name=MedicProfiles', '#MedicProfilesPage .mp-tab', '.mp-tab');
 await openPage('Medic Picks settings', '/configurationpage?name=Medic%20Picks', '#MedicPicksConfigForm');
 
