@@ -3,7 +3,7 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
-## Unreleased
+## [1.3.0] – 2026-11-02
 
 ### Added
 - **My picks opens inside Jellyfin.** The menu link opened the picks page in a new browser tab, and in the apps it was handed to something outside Jellyfin. It now opens the picks as a page of the app, under its own top bar and in each person's theme: the titles on your server, the ones linked to what they've watched and the ones not on the server yet, each opening its own page in the app, with Back coming back to the picks. Everything the full page does is there too: your choices (films or series, how many, genres, dubbed audio only), Update my picks and Show me different ones, Ignore and Show them again, Request, My requests, and Approve and Decline for admins. This works in browsers and the apps that run the server's web client (the Android and iOS apps, Jellyfin Desktop); when the page can't be drawn inside the app, the full page opens in the same window. To keep the old behaviour, untick "Open My picks inside Jellyfin" in Medic Picks' settings. First two steps of #171; the full page stays as the fallback.
