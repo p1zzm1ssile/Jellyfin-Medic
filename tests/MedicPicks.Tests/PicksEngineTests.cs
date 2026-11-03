@@ -64,6 +64,19 @@ public sealed class PicksEngineTests
     }
 
     [Fact]
+    public void A_copy_with_a_tmdb_id_matches_a_copy_without_one()
+    {
+        var a = new Movie { Id = Guid.NewGuid(), Name = "Avengers: Age of Ultron", ProductionYear = 2015 };
+        var b = new Movie { Id = Guid.NewGuid(), Name = "Avengers - Age of Ultron", ProductionYear = 2015 };
+        var c = new Movie { Id = Guid.NewGuid(), Name = "Avengers: Endgame", ProductionYear = 2019 };
+        a.ProviderIds["Tmdb"] = "99861";
+
+        var kept = PicksEngine.OneOfEach(new[] { a, b, c }, PicksEngine.SameTitleKeys).ToList();
+
+        Assert.Equal(new[] { a, c }, kept);
+    }
+
+    [Fact]
     public void A_remake_a_sequel_and_a_series_of_the_same_name_are_different_titles()
     {
         var film = new Movie { Id = Guid.NewGuid(), Name = "Dune", ProductionYear = 2021 };

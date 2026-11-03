@@ -387,11 +387,11 @@ public class PicksEngine
 
         var hidden = new HashSet<Guid>(prefs.HiddenItems.Concat(prefs.SeenItems));
         // Another copy of something watched or hidden, or of a title "On your server" already shows, isn't suggested either.
-        var shown = titles.Values.Select(t => SameTitleKey(t.Item))
-            .Concat(pool.Where(c => alreadyPicked.Contains(c.Id) || hidden.Contains(c.Id)).Select(SameTitleKey))
+        var shown = titles.Values.SelectMany(t => SameTitleKeys(t.Item))
+            .Concat(pool.Where(c => alreadyPicked.Contains(c.Id) || hidden.Contains(c.Id)).SelectMany(SameTitleKeys))
             .ToHashSet(StringComparer.Ordinal);
         var poolById = pool
-            .Where(c => !titles.ContainsKey(c.Id) && !started.Contains(c.Id) && !hidden.Contains(c.Id) && !alreadyPicked.Contains(c.Id) && !shown.Contains(SameTitleKey(c)))
+            .Where(c => !titles.ContainsKey(c.Id) && !started.Contains(c.Id) && !hidden.Contains(c.Id) && !alreadyPicked.Contains(c.Id) && !SameTitleKeys(c).Any(shown.Contains))
             .GroupBy(c => c.Id)
             .ToDictionary(g => g.Key, g => g.First());
         if (poolById.Count == 0)
@@ -523,10 +523,11 @@ public class PicksEngine
         }
 
         // Strongest links first; within the same link, in release order.
-        return found.Values
-            .OrderByDescending(t => Math.Round(t.Score, 3))
-            .ThenBy(t => t.Item.ProductionYear ?? int.MaxValue)
-            .DistinctBy(t => SameTitleKey(t.Item), StringComparer.Ordinal)
+        return OneOfEach(
+                found.Values
+                    .OrderByDescending(t => Math.Round(t.Score, 3))
+                    .ThenBy(t => t.Item.ProductionYear ?? int.MaxValue),
+                t => SameTitleKeys(t.Item))
             .Where(t => !prefs.DubbedOnly || HasAudioIn(userQuery, t.Item, language))
             .Take(count)
             .Select(t => new LibraryPick
@@ -620,18 +621,42 @@ public class PicksEngine
         }
     }
 
-    /// <summary>A name to compare on: lower case, letters and digits only, without a leading "the".</summary>
     /// <summary>
     /// The same film or series however many copies the library has of it (two folders, two libraries, a remaster):
     /// its TMDb id when it has one, else its name, ignoring punctuation and a leading "The", and its year.
     /// </summary>
-    internal static string SameTitleKey(BaseItem item)
+    internal static string SameTitleKey(BaseItem item) => SameTitleKeys(item)[0];
+
+    /// <summary>
+    /// Every key a copy of this title can be matched on: its TMDb id when it has one, and always its name and year,
+    /// so a copy with a TMDb id still matches one without.
+    /// </summary>
+    internal static string[] SameTitleKeys(BaseItem item)
     {
         string kind = item is Series ? "series" : "movie";
+        string byName = NameYearKey(kind, item.Name, item.ProductionYear);
         string? tmdb = item.GetProviderId(MetadataProvider.Tmdb);
-        return string.IsNullOrWhiteSpace(tmdb)
-            ? $"{kind}:{NameKey(item.Name)}:{item.ProductionYear}"
-            : $"{kind}:tmdb:{tmdb.Trim()}";
+        return string.IsNullOrWhiteSpace(tmdb) ? new[] { byName } : new[] { $"{kind}:tmdb:{tmdb.Trim()}", byName };
+    }
+
+    /// <summary>The name-and-year key of a title, also used on picks already saved.</summary>
+    internal static string NameYearKey(string kind, string? name, int? year) => $"{kind}:{NameKey(name)}:{year}";
+
+    /// <summary>The first of each title, however many copies of it there are.</summary>
+    internal static IEnumerable<T> OneOfEach<T>(IEnumerable<T> list, Func<T, string[]> keys, HashSet<string>? seen = null)
+    {
+        seen ??= new HashSet<string>(StringComparer.Ordinal);
+        foreach (var x in list)
+        {
+            var k = keys(x);
+            if (k.Any(seen.Contains))
+            {
+                continue;
+            }
+
+            seen.UnionWith(k);
+            yield return x;
+        }
     }
 
     private static string NameKey(string? name)
@@ -771,11 +796,11 @@ public class PicksEngine
         // The person's own choices: titles they hid, and the genres they picked.
         var hidden = new HashSet<Guid>(prefs.HiddenItems.Concat(prefs.SeenItems));
         // Another copy of something watched or hidden isn't suggested either.
-        var watchedCopies = titles.Values.Select(t => SameTitleKey(t.Item))
-            .Concat(candidates.Where(c => hidden.Contains(c.Id)).Select(SameTitleKey))
+        var watchedCopies = titles.Values.SelectMany(t => SameTitleKeys(t.Item))
+            .Concat(candidates.Where(c => hidden.Contains(c.Id)).SelectMany(SameTitleKeys))
             .ToHashSet(StringComparer.Ordinal);
         candidates = candidates
-            .Where(c => !hidden.Contains(c.Id) && !watchedCopies.Contains(SameTitleKey(c)))
+            .Where(c => !hidden.Contains(c.Id) && !SameTitleKeys(c).Any(watchedCopies.Contains))
             .Where(c => Genres.Matches(prefs.Genres, c.Genres, c.Tags, c.Name, prefs.Genres.Count > 0 && IsAnime(c)))
             .ToList();
 
@@ -813,9 +838,7 @@ public class PicksEngine
             s.Score += 0.5 * Math.Min(2.0, s.PeopleScore);
         }
 
-        return scored
-            .OrderByDescending(s => s.Score)
-            .DistinctBy(s => SameTitleKey(s.Item), StringComparer.Ordinal)
+        return OneOfEach(scored.OrderByDescending(s => s.Score), s => SameTitleKeys(s.Item))
             .Where(s => !prefs.DubbedOnly || HasAudioIn(userQuery, s.Item, language))
             .Take(count)
             .Select(s => new LibraryPick
