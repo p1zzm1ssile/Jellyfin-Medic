@@ -684,6 +684,10 @@ press a button. Tabs: Downloads, Blocked, Indexers, Profiles, History, Settings.
   - Block unsafe files: tells qBittorrent (4.6+) to skip program files (.exe,
     .bat, .scr and similar) inside torrents, keeping your own entries in its
     "Excluded file names" list. Archives (.rar, .zip, .7z) optional.
+  - Block unsafe files in Transmission or Deluge: neither has an exclusion
+    list, so once a minute Medic Profiles marks program files (and archives,
+    if ticked) in every torrent as not to download. Save and check now runs
+    it at once and lists the files it skipped.
 
 
 -------------------------------------------------------------------------------

@@ -1327,6 +1327,45 @@ await check('Medic Profiles says when the queue is cut short, and can remove a d
     }
 });
 
+await check('Medic Profiles skips program files in Transmission and Deluge, and only once each', async () => {
+    const transmissionServer = await fakeArr.startTransmission(P(18082));
+    const delugeServer = await fakeArr.startDeluge(P(18083));
+    const at = (port) => ARR.replace(`:${P(18989)}`, `:${port}`);
+    const base = { SonarrUrl: ARR, RadarrUrl: '', TorrentClientUser: 'admin', TorrentBlock: true, TorrentArchives: false };
+    try {
+        await api('POST', '/MedicProfiles/Settings', { ...base, TorrentClientKind: 'transmission', TorrentClientUrl: at(P(18082)) + '/transmission/web/', TorrentClientPassword: 'secret' });
+        const status = await ok('/MedicProfiles/Status');
+        expect(status.torrent?.kind === 'transmission' && status.torrent.passwordSet && status.torrent.block, 'not saved: ' + JSON.stringify(status.torrent));
+        expect(!JSON.stringify(status).includes('secret'), 'the password reached the page');
+        let state = (await api('POST', '/MedicProfiles/TorrentGuard/Check')).json;
+        expect(state?.reachable && state.skipped === 1, 'Transmission: ' + JSON.stringify(state));
+        expect(JSON.stringify(fakeArr.transmission.sets) === JSON.stringify([{ ids: [3], 'files-unwanted': [1] }]), 'sent: ' + JSON.stringify(fakeArr.transmission.sets));
+        // Checked again, the .exe is already unwanted: nothing more is sent.
+        await api('POST', '/MedicProfiles/TorrentGuard/Check');
+        expect(fakeArr.transmission.sets.length === 1, `torrent-set sent ${fakeArr.transmission.sets.length} times`);
+
+        // Archives too, once ticked.
+        await api('POST', '/MedicProfiles/Settings', { ...base, TorrentArchives: true, TorrentClientKind: 'transmission', TorrentClientUrl: at(P(18082)) });
+        await api('POST', '/MedicProfiles/TorrentGuard/Check');
+        expect(JSON.stringify(fakeArr.transmission.sets.at(-1)?.['files-unwanted']) === '[2]', 'archive: ' + JSON.stringify(fakeArr.transmission.sets));
+
+        // Deluge, on another address: Transmission's password isn't kept for it, so it has to be typed again.
+        await api('POST', '/MedicProfiles/Settings', { ...base, TorrentClientKind: 'deluge', TorrentClientUrl: at(P(18083)) });
+        state = (await api('POST', '/MedicProfiles/TorrentGuard/Check')).json;
+        expect(!state?.reachable && /password/.test(state?.message || ''), 'Deluge without a password: ' + JSON.stringify(state));
+        await api('POST', '/MedicProfiles/Settings', { ...base, TorrentClientKind: 'deluge', TorrentClientUrl: at(P(18083)), TorrentClientPassword: 'secret' });
+        state = (await api('POST', '/MedicProfiles/TorrentGuard/Check')).json;
+        expect(state?.reachable && fakeArr.deluge.logins >= 1, 'Deluge: ' + JSON.stringify(state));
+        const priorities = fakeArr.deluge.sets.at(-1)?.[1]?.file_priorities;
+        expect(JSON.stringify(priorities) === '[1,0]', 'Deluge priorities: ' + JSON.stringify(fakeArr.deluge.sets));
+        return 'Transmission: the .exe, then the .rar once ticked; Deluge: the .scr';
+    } finally {
+        await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, RadarrUrl: '', TorrentClientKind: '', TorrentClientUrl: '', TorrentBlock: false, TorrentArchives: false, ClearTorrentPassword: true });
+        transmissionServer.close();
+        delugeServer.close();
+    }
+});
+
 await check('Medic Profiles blocks program files in qBittorrent, keeping the owner\'s own entries', async () => {
     const qbitServer = await fakeArr.startQbit(P(18080));
     // The owner's own list, switched off on purpose, holding *.zip, which is also one of Medic Profiles' patterns.

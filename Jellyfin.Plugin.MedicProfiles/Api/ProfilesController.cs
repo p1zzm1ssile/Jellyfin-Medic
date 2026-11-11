@@ -30,13 +30,15 @@ public class ProfilesController : ControllerBase
     private readonly ProfileAdvisor _advisor;
     private readonly IndexersService _indexers;
     private readonly QbitFileFilter _qbit;
+    private readonly TorrentGuard _guard;
     private readonly ILogger<ProfilesController> _logger;
 
-    public ProfilesController(ArrStore store, ArrClient arr, DownloadsService downloads, ProfileAdvisor advisor, IndexersService indexers, QbitFileFilter qbit, ILogger<ProfilesController> logger)
+    public ProfilesController(ArrStore store, ArrClient arr, DownloadsService downloads, ProfileAdvisor advisor, IndexersService indexers, QbitFileFilter qbit, TorrentGuard guard, ILogger<ProfilesController> logger)
     {
         _logger = logger;
         _indexers = indexers;
         _qbit = qbit;
+        _guard = guard;
         _store = store;
         _arr = arr;
         _downloads = downloads;
@@ -55,7 +57,16 @@ public class ProfilesController : ControllerBase
             radarr = new { url = config.RadarrUrl, keySet = _store.GetKey(ArrApp.Radarr) is not null },
             prowlarr = new { url = config.ProwlarrUrl, keySet = _store.GetKey(ArrApp.Prowlarr) is not null },
             stuckAfterHours = config.StuckAfterHours,
-            qbit = new { url = config.QbitUrl, user = config.QbitUser, passwordSet = _store.GetQbitPassword() is not null }
+            qbit = new { url = config.QbitUrl, user = config.QbitUser, passwordSet = _store.GetQbitPassword() is not null },
+            torrent = new
+            {
+                kind = config.TorrentClientKind,
+                url = config.TorrentClientUrl,
+                user = config.TorrentClientUser,
+                passwordSet = _store.GetTorrentPassword() is not null,
+                block = config.TorrentBlock,
+                archives = config.TorrentArchives
+            }
         });
     }
 
@@ -78,10 +89,11 @@ public class ProfilesController : ControllerBase
         string prowlarrUrl = request.ProwlarrUrl is null ? plugin.Configuration.ProwlarrUrl : CleanUrl(request.ProwlarrUrl);
         bool newProwlarrHost = HostChanged(plugin.Configuration.ProwlarrUrl, prowlarrUrl);
         bool newQbitHost = request.QbitUrl is not null && HostChanged(plugin.Configuration.QbitUrl, CleanUrl(request.QbitUrl));
+        bool newTorrentHost = request.TorrentClientUrl is not null && HostChanged(plugin.Configuration.TorrentClientUrl, CleanUrl(request.TorrentClientUrl));
 
         // Kept so a failed write, of a secret or of the addresses, can put back everything this request changed.
-        var secretsBefore = new SecretsBefore(_store.GetKey(ArrApp.Sonarr), _store.GetKey(ArrApp.Radarr), _store.GetKey(ArrApp.Prowlarr), _store.GetQbitPassword());
-        var newHosts = new NewHosts(newSonarrHost, newRadarrHost, newProwlarrHost, newQbitHost);
+        var secretsBefore = new SecretsBefore(_store.GetKey(ArrApp.Sonarr), _store.GetKey(ArrApp.Radarr), _store.GetKey(ArrApp.Prowlarr), _store.GetQbitPassword(), _store.GetTorrentPassword());
+        var newHosts = new NewHosts(newSonarrHost, newRadarrHost, newProwlarrHost, newQbitHost, newTorrentHost);
         var settingsBefore = SavedSettings.Of(plugin.Configuration);
 
         // The keys and password are written before the new addresses are saved: if a write fails, the ones already
@@ -95,6 +107,15 @@ public class ProfilesController : ControllerBase
             else if (!string.IsNullOrEmpty(request.QbitPassword))
             {
                 _store.SetQbitPassword(request.QbitPassword);
+            }
+
+            if (request.ClearTorrentPassword || (newTorrentHost && string.IsNullOrEmpty(request.TorrentClientPassword)))
+            {
+                _store.SetTorrentPassword(null);
+            }
+            else if (!string.IsNullOrEmpty(request.TorrentClientPassword))
+            {
+                _store.SetTorrentPassword(request.TorrentClientPassword);
             }
 
             // A blank key box means "keep the saved key" (for the same server); Remove clears it.
@@ -141,6 +162,16 @@ public class ProfilesController : ControllerBase
         {
             plugin.Configuration.QbitUrl = CleanUrl(request.QbitUrl);
             plugin.Configuration.QbitUser = (request.QbitUser ?? string.Empty).Trim();
+        }
+
+        // Left out by a page from before Transmission and Deluge were added, which then leaves them as they are.
+        if (request.TorrentClientUrl is not null)
+        {
+            plugin.Configuration.TorrentClientKind = request.TorrentClientKind is "transmission" or "deluge" ? request.TorrentClientKind : string.Empty;
+            plugin.Configuration.TorrentClientUrl = CleanUrl(request.TorrentClientUrl);
+            plugin.Configuration.TorrentClientUser = (request.TorrentClientUser ?? string.Empty).Trim();
+            plugin.Configuration.TorrentBlock = request.TorrentBlock ?? plugin.Configuration.TorrentBlock;
+            plugin.Configuration.TorrentArchives = request.TorrentArchives ?? plugin.Configuration.TorrentArchives;
         }
 
         if (newQbitHost)
@@ -247,6 +278,15 @@ public class ProfilesController : ControllerBase
 
         return Json(new { ok, message, refused });
     }
+
+    // ---------- Unsafe files in Transmission or Deluge ----------
+
+    [HttpGet("TorrentGuard")]
+    public ActionResult GetTorrentGuard() => Json(_guard.State());
+
+    // Looks through the torrents now, rather than at the next minute, and tries a refused password again.
+    [HttpPost("TorrentGuard/Check")]
+    public async Task<ActionResult> CheckTorrentGuard(CancellationToken ct) => Json(await _guard.SweepAsync(ct, asked: true).ConfigureAwait(false));
 
     public class FileFilterRequest
     {
@@ -357,7 +397,8 @@ public class ProfilesController : ControllerBase
             (_store.GetKey(ArrApp.Sonarr), before.Sonarr, newHosts.Sonarr, key => _store.SetKey(ArrApp.Sonarr, key)),
             (_store.GetKey(ArrApp.Radarr), before.Radarr, newHosts.Radarr, key => _store.SetKey(ArrApp.Radarr, key)),
             (_store.GetKey(ArrApp.Prowlarr), before.Prowlarr, newHosts.Prowlarr, key => _store.SetKey(ArrApp.Prowlarr, key)),
-            (_store.GetQbitPassword(), before.Qbit, newHosts.Qbit, _store.SetQbitPassword)
+            (_store.GetQbitPassword(), before.Qbit, newHosts.Qbit, _store.SetQbitPassword),
+            (_store.GetTorrentPassword(), before.Torrent, newHosts.Torrent, _store.SetTorrentPassword)
         })
         {
             if (string.Equals(now, was, StringComparison.Ordinal))
@@ -419,15 +460,17 @@ public class ProfilesController : ControllerBase
     private ContentResult Json(object body) =>
         Content(JsonSerializer.Serialize(body, ArrStore.JsonOptions), MediaTypeNames.Application.Json);
 
-    private sealed record SecretsBefore(string? Sonarr, string? Radarr, string? Prowlarr, string? Qbit);
+    private sealed record SecretsBefore(string? Sonarr, string? Radarr, string? Prowlarr, string? Qbit, string? Torrent);
 
-    private sealed record NewHosts(bool Sonarr, bool Radarr, bool Prowlarr, bool Qbit);
+    private sealed record NewHosts(bool Sonarr, bool Radarr, bool Prowlarr, bool Qbit, bool Torrent);
 
     // What SaveSettings changes in the configuration, to put back when it can't be saved.
-    private sealed record SavedSettings(string SonarrUrl, string RadarrUrl, string ProwlarrUrl, int StuckAfterHours, string QbitUrl, string QbitUser, string[] QbitPatternsAdded, bool? QbitListWasOn, string QbitPatternsHost)
+    private sealed record SavedSettings(string SonarrUrl, string RadarrUrl, string ProwlarrUrl, int StuckAfterHours, string QbitUrl, string QbitUser, string[] QbitPatternsAdded, bool? QbitListWasOn, string QbitPatternsHost,
+        (string Kind, string Url, string User, bool Block, bool Archives) Torrent)
     {
         public static SavedSettings Of(PluginConfiguration c) =>
-            new(c.SonarrUrl, c.RadarrUrl, c.ProwlarrUrl, c.StuckAfterHours, c.QbitUrl, c.QbitUser, c.QbitPatternsAdded, c.QbitListWasOn, c.QbitPatternsHost);
+            new(c.SonarrUrl, c.RadarrUrl, c.ProwlarrUrl, c.StuckAfterHours, c.QbitUrl, c.QbitUser, c.QbitPatternsAdded, c.QbitListWasOn, c.QbitPatternsHost,
+                (c.TorrentClientKind, c.TorrentClientUrl, c.TorrentClientUser, c.TorrentBlock, c.TorrentArchives));
 
         public void PutBack(PluginConfiguration c)
         {
@@ -440,6 +483,7 @@ public class ProfilesController : ControllerBase
             c.QbitPatternsAdded = QbitPatternsAdded;
             c.QbitListWasOn = QbitListWasOn;
             c.QbitPatternsHost = QbitPatternsHost;
+            (c.TorrentClientKind, c.TorrentClientUrl, c.TorrentClientUser, c.TorrentBlock, c.TorrentArchives) = Torrent;
         }
     }
 
@@ -472,6 +516,20 @@ public class ProfilesController : ControllerBase
         public string? QbitPassword { get; set; }
 
         public bool ClearQbitPassword { get; set; }
+
+        public string? TorrentClientKind { get; set; }
+
+        public string? TorrentClientUrl { get; set; }
+
+        public string? TorrentClientUser { get; set; }
+
+        public string? TorrentClientPassword { get; set; }
+
+        public bool ClearTorrentPassword { get; set; }
+
+        public bool? TorrentBlock { get; set; }
+
+        public bool? TorrentArchives { get; set; }
     }
 
     public class RemoveRequest

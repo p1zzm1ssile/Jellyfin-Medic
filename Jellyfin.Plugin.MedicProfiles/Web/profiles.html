@@ -137,6 +137,29 @@
                         </div>
                     </fieldset>
                     <fieldset>
+                        <legend>Transmission or Deluge: block unsafe files</legend>
+                        <p class="mp-muted mp-small">The same protection for Transmission or Deluge. Neither has a list of file names to exclude, so once a minute Medic Profiles looks through every torrent and marks program files (and archives, if ticked) as not to download. A file that had already arrived stays on disk. This applies to every torrent in the client, not only films and series.</p>
+                        <label class="mp-field"><span>Client</span>
+                            <select id="mp-torrent-kind" class="mp-input">
+                                <option value="">Neither</option>
+                                <option value="transmission">Transmission</option>
+                                <option value="deluge">Deluge</option>
+                            </select></label>
+                        <label class="mp-field"><span>Web UI address</span>
+                            <input type="text" id="mp-torrent-url" class="mp-input" placeholder="http://192.168.1.10:9091" autocomplete="off" spellcheck="false"></label>
+                        <label class="mp-field" id="mp-torrent-user-field"><span>User name</span>
+                            <input type="text" id="mp-torrent-user" class="mp-input" autocomplete="off" spellcheck="false"></label>
+                        <label class="mp-field"><span>Password</span>
+                            <input type="password" id="mp-torrent-pass" class="mp-input" autocomplete="off"></label>
+                        <label class="mp-check"><input type="checkbox" id="mp-torrent-block"> Skip program files (.exe, .bat, .scr and similar) in every torrent</label>
+                        <label class="mp-check"><input type="checkbox" id="mp-torrent-archives"> Also skip archives (.rar, .zip, .7z). Not recommended for scene releases, which often come packed.</label>
+                        <div class="mp-row">
+                            <button type="button" class="mp-btn mp-btn-plain" id="mp-torrent-check">Save and check now</button>
+                            <span class="mp-small" id="mp-torrent-state" aria-live="polite"></span>
+                        </div>
+                        <ul id="mp-torrent-recent" class="mp-muted mp-small"></ul>
+                    </fieldset>
+                    <fieldset>
                         <legend>Downloads</legend>
                         <label class="mp-field"><span>Call a download stuck after</span>
                             <input type="number" id="mp-stuck" class="mp-input mp-narrow" min="1" max="168"> <span>hours with no progress estimate</span></label>
@@ -902,6 +925,16 @@
                         $('mp-qbit-pass').value = '';
                         $('mp-qbit-pass').placeholder = q.passwordSet ? 'Saved. Type a new one to replace it.' : '';
                         if (q.url) loadFileFilter(); else $('mp-qbit-retry').hidden = true;
+                        const t = st.torrent || {};
+                        $('mp-torrent-kind').value = t.kind || '';
+                        $('mp-torrent-url').value = t.url || '';
+                        $('mp-torrent-user').value = t.user || '';
+                        $('mp-torrent-pass').value = '';
+                        $('mp-torrent-pass').placeholder = t.passwordSet ? 'Saved. Type a new one to replace it.' : '';
+                        $('mp-torrent-block').checked = !!t.block;
+                        $('mp-torrent-archives').checked = !!t.archives;
+                        torrentKindChanged();
+                        if (t.kind && t.url) showTorrentGuard(getJson('TorrentGuard'));
                     }).catch(function () { settingsNote('Medic Profiles couldn’t load its settings. Reload the page and try again.'); });
                 }
 
@@ -940,6 +973,33 @@
                 // Signs in once with the saved details, for a password fixed in qBittorrent or a ban that has ended.
                 $('mp-qbit-retry').addEventListener('click', function () { showFileFilter(post('FileFilter/Retry', {})); });
 
+                // Deluge's Web UI has a password only.
+                function torrentKindChanged() {
+                    const kind = $('mp-torrent-kind').value;
+                    $('mp-torrent-user-field').hidden = kind === 'deluge';
+                    $('mp-torrent-url').placeholder = kind === 'deluge' ? 'http://192.168.1.10:8112' : 'http://192.168.1.10:9091';
+                }
+
+                function showTorrentGuard(request) {
+                    const out = $('mp-torrent-state');
+                    out.textContent = 'Checking…';
+                    request.then(function (g) {
+                        const checked = g.checkedUtc ? ' Last checked ' + when(g.checkedUtc) + ': ' + g.torrents + ' torrents.' : '';
+                        out.textContent = (g.message || 'Not checked yet.') + (g.reachable ? checked : '') + (g.skipped ? ' ' + g.skipped + ' files skipped since Jellyfin started.' : '');
+                        out.style.color = g.reachable && g.on ? '#7fe0b5' : (g.reachable || !g.message ? '' : '#ff9a9e');
+                        const list = $('mp-torrent-recent');
+                        list.textContent = '';
+                        (g.recent || []).forEach(function (name) { list.appendChild(el('li', null, name)); });
+                    }).catch(function () { out.textContent = 'Couldn’t check.'; out.style.color = '#ff9a9e'; });
+                }
+
+                $('mp-torrent-kind').addEventListener('change', torrentKindChanged);
+                $('mp-torrent-check').addEventListener('click', function () {
+                    post('Settings', settingsBody(), false)
+                        .then(function () { showTorrentGuard(post('TorrentGuard/Check', {})); })
+                        .catch(function () { $('mp-torrent-state').textContent = 'The settings weren’t saved. Try again.'; });
+                });
+
                 function settingsBody(extra) {
                     return Object.assign({
                         sonarrUrl: $('mp-sonarr-url').value,
@@ -951,7 +1011,13 @@
                         stuckAfterHours: parseInt($('mp-stuck').value, 10) || 6,
                         qbitUrl: $('mp-qbit-url').value,
                         qbitUser: $('mp-qbit-user').value,
-                        qbitPassword: $('mp-qbit-pass').value
+                        qbitPassword: $('mp-qbit-pass').value,
+                        torrentClientKind: $('mp-torrent-kind').value,
+                        torrentClientUrl: $('mp-torrent-url').value,
+                        torrentClientUser: $('mp-torrent-user').value,
+                        torrentClientPassword: $('mp-torrent-pass').value,
+                        torrentBlock: $('mp-torrent-block').checked,
+                        torrentArchives: $('mp-torrent-archives').checked
                     }, extra || {});
                 }
 

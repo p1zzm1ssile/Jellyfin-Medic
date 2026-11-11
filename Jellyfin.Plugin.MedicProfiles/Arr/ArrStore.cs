@@ -90,6 +90,11 @@ public class ArrStore
 
     public string? GetQbitPassword() => _secrets.Read().QbitPassword;
 
+    public string? GetTorrentPassword() => _secrets.Read().TorrentPassword;
+
+    public virtual void SetTorrentPassword(string? password) =>
+        _secrets.Update(secrets => secrets.TorrentPassword = string.IsNullOrEmpty(password) ? null : password);
+
     public virtual void SetQbitPassword(string? password) =>
         _secrets.Update(secrets => secrets.QbitPassword = string.IsNullOrEmpty(password) ? null : password);
 
@@ -155,5 +160,7 @@ public class ArrStore
         public string? ProwlarrKey { get; set; }
 
         public string? QbitPassword { get; set; }
+
+        public string? TorrentPassword { get; set; }
     }
 }

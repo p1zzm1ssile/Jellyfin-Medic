@@ -35,6 +35,7 @@ public sealed class SettingsSaveTests : IDisposable
             new ProfileAdvisor(arr, null!, paths, NullLogger<ProfileAdvisor>.Instance),
             new IndexersService(arr),
             new QbitFileFilter(_store, NullLogger<QbitFileFilter>.Instance),
+            new TorrentGuard(_store, NullLogger<TorrentGuard>.Instance),
             NullLogger<ProfilesController>.Instance);
     }
 
