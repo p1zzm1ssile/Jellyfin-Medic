@@ -17,6 +17,7 @@ public class MedicAssetsController : ControllerBase
     {
         ["medic.css"] = ("JellyfinMedic.medic.css", "text/css; charset=utf-8"),
         ["medic-iptv.js"] = ("JellyfinMedic.medic-iptv.js", "text/javascript; charset=utf-8"),
+        ["medic-media.js"] = ("JellyfinMedic.medic-media.js", "text/javascript; charset=utf-8"),
     };
 
     [HttpGet("{name}")]

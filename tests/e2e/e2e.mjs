@@ -142,6 +142,8 @@ await check('Jellyfin Medic serves its stylesheet and tab scripts to anyone, and
     expect(js.status === 200, 'medic-iptv.js: ' + js.status);
     expect((js.headers.get('content-type') || '').startsWith('text/javascript'), 'script content type: ' + js.headers.get('content-type'));
     expect((await js.text()).includes('JellyfinMedicTabs'), 'not the IPTV tab\'s script');
+    const media = await fetch(JF + '/JellyfinMedic/Assets/medic-media.js');
+    expect(media.status === 200 && (await media.text()).includes('JellyfinMedicTabs'), 'medic-media.js: ' + media.status);
     for (const name of ['medic.html', 'assist.js', 'iptv.js', '..%2Fmedic.html']) {
         const other = await fetch(JF + '/JellyfinMedic/Assets/' + name);
         expect(other.status === 404, `${name}: ${other.status}`);
@@ -3243,6 +3245,21 @@ await check('Dashboard panels: with a media report, each reason names what in th
     const summary = await page.textContent('#md-why-summary');
     expect(/media report of/.test(summary), 'the summary does not date the report: ' + summary);
     return 'audio: 4 files, picture subtitles: 2 files';
+});
+
+await check('Medic Media report tab, from its own script: draws the saved report', async () => {
+    // The report written by the check above; Build report isn't pressed, as a real one would replace it for the Dashboard.
+    await medicTab('media');
+    await page.waitForFunction(() => /^Built /.test(document.getElementById('md-media-status')?.textContent || '')
+        && !document.getElementById('md-media-body').hidden, null, { timeout: 30000 });
+    const tiles = await page.$$eval('#md-media-tiles .md-tile', (list) => list.length);
+    expect(tiles === 4, `${tiles} tiles`);
+    const compat = await page.textContent('#md-media-compat');
+    expect(/4 files have only DTS or TrueHD audio/.test(compat) && /2 files have picture-based subtitles/.test(compat), 'compatibility: ' + compat);
+    expect(await page.textContent('#md-media-build') === 'Rebuild report', 'the button says ' + await page.textContent('#md-media-build'));
+    const scripts = await page.$$eval('script[src*="medic-media.js"]', (list) => list.length);
+    expect(scripts === 1, `the tab's script was added ${scripts} times`);
+    return (await page.textContent('#md-media-status')).trim();
 });
 
 await check('Dashboard panels: the data files that were there before are back', async () => {

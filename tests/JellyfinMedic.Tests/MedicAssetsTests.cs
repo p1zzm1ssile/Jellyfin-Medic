@@ -28,6 +28,7 @@ public class MedicAssetsTests
     [Theory]
     [InlineData("medic.css", "text/css; charset=utf-8", "#JellyfinMedicPage")]
     [InlineData("medic-iptv.js", "text/javascript; charset=utf-8", "JellyfinMedicTabs")]
+    [InlineData("medic-media.js", "text/javascript; charset=utf-8", "JellyfinMedicTabs")]
     public void Serves_a_listed_file_with_its_type(string name, string contentType, string inside)
     {
         var controller = new MedicAssetsController { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() } };
@@ -43,6 +44,7 @@ public class MedicAssetsTests
     [InlineData("medic.html")]
     [InlineData("assist.js")]
     [InlineData("iptv.js")]
+    [InlineData("media.js")]
     [InlineData("../medic.html")]
     public void Serves_nothing_else(string name)
     {
