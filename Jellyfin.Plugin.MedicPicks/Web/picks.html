@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="theme-loading">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -34,7 +34,12 @@
     }
   }
   *, *::before, *::after { box-sizing: inherit; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  html, body { margin: 0; color: var(--text); }
+  /* With Jellyfin's theme loaded (see followTheme), the theme draws the background itself, pictures included. */
+  html:not(.jf-theme) { background: var(--bg); }
+  body { background: transparent; }
+  /* Hidden for a moment while the theme loads, so the page doesn't flash in other colours first. */
+  html.theme-loading body { visibility: hidden; }
   body { font: 16px/1.5 var(--body); -webkit-font-smoothing: antialiased; }
   a { color: var(--accent); }
   a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
@@ -145,14 +150,14 @@
     font-size: 0.875rem;
     text-decoration: none;
   }
-  .action:hover { background: var(--accent); color: var(--bg); }
+  .action:hover { background: var(--accent); color: var(--accent-ink, var(--bg)); }
 
   .prefs { margin: 20px 0 0; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; max-width: 760px; }
   .prefs-row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
   .prefs-row + .prefs-row, .genres { margin-top: 12px; }
   .field { display: inline-flex; gap: 8px; align-items: center; font-weight: 600; }
   .field select {
-    font: inherit; font-weight: 400; color: var(--text); background: var(--bg);
+    font: inherit; font-weight: 400; color: var(--text); background: var(--field, var(--bg));
     border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-height: 36px;
   }
   .genres summary { cursor: pointer; font-weight: 600; }
@@ -315,6 +320,108 @@
     } catch (e) {
       return null;
     }
+  }
+
+  // Jellyfin keeps a person's web settings in localStorage as "<user id>-<setting>".
+  function webSetting(session, name) {
+    try { return session && session.UserId ? localStorage.getItem(session.UserId + '-' + name) : null; } catch (e) { return null; }
+  }
+
+  function loaded(node) {
+    return new Promise(function (resolve) {
+      node.onload = function () { resolve(true); };
+      node.onerror = function () { resolve(false); };
+    });
+  }
+
+  function fetchText(url) {
+    return fetch(url).then(function (r) { return r.ok ? r.text() : ''; }).catch(function () { return ''; });
+  }
+
+  // Draw the page in the theme the person chose in Jellyfin (Settings, Display), with the server's custom CSS
+  // (Dashboard, General) and their own, the way the web client does. The colours are then read back from
+  // Jellyfin's own classes, so a custom theme that restyles those is followed too. If the theme can't be
+  // loaded the page keeps its own colours.
+  function followTheme(session) {
+    var root = document.documentElement;
+    var head = document.head;
+    // Fixed places, so the server's CSS and then the person's own come after the theme and win over it.
+    var themeLink = document.createElement('link');
+    var serverCss = document.createElement('style');
+    var ownCss = document.createElement('style');
+    head.appendChild(serverCss);
+    head.appendChild(ownCss);
+
+    var saved = webSetting(session, 'appTheme');
+    var themeId = saved
+      ? Promise.resolve(saved)
+      : fetch('../web/config.json')
+        .then(function (r) { return r.ok ? r.json() : {}; })
+        .then(function (c) { return ((c.themes || []).filter(function (t) { return t.default; })[0] || {}).id; })
+        .catch(function () { return null; });
+
+    var theme = themeId.then(function (id) {
+      if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) id = 'dark';
+      themeLink.rel = 'stylesheet';
+      themeLink.href = '../web/themes/' + id + '/theme.css';
+      var done = loaded(themeLink);
+      head.insertBefore(themeLink, serverCss);
+      return done;
+    });
+
+    var css = Promise.all([
+      webSetting(session, 'disableCustomCss') === 'true' ? '' : fetchText('../Branding/Css'),
+      webSetting(session, 'customCss') || ''
+    ]).then(function (texts) {
+      serverCss.textContent = texts[0];
+      ownCss.textContent = texts[1];
+    });
+
+    var ready = Promise.all([theme, css]).then(function (results) {
+      if (results[0]) {
+        root.classList.add('jf-theme');
+        useThemeColours(root);
+      }
+    });
+    // Never kept hidden for long, whatever happens to the theme.
+    var shown = function () { root.classList.remove('theme-loading'); };
+    Promise.race([ready, new Promise(function (resolve) { setTimeout(resolve, 2500); })]).then(shown, shown);
+  }
+
+  // Each colour the page uses, taken from an element styled with the Jellyfin class that carries it.
+  function useThemeColours(root) {
+    var probes = [
+      ['--text', 'div', 'emby-tab-button-active', 'color'],
+      ['--muted', 'div', 'secondaryText', 'color'],
+      ['--surface', 'div', 'visualCardBox', 'backgroundColor'],
+      ['--line', 'div', 'listItem-border', 'borderTopColor'],
+      ['--field', 'select', 'emby-select-withcolor', 'backgroundColor'],
+      ['--accent', 'button', 'button-submit', 'backgroundColor'],
+      ['--accent-ink', 'button', 'button-submit', 'color']
+    ];
+    var box = document.createElement('div');
+    box.setAttribute('aria-hidden', 'true');
+    box.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;left:-9999px;top:0';
+    document.body.appendChild(box);
+    var bg = getComputedStyle(root).backgroundColor;
+    if (visible(bg)) root.style.setProperty('--bg', bg);
+    probes.forEach(function (p) {
+      var node = document.createElement(p[1]);
+      node.className = p[2];
+      node.style.borderStyle = 'solid';
+      box.appendChild(node);
+      var value = getComputedStyle(node)[p[3]];
+      if (visible(value)) root.style.setProperty(p[0], value);
+    });
+    var radius = getComputedStyle(box.querySelector('.visualCardBox')).borderTopLeftRadius;
+    if (radius && radius !== '0px') root.style.setProperty('--radius-poster', radius);
+    var accent = root.style.getPropertyValue('--accent');
+    if (accent) root.style.setProperty('--brand', accent);
+    box.remove();
+  }
+
+  function visible(colour) {
+    return !!colour && colour !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(colour);
   }
 
   function authHeader(session) {
@@ -666,6 +773,7 @@
   function rowsOf(d) { return (d && d.enabled && d.requests) || []; }
 
   var session = getSession();
+  followTheme(session);
   if (!session) {
     message([
       'Sign in to Jellyfin first, then open this page again.',

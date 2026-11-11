@@ -1852,6 +1852,60 @@ await check('My picks page opens signed in', async () => {
     expect(errors.length === 0, errors.join(' | '));
 });
 
+await check('My picks page follows the Jellyfin theme the person chose, and the server\'s custom CSS', async () => {
+    const branding = await ok('/System/Configuration/branding');
+    const colours = () => page.evaluate(() => {
+        const root = document.documentElement;
+        return {
+            themed: root.classList.contains('jf-theme'),
+            loading: root.classList.contains('theme-loading'),
+            bg: getComputedStyle(root).backgroundColor,
+            accent: root.style.getPropertyValue('--accent').trim()
+        };
+    });
+    const open = async () => {
+        await page.goto(JF + '/MedicPicks/Page');
+        await page.waitForFunction(() => !document.documentElement.classList.contains('theme-loading'), null, { timeout: 15000 });
+        return colours();
+    };
+    const themeKey = () => page.evaluate(() => {
+        const creds = JSON.parse(localStorage.getItem('jellyfin_credentials') || '{}');
+        return (creds.Servers || []).find((s) => s.UserId)?.UserId + '-appTheme';
+    });
+    try {
+        errors.length = 0;
+        // Nothing chosen: Jellyfin's default theme, Dark.
+        const dark = await open();
+        expect(dark.themed && dark.bg === 'rgb(16, 16, 16)', 'default theme not followed: ' + JSON.stringify(dark));
+        expect(dark.accent === 'rgb(0, 164, 220)', 'accent not taken from the theme: ' + JSON.stringify(dark));
+
+        const key = await themeKey();
+        await page.evaluate((k) => localStorage.setItem(k, 'light'), key);
+        const light = await open();
+        expect(light.themed && light.bg === 'rgb(242, 242, 242)', 'Light theme not followed: ' + JSON.stringify(light));
+
+        // Custom CSS from Dashboard, General restyles Jellyfin's own buttons; the page takes its colour from them.
+        await api('POST', '/System/Configuration/branding', { ...branding, CustomCss: '.button-submit { background: rgb(201, 52, 110) !important; }' });
+        const custom = await open();
+        expect(custom.accent === 'rgb(201, 52, 110)', 'custom CSS not followed: ' + JSON.stringify(custom));
+
+        // Custom CSS switched off in the person's own settings.
+        await page.evaluate((k) => localStorage.setItem(k.replace(/appTheme$/, 'disableCustomCss'), 'true'), key);
+        const off = await open();
+        expect(off.accent === 'rgb(0, 164, 220)', 'custom CSS used though switched off: ' + JSON.stringify(off));
+        expect(errors.length === 0, errors.join(' | '));
+        return 'Dark by default, Light when chosen, custom CSS followed unless switched off';
+    } finally {
+        await api('POST', '/System/Configuration/branding', branding);
+        await page.evaluate(() => {
+            const creds = JSON.parse(localStorage.getItem('jellyfin_credentials') || '{}');
+            const id = (creds.Servers || []).find((s) => s.UserId)?.UserId;
+            localStorage.removeItem(id + '-appTheme');
+            localStorage.removeItem(id + '-disableCustomCss');
+        });
+    }
+});
+
 await check('My picks opens inside Jellyfin: the menu link shows the picks in the app in Home-style rows, a title opens in the app, and Back comes back', async () => {
     const ctx2 = await browser.newContext({ locale: 'en-GB' });
     try {
