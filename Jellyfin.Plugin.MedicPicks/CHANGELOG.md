@@ -3,6 +3,13 @@
 All notable changes to Medic Picks are recorded here. The newest version is at the top.
 Jellyfin Medic has its own changelog in the main CHANGELOG.md.
 
+## [1.3.2] – 2026-11-10
+
+### Changed
+- **The full picks page follows your Jellyfin theme.** The page that opens outside the app (and when the in-app page can't be drawn) always used its own colours. It now draws itself in the theme each person chose in Jellyfin (Settings, Display: Dark, Light, Purple Haze and the rest), with the server's custom CSS from Dashboard, General and the person's own custom CSS on top, just as the web client does. A custom theme that restyles Jellyfin's buttons and cards is followed too, and "Disable server-provided custom CSS" is respected. Last step of #171.
+
+Thanks @camarigor for the proposal (#171).
+
 ## [1.3.1] – 2026-11-02
 
 ### Fixed
