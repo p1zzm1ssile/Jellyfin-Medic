@@ -17,9 +17,9 @@ Anything not ticked has not been done.
 | 10 | Better general performance recommendations | Done: Medic 1.0.13 |
 | 11 | Theme checks: custom CSS and theme imports | Done: Medic 1.0.13 (checks the CSS and its addresses; can't see how pages actually draw) |
 | 12 | Resource monitoring: Jellyfin's own CPU, RAM, disk, GPU with spike warnings | Done: Medic 1.0.13 (measuring and FFmpeg detection tested; a real spike and GPU readings not tested, as the test server has no GPU and can't be loaded for 45 seconds reliably) |
-| 13 | Medic Profiles: indexer status (Sonarr/Radarr, Prowlarr optional) | Done: Medic Profiles 1.1.0, from Sonarr and Radarr (which include Prowlarr's indexers). Not done: a direct Prowlarr connection |
-| 14 | Medic Profiles: block .exe and similar downloads (.rar/.zip optional) | Done: Medic Profiles 1.1.0, for qBittorrent 4.6+ (tested against a pretend qBittorrent). Not done: other download clients |
-| 15 | Reduce the code | Partly done: removed unused code and 81 unused `using` lines (about 230 lines), merged a duplicate memory-limit reader and generated the hour lists. Found and fixed a bug on the way (Suggest mode never ran). Not done: a deeper restructure of the big files (medic.html, DiagnosticsEngine.cs, TrackCleaner.cs); that needs its own pass, file by file, with the tests run after each |
+| 13 | Medic Profiles: indexer status (Sonarr/Radarr, Prowlarr optional) | Done: Medic Profiles 1.1.0, from Sonarr and Radarr (which include Prowlarr's indexers). A direct Prowlarr connection followed in Medic Profiles 1.2.0 |
+| 14 | Medic Profiles: block .exe and similar downloads (.rar/.zip optional) | Done: Medic Profiles 1.1.0, for qBittorrent 4.6+ (tested against a pretend qBittorrent). Transmission and Deluge followed in Medic Profiles 1.2.0 |
+| 15 | Reduce the code | Partly done: removed unused code and 81 unused `using` lines (about 230 lines), merged a duplicate memory-limit reader and generated the hour lists. Found and fixed a bug on the way (Suggest mode never ran). Since then: DiagnosticsEngine.cs and TrackCleaner.cs are split into files of a few hundred lines each, by area (November 2026). Still going: medic.html, one tab at a time (#61) |
 
 Dropped at the owner's request: Unmanic integration.
 
