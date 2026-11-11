@@ -35,6 +35,7 @@ public sealed class SettingsSaveTests : IDisposable
             new ProfileAdvisor(arr, null!, paths, NullLogger<ProfileAdvisor>.Instance),
             new IndexersService(arr),
             new QbitFileFilter(_store, NullLogger<QbitFileFilter>.Instance),
+            new TorrentGuard(_store, NullLogger<TorrentGuard>.Instance),
             NullLogger<ProfilesController>.Instance);
     }
 
@@ -58,6 +59,25 @@ public sealed class SettingsSaveTests : IDisposable
         Assert.Equal("old-key", _store.GetKey(ArrApp.Sonarr));
         Assert.Equal(("http://old-qbit:8080", "admin"), (_plugin.Configuration.QbitUrl, _plugin.Configuration.QbitUser));
         Assert.Equal("old-password", _store.GetQbitPassword());
+    }
+
+    [Fact]
+    public void Prowlarr_s_address_and_key_are_put_back_too()
+    {
+        _plugin.Configuration.ProwlarrUrl = "http://old-prowlarr:9696";
+        _store.SetKey(ArrApp.Prowlarr, "old-prowlarr-key");
+
+        var result = _controller.SaveSettings(new ProfilesController.SettingsRequest
+        {
+            SonarrUrl = "http://old-sonarr:8989",
+            RadarrUrl = string.Empty,
+            ProwlarrUrl = "http://new-prowlarr:9696",
+            ProwlarrKey = "new-prowlarr-key"
+        });
+
+        AssertNothingWasChanged(result);
+        Assert.Equal("http://old-prowlarr:9696", _plugin.Configuration.ProwlarrUrl);
+        Assert.Equal("old-prowlarr-key", _store.GetKey(ArrApp.Prowlarr));
     }
 
     [Fact]

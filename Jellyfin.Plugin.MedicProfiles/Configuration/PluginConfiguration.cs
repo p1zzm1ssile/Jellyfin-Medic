@@ -14,6 +14,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Radarr's address as the Jellyfin server reaches it, e.g. http://192.168.1.10:7878.</summary>
     public string RadarrUrl { get; set; } = string.Empty;
 
+    /// <summary>Prowlarr's address as the Jellyfin server reaches it, e.g. http://192.168.1.10:9696. Optional: only for the Indexers tab.</summary>
+    public string ProwlarrUrl { get; set; } = string.Empty;
+
     /// <summary>Downloads stuck for at least this many hours are flagged on the Downloads tab.</summary>
     public int StuckAfterHours { get; set; } = 6;
 
@@ -33,4 +36,19 @@ public class PluginConfiguration : BasePluginConfiguration
     /// recorded, when the record is taken as this qBittorrent's.
     /// </summary>
     public string QbitPatternsHost { get; set; } = string.Empty;
+
+    /// <summary>"transmission" or "deluge" for the torrent guard (see Arr/TorrentGuard.cs), or empty for neither.</summary>
+    public string TorrentClientKind { get; set; } = string.Empty;
+
+    /// <summary>The Web UI's address, e.g. http://192.168.1.10:9091 for Transmission or :8112 for Deluge.</summary>
+    public string TorrentClientUrl { get; set; } = string.Empty;
+
+    /// <summary>Transmission's RPC user name. Deluge's Web UI has a password only.</summary>
+    public string TorrentClientUser { get; set; } = string.Empty;
+
+    /// <summary>Skip program files in Transmission's or Deluge's torrents.</summary>
+    public bool TorrentBlock { get; set; }
+
+    /// <summary>Skip archives (.rar, .zip, .7z) too.</summary>
+    public bool TorrentArchives { get; set; }
 }

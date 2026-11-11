@@ -742,7 +742,7 @@ public class DownloadsService
 
     // ---------- Helpers ----------
 
-    public static string Key(ArrApp app) => app == ArrApp.Sonarr ? "sonarr" : "radarr";
+    public static string Key(ArrApp app) => ArrClient.Name(app).ToLowerInvariant();
 
     /// <summary>The error for a successful answer that isn't the JSON asked for, saying what came back instead.</summary>
     internal static string Unexpected(ArrApp app, ArrResult result, JsonValueKind expected)

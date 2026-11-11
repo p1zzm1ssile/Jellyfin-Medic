@@ -19,5 +19,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ProfileAdvisor>();
         serviceCollection.AddSingleton<IndexersService>();
         serviceCollection.AddSingleton<QbitFileFilter>();
+        serviceCollection.AddSingleton<TorrentGuard>();
+        serviceCollection.AddHostedService(provider => provider.GetRequiredService<TorrentGuard>());
     }
 }

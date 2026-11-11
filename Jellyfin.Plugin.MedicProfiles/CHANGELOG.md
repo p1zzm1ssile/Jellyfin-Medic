@@ -3,6 +3,12 @@
 All notable changes to Medic Profiles are recorded here. The newest version is at the top.
 Jellyfin Medic and Medic Picks have their own changelogs.
 
+## [1.2.0] – 2026-11-10
+
+### Added
+- **Prowlarr on the Indexers tab.** Add Prowlarr's address and API key on the Settings tab (optional), and the Indexers tab lists Prowlarr's own indexers from Prowlarr itself: the ones it hasn't synced to Sonarr or Radarr too, which it has switched off, and which it has paused after failures and when it will try them again. Prowlarr's indexer warnings show with Sonarr's and Radarr's. Test Prowlarr checks the address and key. Medic Profiles only reads from Prowlarr.
+- **Block unsafe files in Transmission and Deluge.** The protection qBittorrent has had since 1.1.0, for the other two. Neither has a list of file names to exclude, so once a minute Medic Profiles reads each torrent's files and marks program files (.exe, .bat, .scr and similar), and archives if you tick them, as not to download. Choose the client on the Settings tab, add its Web UI address and password (and Transmission's user name), tick "Skip program files", and press Save and check now to see it work. A file that had already arrived stays on disk. A wrong password is tried again after 30 minutes, or at once when you save a new one.
+
 ## [1.1.5] – 2026-10-17
 
 ### Fixed

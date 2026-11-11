@@ -13,7 +13,10 @@ namespace Jellyfin.Plugin.MedicProfiles.Arr;
 public enum ArrApp
 {
     Sonarr,
-    Radarr
+    Radarr,
+
+    // Only for its indexers' status: it has no downloads of its own.
+    Prowlarr
 }
 
 /// <summary>The answer from Sonarr or Radarr: the JSON when it worked, or a message worded for the admin.</summary>
@@ -34,7 +37,7 @@ public sealed class ArrResult : IDisposable
 }
 
 /// <summary>
-/// Talks to Sonarr and Radarr's v3 API from the Jellyfin server. The keys stay on the server.
+/// Talks to Sonarr and Radarr's v3 API, and Prowlarr's v1, from the Jellyfin server. The keys stay on the server.
 /// </summary>
 public class ArrClient
 {
@@ -52,12 +55,22 @@ public class ArrClient
         _logger = logger;
     }
 
-    public static string Name(ArrApp app) => app == ArrApp.Sonarr ? "Sonarr" : "Radarr";
+    public static string Name(ArrApp app) => app switch
+    {
+        ArrApp.Sonarr => "Sonarr",
+        ArrApp.Radarr => "Radarr",
+        _ => "Prowlarr"
+    };
 
     public static string? BaseUrl(ArrApp app)
     {
         var config = Plugin.Instance?.Configuration;
-        string? url = app == ArrApp.Sonarr ? config?.SonarrUrl : config?.RadarrUrl;
+        string? url = app switch
+        {
+            ArrApp.Sonarr => config?.SonarrUrl,
+            ArrApp.Radarr => config?.RadarrUrl,
+            _ => config?.ProwlarrUrl
+        };
         return string.IsNullOrWhiteSpace(url) ? null : url.Trim().TrimEnd('/');
     }
 
@@ -109,7 +122,7 @@ public class ArrClient
 
         try
         {
-            using var request = new HttpRequestMessage(method, baseUrl + "/api/v3/" + pathAndQuery.TrimStart('/'));
+            using var request = new HttpRequestMessage(method, baseUrl + (app == ArrApp.Prowlarr ? "/api/v1/" : "/api/v3/") + pathAndQuery.TrimStart('/'));
             request.Headers.Add("X-Api-Key", key);
             if (json is not null)
             {

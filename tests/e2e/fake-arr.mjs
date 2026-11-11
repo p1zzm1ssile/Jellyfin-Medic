@@ -1,4 +1,4 @@
-// A pretend Sonarr for the Medic Profiles tests: answers the API calls Medic Profiles makes with
+// A pretend Sonarr (and Prowlarr) for the Medic Profiles tests: answers the API calls Medic Profiles makes with
 // fixed data, and remembers what was sent to it.
 import http from 'node:http';
 
@@ -83,6 +83,18 @@ const routes = {
     '/api/v3/manualimport': manualImport,
     '/api/v3/qualityprofile': () => [],
     '/api/v3/customformat': () => [],
+    // The same address answers as Prowlarr on its v1 routes, for the Prowlarr check.
+    '/api/v1/system/status': () => ({ appName: 'Prowlarr', version: '1.24.3.4754' }),
+    '/api/v1/indexer': () => [
+        { id: 11, name: 'Prowlarr Good', protocol: 'torrent', enable: true },
+        { id: 12, name: 'Prowlarr Paused', protocol: 'usenet', enable: true },
+        { id: 13, name: 'Prowlarr Off', protocol: 'torrent', enable: false }
+    ],
+    '/api/v1/indexerstatus': () => [{
+        indexerId: 12, disabledTill: new Date(Date.now() + 3600000).toISOString(),
+        initialFailure: new Date(Date.now() - 600000).toISOString(), mostRecentFailure: new Date().toISOString()
+    }],
+    '/api/v1/health': () => [{ source: 'IndexerStatusCheck', type: 'warning', message: 'Indexers unavailable due to failures: Prowlarr Paused' }],
     '/api/v3/downloadclient': () => [{ id: 1, name: 'qBittorrent', implementation: 'QBittorrent', protocol: 'torrent', enable: true, fields: [{ name: 'host', value: 'qbit' }, { name: 'port', value: 8080 }] }]
 };
 
@@ -252,4 +264,72 @@ function answerSeerr(req, res, body) {
         return;
     }
     res.writeHead(404); res.end('{}');
+}
+
+// A pretend transmission-daemon: a 409 with the session id until it's sent, then one torrent holding a film,
+// a program and an archive. It remembers each torrent-set.
+export const transmission = { sets: [], conflicts: 0 };
+
+export function startTransmission(port) {
+    const server = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', (c) => { body += c; });
+        req.on('end', () => {
+            res.setHeader('Content-Type', 'application/json');
+            if (req.url !== '/transmission/rpc') { res.writeHead(404); res.end(); return; }
+            if (req.headers.authorization !== 'Basic ' + Buffer.from('admin:secret').toString('base64')) { res.writeHead(401); res.end(); return; }
+            if (req.headers['x-transmission-session-id'] !== 'e2e-session') {
+                transmission.conflicts++;
+                res.writeHead(409, { 'X-Transmission-Session-Id': 'e2e-session' });
+                res.end();
+                return;
+            }
+            const call = JSON.parse(body);
+            if (call.method === 'torrent-set') transmission.sets.push(call.arguments);
+            const unwanted = new Set(transmission.sets.flatMap((s) => s['files-unwanted'] || []));
+            const files = ['Fake.Film.2001/Fake.Film.2001.mkv', 'Fake.Film.2001/Setup.exe', 'Fake.Film.2001/Fake.Film.2001.rar'];
+            res.end(JSON.stringify(call.method === 'torrent-get'
+                ? { result: 'success', arguments: { torrents: [{ id: 3, name: 'Fake.Film.2001', files: files.map((name) => ({ name, length: 100, bytesCompleted: 0 })), wanted: files.map((_, i) => !unwanted.has(i)) }] } }
+                : { result: 'success', arguments: {} }));
+        });
+    });
+    return new Promise((resolve) => server.listen(port, HOST, () => resolve(server)));
+}
+
+// A pretend Deluge Web UI: auth.login with "secret" gives a session cookie, which every later call needs.
+export const deluge = { sets: [], logins: 0 };
+
+export function startDeluge(port) {
+    const server = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', (c) => { body += c; });
+        req.on('end', () => {
+            res.setHeader('Content-Type', 'application/json');
+            const call = JSON.parse(body || '{}');
+            const reply = (result, extra = {}) => { res.writeHead(200, extra); res.end(JSON.stringify({ result, error: null, id: call.id })); };
+            if (req.url !== '/json') { res.writeHead(404); res.end(); return; }
+            if (call.method === 'auth.login') {
+                const ok = call.params?.[0] === 'secret';
+                if (ok) deluge.logins++;
+                reply(ok, ok ? { 'Set-Cookie': '_session_id=e2e; Path=/' } : {});
+                return;
+            }
+            if (!/_session_id=e2e/.test(req.headers.cookie || '')) { res.end(JSON.stringify({ result: null, error: { message: 'Not authenticated', code: 1 }, id: call.id })); return; }
+            if (call.method === 'web.connected') { reply(true); return; }
+            if (call.method === 'core.set_torrent_options') { deluge.sets.push(call.params); reply(null); return; }
+            if (call.method === 'core.get_torrents_status') {
+                const set = deluge.sets.at(-1);
+                reply({
+                    'deluge-hash': {
+                        name: 'Fake.Show.S01',
+                        files: [{ index: 0, path: 'Fake.Show.S01/E01.mkv', size: 100 }, { index: 1, path: 'Fake.Show.S01/Codec.scr', size: 1 }],
+                        file_priorities: set ? set[1].file_priorities : [1, 1]
+                    }
+                });
+                return;
+            }
+            reply(null);
+        });
+    });
+    return new Promise((resolve) => server.listen(port, HOST, () => resolve(server)));
 }

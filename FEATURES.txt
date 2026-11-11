@@ -678,10 +678,16 @@ administrators can open it. Nothing changes in Sonarr or Radarr until you
 press a button. Tabs: Downloads, Blocked, Indexers, Profiles, History, Settings.
   - Indexers: each indexer Sonarr and Radarr search and whether it's enabled,
     paused after failures or switched off, plus their own indexer warnings.
-    Prowlarr's indexers show too, as Prowlarr adds them.
+    Prowlarr's indexers show too, as Prowlarr adds them. With Prowlarr's own
+    address and API key (optional, on Settings), Prowlarr's full list shows as
+    well, with the indexers it has paused and until when.
   - Block unsafe files: tells qBittorrent (4.6+) to skip program files (.exe,
     .bat, .scr and similar) inside torrents, keeping your own entries in its
     "Excluded file names" list. Archives (.rar, .zip, .7z) optional.
+  - Block unsafe files in Transmission or Deluge: neither has an exclusion
+    list, so once a minute Medic Profiles marks program files (and archives,
+    if ticked) in every torrent as not to download. Save and check now runs
+    it at once and lists the files it skipped.
 
 
 -------------------------------------------------------------------------------
