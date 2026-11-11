@@ -2783,8 +2783,11 @@
 
                 // What a tab's script gets from the page (see tabs/iptv.js).
                 const tabContext = {
-                    $: $, el: el, pick: pick, fmtDateTime: fmtDateTime, getJson: getJson, postJson: postJson,
-                    isTesting: function () { return testing; }
+                    $: $, el: el, pick: pick, fmtDateTime: fmtDateTime, fmtShort: fmtShort, fmtDate: fmtDate,
+                    getJson: getJson, postJson: postJson, tracksSize: tracksSize, txReason: txReason,
+                    isTesting: function () { return testing; },
+                    // Whether the page can be seen with this tab open, for a tab that polls.
+                    isShowing: function (name) { return shown() && activeTab === name; }
                 };
 
                 // Each tab's part once it's set up, so the clock can redraw it; tabStarting holds the ones on their way.
@@ -4352,11 +4355,8 @@
                         .then(function () { $('md-tracks-pause').disabled = false; pollTracks(true); });
                 });
 
-                // ---------- Media report (read-only) ----------
+                // ---------- Why playback transcodes, in words (the Dashboard and the Media report tab) ----------
 
-                let mediaStatus = null;
-                let mediaTimer = null;
-                const HW_LABEL = { nvenc: 'NVIDIA NVENC', qsv: 'Intel QSV', vaapi: 'VAAPI', amf: 'AMD AMF', videotoolbox: 'Apple VideoToolbox', rkmpp: 'Rockchip MPP', v4l2m2m: 'V4L2' };
                 const TX_REASON = {
                     ContainerNotSupported: 'File type not supported by the app',
                     VideoCodecNotSupported: 'Video format not supported',
@@ -4391,171 +4391,6 @@
                 function txReason(key) {
                     return TX_REASON[key] || String(key).replace(/([a-z])([A-Z])/g, '$1 $2');
                 }
-
-                function mediaTile(head, big, note) {
-                    const t = el('section', 'md-tile');
-                    t.appendChild(el('h3', 'md-tile-head', head));
-                    t.appendChild(el('p', 'md-big', big));
-                    if (note) t.appendChild(el('p', 'so-muted so-small', note));
-                    return t;
-                }
-
-                function mediaRows(tbody, rows, total, withBar) {
-                    tbody.innerHTML = '';
-                    (rows || []).forEach(function (r) {
-                        const tr = el('tr');
-                        const bytes = pick(r, 'Bytes') || 0;
-                        tr.appendChild(el('td', null, pick(r, 'Name')));
-                        tr.appendChild(el('td', null, (pick(r, 'Files') || 0).toLocaleString('en-GB')));
-                        tr.appendChild(el('td', null, tracksSize(bytes)));
-                        if (withBar) {
-                            const td = el('td');
-                            const bar = el('div', 'md-bar');
-                            const fill = el('i');
-                            fill.style.width = (total > 0 ? Math.max(1, Math.round(100 * bytes / total)) : 0) + '%';
-                            bar.appendChild(fill);
-                            td.appendChild(bar);
-                            tr.appendChild(td);
-                        }
-                        tbody.appendChild(tr);
-                    });
-                }
-
-                function renderMedia() {
-                    const st = mediaStatus || {};
-                    const running = !!pick(st, 'Running');
-                    const r = pick(st, 'Report');
-                    $('md-media-build').disabled = running;
-                    $('md-media-build').textContent = r ? 'Rebuild report' : 'Build report';
-
-                    if (running) {
-                        const total = pick(st, 'Total') || 0, done = pick(st, 'Done') || 0;
-                        $('md-media-status').textContent = total ? 'Reading ' + done.toLocaleString('en-GB') + ' of ' + total.toLocaleString('en-GB') + ' items…' : 'Gathering your library…';
-                    } else if (r) {
-                        const when = new Date(pick(r, 'GeneratedUtc'));
-                        $('md-media-status').textContent = 'Built ' + fmtShort(when) + ' · ' + (pick(r, 'Files') || 0).toLocaleString('en-GB') + ' video files · ' + tracksSize(pick(r, 'Bytes') || 0);
-                    } else {
-                        $('md-media-status').textContent = 'No report yet. Building one reads every video file Jellyfin knows about; on a large library it takes a minute or two.';
-                    }
-
-                    if (r) {
-                        $('md-media-body').hidden = false;
-                        const sv = pick(r, 'Savings') || {};
-                        const hw = String(pick(r, 'HardwareAcceleration') || 'none').toLowerCase();
-                        const tiles = $('md-media-tiles');
-                        tiles.innerHTML = '';
-                        tiles.appendChild(mediaTile('Video files', (pick(r, 'Files') || 0).toLocaleString('en-GB'), tracksSize(pick(r, 'Bytes') || 0) + ' in total'));
-                        tiles.appendChild(mediaTile('Could convert', (pick(sv, 'CandidateFiles') || 0).toLocaleString('en-GB') + ' files',
-                            tracksSize(pick(sv, 'CandidateBytes') || 0) + ' in H.264 or older formats that HEVC stores more efficiently'));
-                        tiles.appendChild(mediaTile('Could free with a GPU', 'About ' + tracksSize(pick(sv, 'GpuBytes') || 0),
-                            HW_LABEL[hw] ? 'Using your ' + HW_LABEL[hw] + ' encoder. Fast.' : 'No GPU encoder is set up in Jellyfin yet.'));
-                        tiles.appendChild(mediaTile('Could free with software', 'About ' + tracksSize(pick(sv, 'SoftwareBytes') || 0), 'Slow x265 encoding on the CPU. Smaller files, many times longer.'));
-
-                        const big = $('md-media-big');
-                        big.innerHTML = '';
-                        const list = pick(r, 'BiggestSavings') || [];
-                        if (list.length === 0) {
-                            const tr = el('tr');
-                            const td = el('td', 'so-muted', 'Nothing to convert: your video is already in efficient formats.');
-                            td.colSpan = 6;
-                            tr.appendChild(td);
-                            big.appendChild(tr);
-                        }
-                        list.forEach(function (f) {
-                            const tr = el('tr');
-                            const title = el('td');
-                            title.appendChild(el('div', null, pick(f, 'Title')));
-                            title.appendChild(el('div', 'so-muted so-small', pick(f, 'FileName')));
-                            tr.appendChild(title);
-                            tr.appendChild(el('td', null, pick(f, 'Codec')));
-                            tr.appendChild(el('td', null, pick(f, 'Resolution')));
-                            tr.appendChild(el('td', null, pick(f, 'Mbps') ? pick(f, 'Mbps') + ' Mbps' : '–'));
-                            tr.appendChild(el('td', null, tracksSize(pick(f, 'Bytes') || 0)));
-                            tr.appendChild(el('td', null, 'about ' + tracksSize(pick(f, 'GpuSavingBytes') || 0)));
-                            big.appendChild(tr);
-                        });
-
-                        const total = pick(r, 'Bytes') || 0;
-                        mediaRows($('md-media-codecs'), pick(r, 'Codecs'), total, true);
-                        mediaRows($('md-media-res'), pick(r, 'Resolutions'), total, false);
-                        mediaRows($('md-media-hdr'), pick(r, 'DynamicRange'), total, false);
-                        mediaRows($('md-media-ext'), pick(r, 'Containers'), total, false);
-
-                        const c = pick(r, 'Compatibility') || {};
-                        const compat = $('md-media-compat');
-                        compat.innerHTML = '';
-                        const items = [
-                            [pick(c, 'DtsOrTrueHdOnly'), 'have only DTS or TrueHD audio', 'Browsers and many TVs can\'t play these, so Jellyfin converts the audio as it plays. That\'s a light job, but adding a stereo AAC or AC-3 track avoids it.'],
-                            [pick(c, 'ImageSubtitles'), 'have picture-based subtitles (PGS or VobSub)', 'When someone turns these on, Jellyfin has to burn them into the picture, which means a full video transcode. Text subtitles such as SRT don\'t.'],
-                            [pick(c, 'OldContainers'), 'use older file types (AVI, WMV, MPEG and similar)', 'Modern apps often can\'t play these directly. Remuxing to MKV is quick and lossless, but it changes the file name.'],
-                            [pick(c, 'Hdr'), 'are HDR or Dolby Vision', 'Screens without HDR need tone mapping, which needs a GPU to be smooth.']
-                        ];
-                        let shown = 0;
-                        items.forEach(function (it) {
-                            if (!it[0]) return;
-                            shown++;
-                            const card = el('div', 'so-card sev-Tip');
-                            card.appendChild(el('h4', null, it[0].toLocaleString('en-GB') + ' files ' + it[1]));
-                            card.appendChild(el('p', 'so-why', it[2]));
-                            compat.appendChild(card);
-                        });
-                        if (shown === 0) compat.appendChild(el('p', 'so-muted', 'Nothing here is likely to force a transcode.'));
-                    } else {
-                        $('md-media-body').hidden = true;
-                    }
-
-                    // Transcode log from playback
-                    const tx = pick(st, 'Transcodes') || {};
-                    const since = pick(tx, 'SinceUtc');
-                    const top = pick(tx, 'Top') || [];
-                    const sinceText = since ? fmtDate(since, true) : null;
-                    if (top.length === 0) {
-                        $('md-media-tx-note').textContent = sinceText
-                            ? 'Nothing has been caught transcoding since ' + sinceText + '. Medic checks playback every 5 minutes, so this fills in as people watch.'
-                            : 'Medic records this from its 5-minute playback check. It starts filling in once people watch something.';
-                        $('md-media-tx-wrap').hidden = true;
-                    } else {
-                        const totals = pick(tx, 'ReasonTotals') || {};
-                        const topReasons = Object.keys(totals).sort(function (a, b) { return totals[b] - totals[a]; }).slice(0, 3).map(txReason);
-                        $('md-media-tx-note').textContent = (pick(tx, 'Files') || top.length) + ' files caught transcoding since ' + sinceText + '. Most common reasons: ' + topReasons.join('; ') + '. Listed by how often they were caught; each catch is roughly 5 minutes of playback.';
-                        const body = $('md-media-tx');
-                        body.innerHTML = '';
-                        top.forEach(function (e) {
-                            const tr = el('tr');
-                            tr.appendChild(el('td', null, pick(e, 'Title')));
-                            const reasons = pick(e, 'Reasons') || {};
-                            tr.appendChild(el('td', null, Object.keys(reasons).sort(function (a, b) { return reasons[b] - reasons[a]; }).map(txReason).join('; ')));
-                            const n = pick(e, 'Samples') || 0;
-                            tr.appendChild(el('td', null, n === 1 ? 'once' : n + ' times'));
-                            tr.appendChild(el('td', 'so-muted', (pick(e, 'Clients') || []).join(', ')));
-                            body.appendChild(tr);
-                        });
-                        $('md-media-tx-wrap').hidden = false;
-                    }
-                }
-
-                async function loadMedia() {
-                    clearTimeout(mediaTimer);
-                    try {
-                        mediaStatus = await getJson('/JellyfinMedic/MediaReport');
-                        renderMedia();
-                        if (pick(mediaStatus, 'Running')) {
-                            clearTimeout(mediaTimer);
-                            if (shown()) mediaTimer = setTimeout(function () { if (activeTab === 'media') loadMedia(); }, 2000);
-                        }
-                    } catch (e) {
-                        $('md-media-status').textContent = 'Couldn\'t load the media report. Check the Jellyfin log for Jellyfin Medic errors.';
-                    }
-                }
-
-                $('md-media-build').addEventListener('click', async function () {
-                    $('md-media-build').disabled = true;
-                    try {
-                        mediaStatus = await postJson('/JellyfinMedic/MediaReport/Build');
-                        renderMedia();
-                    } catch (e) { /* the poll below shows the state */ }
-                    loadMedia();
-                });
 
                 // ---------- Track run progress and time left ----------
 
@@ -4804,7 +4639,7 @@
                     clearTimeout(activityTimer);
                     clearTimeout(scanTimer);
                     clearTimeout(tracksTimer);
-                    clearTimeout(mediaTimer);
+                    if (tabParts.media) tabParts.media.stop();
                     stopNowTimer();
                 }
 
@@ -4812,7 +4647,7 @@
                     updateActivity();
                     if (activeTab === 'dashboard') { startNowTimer(); refreshDash(true); }
                     else if (activeTab === 'tracks') { pollTracks(); pollScan(); }
-                    else if (activeTab === 'media') loadMedia();
+                    else if (activeTab === 'media') loadTab('media');
                 }
 
                 page.addEventListener('pagehide', function () {
@@ -4845,7 +4680,7 @@
                             await loadMedicSettings();
                             loadTracks();
                         } else if (name === 'media') {
-                            await loadMedia();
+                            await (await tabPart('media')).load();
                         } else if (name === 'tests') {
                             await loadTests();
                         } else if (name === 'plugins') {
@@ -4935,7 +4770,6 @@
                         function () { if (speedResult) renderSpeed(); },
                         function () { if (directory) renderDirectory(); },
                         function () { if (tracksScan) renderTracksScan(); },
-                        function () { if (mediaStatus) renderMedia(); },
                         function () { if (weekly) renderWeekly(); },
                         function () { if (activeTab === 'schedule') { loadAudit(); loadBackups(); } }
                     ].concat(Object.keys(tabParts).map(function (name) {
