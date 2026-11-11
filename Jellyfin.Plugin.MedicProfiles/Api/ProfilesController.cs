@@ -53,6 +53,7 @@ public class ProfilesController : ControllerBase
         {
             sonarr = new { url = config.SonarrUrl, keySet = _store.GetKey(ArrApp.Sonarr) is not null },
             radarr = new { url = config.RadarrUrl, keySet = _store.GetKey(ArrApp.Radarr) is not null },
+            prowlarr = new { url = config.ProwlarrUrl, keySet = _store.GetKey(ArrApp.Prowlarr) is not null },
             stuckAfterHours = config.StuckAfterHours,
             qbit = new { url = config.QbitUrl, user = config.QbitUser, passwordSet = _store.GetQbitPassword() is not null }
         });
@@ -73,10 +74,14 @@ public class ProfilesController : ControllerBase
         // server, it has to be typed again, so a changed address can't be used to collect it.
         bool newSonarrHost = HostChanged(plugin.Configuration.SonarrUrl, sonarrUrl);
         bool newRadarrHost = HostChanged(plugin.Configuration.RadarrUrl, radarrUrl);
+        // Left out by a page from before Prowlarr was added, which then leaves its address and key as they are.
+        string prowlarrUrl = request.ProwlarrUrl is null ? plugin.Configuration.ProwlarrUrl : CleanUrl(request.ProwlarrUrl);
+        bool newProwlarrHost = HostChanged(plugin.Configuration.ProwlarrUrl, prowlarrUrl);
         bool newQbitHost = request.QbitUrl is not null && HostChanged(plugin.Configuration.QbitUrl, CleanUrl(request.QbitUrl));
 
         // Kept so a failed write, of a secret or of the addresses, can put back everything this request changed.
-        var secretsBefore = (Sonarr: _store.GetKey(ArrApp.Sonarr), Radarr: _store.GetKey(ArrApp.Radarr), Qbit: _store.GetQbitPassword());
+        var secretsBefore = new SecretsBefore(_store.GetKey(ArrApp.Sonarr), _store.GetKey(ArrApp.Radarr), _store.GetKey(ArrApp.Prowlarr), _store.GetQbitPassword());
+        var newHosts = new NewHosts(newSonarrHost, newRadarrHost, newProwlarrHost, newQbitHost);
         var settingsBefore = SavedSettings.Of(plugin.Configuration);
 
         // The keys and password are written before the new addresses are saved: if a write fails, the ones already
@@ -110,17 +115,27 @@ public class ProfilesController : ControllerBase
             {
                 _store.SetKey(ArrApp.Radarr, request.RadarrKey);
             }
+
+            if (request.ClearProwlarrKey || (newProwlarrHost && string.IsNullOrWhiteSpace(request.ProwlarrKey)))
+            {
+                _store.SetKey(ArrApp.Prowlarr, null);
+            }
+            else if (!string.IsNullOrWhiteSpace(request.ProwlarrKey))
+            {
+                _store.SetKey(ArrApp.Prowlarr, request.ProwlarrKey);
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
         {
             _logger.LogWarning(ex, "Medic Profiles: couldn't save a key or password, so the settings weren't changed");
-            return PutBackSecrets(secretsBefore, newSonarrHost, newRadarrHost, newQbitHost)
+            return PutBackSecrets(secretsBefore, newHosts)
                 ? Problem("Couldn't save the key or password, so nothing was changed. Check the Jellyfin log for Medic Profiles errors.")
                 : NotPutBack();
         }
 
         plugin.Configuration.SonarrUrl = sonarrUrl;
         plugin.Configuration.RadarrUrl = radarrUrl;
+        plugin.Configuration.ProwlarrUrl = prowlarrUrl;
         plugin.Configuration.StuckAfterHours = Math.Clamp(request.StuckAfterHours ?? plugin.Configuration.StuckAfterHours, 1, 168);
         if (request.QbitUrl is not null)
         {
@@ -146,7 +161,7 @@ public class ProfilesController : ControllerBase
             // Whatever stopped the save, a key written above must not stay paired with the old address.
             _logger.LogWarning(ex, "Medic Profiles: couldn't save the settings, so the keys and password are put back as they were");
             settingsBefore.PutBack(plugin.Configuration);
-            return PutBackSecrets(secretsBefore, newSonarrHost, newRadarrHost, newQbitHost)
+            return PutBackSecrets(secretsBefore, newHosts)
                 ? Problem("Couldn't save the settings, so nothing was changed. Check the Jellyfin log for Medic Profiles errors.")
                 : NotPutBack();
         }
@@ -159,7 +174,9 @@ public class ProfilesController : ControllerBase
     [HttpPost("Test/{app}")]
     public async Task<ActionResult> Test([FromRoute] string app, CancellationToken ct)
     {
-        if (ParseApp(app) is not { } a)
+        // Prowlarr is only tested here: it has no downloads, so the other routes don't take it.
+        ArrApp? which = string.Equals(app, "prowlarr", StringComparison.OrdinalIgnoreCase) ? ArrApp.Prowlarr : ParseApp(app);
+        if (which is not { } a)
         {
             return BadRequest();
         }
@@ -319,7 +336,7 @@ public class ProfilesController : ControllerBase
 
     // ---------- Helpers ----------
 
-    private object Configured() => new { sonarr = _arr.IsConfigured(ArrApp.Sonarr), radarr = _arr.IsConfigured(ArrApp.Radarr) };
+    private object Configured() => new { sonarr = _arr.IsConfigured(ArrApp.Sonarr), radarr = _arr.IsConfigured(ArrApp.Radarr), prowlarr = _arr.IsConfigured(ArrApp.Prowlarr) };
 
     private string? UserName() => User.Identity?.Name;
 
@@ -332,14 +349,15 @@ public class ProfilesController : ControllerBase
 
     // Puts back each key and the password this request changed. One that can't be put back is removed when it was
     // typed for a new server, as the old address stays. False when any couldn't be put back.
-    private bool PutBackSecrets((string? Sonarr, string? Radarr, string? Qbit) before, bool newSonarrHost, bool newRadarrHost, bool newQbitHost)
+    private bool PutBackSecrets(SecretsBefore before, NewHosts newHosts)
     {
         bool all = true;
         foreach (var (now, was, newHost, set) in new (string?, string?, bool, Action<string?>)[]
         {
-            (_store.GetKey(ArrApp.Sonarr), before.Sonarr, newSonarrHost, key => _store.SetKey(ArrApp.Sonarr, key)),
-            (_store.GetKey(ArrApp.Radarr), before.Radarr, newRadarrHost, key => _store.SetKey(ArrApp.Radarr, key)),
-            (_store.GetQbitPassword(), before.Qbit, newQbitHost, _store.SetQbitPassword)
+            (_store.GetKey(ArrApp.Sonarr), before.Sonarr, newHosts.Sonarr, key => _store.SetKey(ArrApp.Sonarr, key)),
+            (_store.GetKey(ArrApp.Radarr), before.Radarr, newHosts.Radarr, key => _store.SetKey(ArrApp.Radarr, key)),
+            (_store.GetKey(ArrApp.Prowlarr), before.Prowlarr, newHosts.Prowlarr, key => _store.SetKey(ArrApp.Prowlarr, key)),
+            (_store.GetQbitPassword(), before.Qbit, newHosts.Qbit, _store.SetQbitPassword)
         })
         {
             if (string.Equals(now, was, StringComparison.Ordinal))
@@ -401,16 +419,21 @@ public class ProfilesController : ControllerBase
     private ContentResult Json(object body) =>
         Content(JsonSerializer.Serialize(body, ArrStore.JsonOptions), MediaTypeNames.Application.Json);
 
+    private sealed record SecretsBefore(string? Sonarr, string? Radarr, string? Prowlarr, string? Qbit);
+
+    private sealed record NewHosts(bool Sonarr, bool Radarr, bool Prowlarr, bool Qbit);
+
     // What SaveSettings changes in the configuration, to put back when it can't be saved.
-    private sealed record SavedSettings(string SonarrUrl, string RadarrUrl, int StuckAfterHours, string QbitUrl, string QbitUser, string[] QbitPatternsAdded, bool? QbitListWasOn, string QbitPatternsHost)
+    private sealed record SavedSettings(string SonarrUrl, string RadarrUrl, string ProwlarrUrl, int StuckAfterHours, string QbitUrl, string QbitUser, string[] QbitPatternsAdded, bool? QbitListWasOn, string QbitPatternsHost)
     {
         public static SavedSettings Of(PluginConfiguration c) =>
-            new(c.SonarrUrl, c.RadarrUrl, c.StuckAfterHours, c.QbitUrl, c.QbitUser, c.QbitPatternsAdded, c.QbitListWasOn, c.QbitPatternsHost);
+            new(c.SonarrUrl, c.RadarrUrl, c.ProwlarrUrl, c.StuckAfterHours, c.QbitUrl, c.QbitUser, c.QbitPatternsAdded, c.QbitListWasOn, c.QbitPatternsHost);
 
         public void PutBack(PluginConfiguration c)
         {
             c.SonarrUrl = SonarrUrl;
             c.RadarrUrl = RadarrUrl;
+            c.ProwlarrUrl = ProwlarrUrl;
             c.StuckAfterHours = StuckAfterHours;
             c.QbitUrl = QbitUrl;
             c.QbitUser = QbitUser;
@@ -433,6 +456,12 @@ public class ProfilesController : ControllerBase
         public bool ClearSonarrKey { get; set; }
 
         public bool ClearRadarrKey { get; set; }
+
+        public string? ProwlarrUrl { get; set; }
+
+        public string? ProwlarrKey { get; set; }
+
+        public bool ClearProwlarrKey { get; set; }
 
         public int? StuckAfterHours { get; set; }
 

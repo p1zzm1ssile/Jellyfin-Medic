@@ -1288,6 +1288,29 @@ await check('Medic Profiles shows indexer status', async () => {
     expect((r.warnings || []).some((w) => /Broken Indexer/.test(w)), 'no health warning');
 });
 
+await check('Medic Profiles lists Prowlarr\'s own indexers once Prowlarr is set up, and its Test knows it from Sonarr', async () => {
+    try {
+        await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, RadarrUrl: '', ProwlarrUrl: ARR, ProwlarrKey: 'test-key' });
+        const status = await ok('/MedicProfiles/Status');
+        expect(status.prowlarr?.keySet && status.prowlarr.url === ARR, 'Prowlarr not saved: ' + JSON.stringify(status.prowlarr));
+        expect(!JSON.stringify(status).includes('test-key'), 'the key reached the page');
+        const test = (await api('POST', '/MedicProfiles/Test/prowlarr')).json;
+        expect(test?.ok && /Prowlarr answered/.test(test.message), 'test: ' + JSON.stringify(test));
+        const r = await ok('/MedicProfiles/Indexers');
+        const mine = Object.fromEntries((r.rows || []).filter((x) => x.app === 'prowlarr').map((x) => [x.name, x.state]));
+        expect(mine['Prowlarr Good'] === 'ok' && mine['Prowlarr Paused'] === 'failing' && mine['Prowlarr Off'] === 'off', 'rows: ' + JSON.stringify(mine));
+        expect((r.rows || []).some((x) => x.app === 'sonarr' && x.name === 'Broken Indexer'), 'Sonarr\'s indexers went missing');
+        expect((r.warnings || []).some((w) => /^Prowlarr: .*Prowlarr Paused/.test(w)), 'warnings: ' + JSON.stringify(r.warnings));
+        expect(r.configured?.prowlarr === true, 'configured: ' + JSON.stringify(r.configured));
+        // Prowlarr isn't a downloads app: the other routes don't take it.
+        const remove = await api('POST', '/MedicProfiles/Queue/Remove', { app: 'prowlarr', queueIds: [1] });
+        expect(remove.status === 400, 'Queue/Remove took prowlarr: ' + remove.status);
+        return Object.keys(mine).length + ' Prowlarr indexers, one paused';
+    } finally {
+        await api('POST', '/MedicProfiles/Settings', { SonarrUrl: ARR, RadarrUrl: '', ProwlarrUrl: '', ClearProwlarrKey: true });
+    }
+});
+
 await check('Medic Profiles says when the queue is cut short, and can remove a download but leave it in the client', async () => {
     fakeArr.queue.total = 1234;
     try {

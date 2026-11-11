@@ -133,6 +133,57 @@ public sealed class IndexersServiceTests : IDisposable
         Assert.Equal(new[] { ("NZB Geek", "failing"), ("Nyaa.si", "failing"), ("TorrentLeech", "ok") }, States(rows));
     }
 
+    [Fact]
+    public async Task Prowlarr_s_own_indexers_are_listed_with_the_ones_it_has_paused()
+    {
+        var now = new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc);
+        Plugin.Instance!.Configuration.ProwlarrUrl = "http://prowlarr:9696";
+        _store.SetKey(ArrApp.Prowlarr, "prowlarr-key");
+        var fake = new FakeProwlarr(
+            [
+                new { id = 1, name = "Nyaa", protocol = "torrent", enable = true },
+                new { id = 2, name = "NZB Geek", protocol = "usenet", enable = true },
+                new { id = 3, name = "Old one", protocol = "torrent", enable = true },
+                new { id = 4, name = "Unused", protocol = "torrent", enable = false }
+            ],
+            [
+                // Paused for an hour, failing since this morning.
+                new { indexerId = 2, disabledTill = "2026-11-10T13:00:00Z", initialFailure = "2026-11-10T03:00:00Z", mostRecentFailure = "2026-11-10T11:55:00Z" },
+                // A pause that has ended: Prowlarr keeps the entry until the next success.
+                new { indexerId = 3, disabledTill = "2026-11-10T11:00:00Z", initialFailure = "2026-11-10T10:00:00Z", mostRecentFailure = "2026-11-10T10:30:00Z" }
+            ],
+            [Health("IndexerStatusCheck", "warning", "Indexers unavailable due to failures: NZB Geek"), Health("UpdateCheck", "warning", "An update is ready")]);
+
+        try
+        {
+            var arr = new ArrClient(new Factory(fake), _store, NullLogger<ArrClient>.Instance);
+            var (rows, warnings, errors) = await new IndexersService(arr, () => now).StatusAsync(CancellationToken.None);
+            var prowlarr = rows.Where(r => r.App == "prowlarr").ToList();
+
+            Assert.Multiple(
+                () => Assert.Equal(new[] { ("NZB Geek", "failing"), ("Nyaa", "ok"), ("Old one", "ok"), ("Unused", "off") }, States(prowlarr)),
+                () => Assert.Contains("more than 6 hours", Detail(prowlarr, "NZB Geek")),
+                () => Assert.Equal(new[] { "Prowlarr: Indexers unavailable due to failures: NZB Geek" }, warnings),
+                () => Assert.Empty(errors),
+                () => Assert.Contains("/api/v1/indexerstatus", fake.Requested),
+                () => Assert.All(fake.Keys, k => Assert.Equal("prowlarr-key", k)));
+        }
+        finally
+        {
+            Plugin.Instance!.Configuration.ProwlarrUrl = string.Empty;
+        }
+    }
+
+    [Fact]
+    public async Task Prowlarr_is_not_asked_until_it_is_set_up()
+    {
+        var sonarr = new FakeSonarr([Indexer(1, "Nyaa")], []);
+
+        await RowsAsync(sonarr);
+
+        Assert.DoesNotContain(sonarr.Requested, path => path.StartsWith("/api/v1/", StringComparison.Ordinal));
+    }
+
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
     private static object Indexer(int id, string name, bool rss = true, bool automatic = true, bool interactive = true) =>
@@ -170,6 +221,37 @@ public sealed class IndexersServiceTests : IDisposable
             {
                 "/api/v3/indexer" => indexers,
                 "/api/v3/health" => health,
+                _ => null
+            };
+            return Task.FromResult(answer is null
+                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(answer), Encoding.UTF8, "application/json") });
+        }
+    }
+
+    // A pretend Prowlarr on its own address, with an empty Sonarr beside it.
+    private sealed class FakeProwlarr(object[] indexers, object[] status, object[] health) : HttpMessageHandler
+    {
+        public List<string> Requested { get; } = new();
+
+        public List<string> Keys { get; } = new();
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            string path = request.RequestUri!.AbsolutePath;
+            bool prowlarr = request.RequestUri.Host == "prowlarr";
+            Requested.Add(path);
+            if (prowlarr)
+            {
+                Keys.Add(request.Headers.GetValues("X-Api-Key").Single());
+            }
+
+            object[]? answer = (prowlarr, path) switch
+            {
+                (true, "/api/v1/indexer") => indexers,
+                (true, "/api/v1/indexerstatus") => status,
+                (true, "/api/v1/health") => health,
+                (false, "/api/v3/indexer" or "/api/v3/health") => [],
                 _ => null
             };
             return Task.FromResult(answer is null

@@ -60,7 +60,12 @@ public class ArrStore
     public string? GetKey(ArrApp app)
     {
         var secrets = _secrets.Read();
-        return app == ArrApp.Sonarr ? secrets.SonarrKey : secrets.RadarrKey;
+        return app switch
+        {
+            ArrApp.Sonarr => secrets.SonarrKey,
+            ArrApp.Radarr => secrets.RadarrKey,
+            _ => secrets.ProwlarrKey
+        };
     }
 
     public virtual void SetKey(ArrApp app, string? key)
@@ -68,13 +73,17 @@ public class ArrStore
         string? clean = string.IsNullOrWhiteSpace(key) ? null : key.Trim();
         _secrets.Update(secrets =>
         {
-            if (app == ArrApp.Sonarr)
+            switch (app)
             {
-                secrets.SonarrKey = clean;
-            }
-            else
-            {
-                secrets.RadarrKey = clean;
+                case ArrApp.Sonarr:
+                    secrets.SonarrKey = clean;
+                    break;
+                case ArrApp.Radarr:
+                    secrets.RadarrKey = clean;
+                    break;
+                default:
+                    secrets.ProwlarrKey = clean;
+                    break;
             }
         });
     }
@@ -142,6 +151,8 @@ public class ArrStore
         public string? SonarrKey { get; set; }
 
         public string? RadarrKey { get; set; }
+
+        public string? ProwlarrKey { get; set; }
 
         public string? QbitPassword { get; set; }
     }

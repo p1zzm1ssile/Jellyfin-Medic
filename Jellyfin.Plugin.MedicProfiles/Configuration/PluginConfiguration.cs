@@ -14,6 +14,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Radarr's address as the Jellyfin server reaches it, e.g. http://192.168.1.10:7878.</summary>
     public string RadarrUrl { get; set; } = string.Empty;
 
+    /// <summary>Prowlarr's address as the Jellyfin server reaches it, e.g. http://192.168.1.10:9696. Optional: only for the Indexers tab.</summary>
+    public string ProwlarrUrl { get; set; } = string.Empty;
+
     /// <summary>Downloads stuck for at least this many hours are flagged on the Downloads tab.</summary>
     public int StuckAfterHours { get; set; } = 6;
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -8,7 +9,7 @@ using Medic.Shared;
 
 namespace Jellyfin.Plugin.MedicProfiles.Arr;
 
-/// <summary>One indexer as Sonarr or Radarr sees it.</summary>
+/// <summary>One indexer as Sonarr, Radarr or Prowlarr sees it.</summary>
 public sealed class IndexerRow
 {
     public string App { get; set; } = string.Empty;
@@ -26,13 +27,25 @@ public sealed class IndexerRow
 /// <summary>
 /// Indexer status from Sonarr and Radarr: which indexers are failing, which are switched off, and the
 /// indexer warnings from each app's health check. Indexers added by Prowlarr show here too, as
-/// Prowlarr syncs them into Sonarr and Radarr.
+/// Prowlarr syncs them into Sonarr and Radarr. With Prowlarr set up too, its own indexers are listed
+/// from Prowlarr itself, including ones it hasn't synced anywhere.
 /// </summary>
 public class IndexersService
 {
     private readonly ArrClient _arr;
+    private readonly Func<DateTime> _now;
 
-    public IndexersService(ArrClient arr) => _arr = arr;
+    public IndexersService(ArrClient arr)
+        : this(arr, () => DateTime.UtcNow)
+    {
+    }
+
+    // The clock, for tests of Prowlarr's paused-until times.
+    internal IndexersService(ArrClient arr, Func<DateTime> now)
+    {
+        _arr = arr;
+        _now = now;
+    }
 
     public async Task<(List<IndexerRow> Rows, List<string> Warnings, Dictionary<string, string> Errors)> StatusAsync(CancellationToken ct)
     {
@@ -122,8 +135,85 @@ public class IndexersService
             }
         }
 
+        if (_arr.IsConfigured(ArrApp.Prowlarr))
+        {
+            await AddProwlarrAsync(rows, warnings, errors, ct).ConfigureAwait(false);
+        }
+
         return (rows.OrderBy(r => r.State == "failing" ? 0 : r.State == "off" ? 2 : 1).ThenBy(r => r.App).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList(), warnings, errors);
     }
+
+    // Prowlarr pauses an indexer after failures, and says until when, in its indexer status list.
+    private async Task AddProwlarrAsync(List<IndexerRow> rows, List<string> warnings, Dictionary<string, string> errors, CancellationToken ct)
+    {
+        const ArrApp App = ArrApp.Prowlarr;
+        using var indexers = await _arr.GetAsync(App, "indexer", ct).ConfigureAwait(false);
+        if (!indexers.Ok || indexers.Json?.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            errors["prowlarr"] = indexers.Ok ? DownloadsService.Unexpected(App, indexers, JsonValueKind.Array) : indexers.Message;
+            return;
+        }
+
+        var paused = new Dictionary<int, (DateTime Until, DateTime? Since)>();
+        using (var status = await _arr.GetAsync(App, "indexerstatus", ct).ConfigureAwait(false))
+        {
+            if (status.Ok && status.Json?.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var s in status.Json.RootElement.EnumerateArray())
+                {
+                    if (s.TryGetProperty("indexerId", out var id) && id.TryGetInt32(out int indexerId) && Time(s, "disabledTill") is { } until && until > _now())
+                    {
+                        paused[indexerId] = (until, Time(s, "initialFailure"));
+                    }
+                }
+            }
+        }
+
+        using (var health = await _arr.GetAsync(App, "health", ct).ConfigureAwait(false))
+        {
+            if (health.Ok && health.Json?.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                warnings.AddRange(health.Json.RootElement.EnumerateArray()
+                    .Where(h => (Json.Text(h, "source") ?? string.Empty).Contains("Indexer", StringComparison.OrdinalIgnoreCase))
+                    .Select(h => Json.Text(h, "message") ?? string.Empty)
+                    .Where(m => m.Length > 0)
+                    .Select(m => "Prowlarr: " + m));
+            }
+        }
+
+        foreach (var i in indexers.Json.RootElement.EnumerateArray())
+        {
+            var row = new IndexerRow
+            {
+                App = "prowlarr",
+                Name = Json.Text(i, "name") ?? "Indexer",
+                Protocol = Json.Text(i, "protocol") ?? string.Empty
+            };
+
+            int id = i.TryGetProperty("id", out var idValue) && idValue.TryGetInt32(out int n) ? n : 0;
+            if (!Json.Bool(i, "enable"))
+            {
+                row.State = "off";
+                row.Detail = "Switched off in Prowlarr.";
+            }
+            else if (paused.TryGetValue(id, out var p))
+            {
+                bool longTerm = p.Since is { } since && _now() - since > TimeSpan.FromHours(6);
+                row.State = "failing";
+                row.Detail = "Prowlarr has paused it after failures" + (longTerm ? " for more than 6 hours." : ".")
+                    + " It tries again from " + p.Until.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture) + " (server time).";
+            }
+            else
+            {
+                row.Detail = "Enabled in Prowlarr.";
+            }
+
+            rows.Add(row);
+        }
+    }
+
+    private static DateTime? Time(JsonElement e, string name) =>
+        Json.Text(e, name) is { } text && DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var t) ? t : null;
 
     /// <summary>
     /// The indexer names a health message lists. Sonarr and Radarr put them last, joined by ", ", after a

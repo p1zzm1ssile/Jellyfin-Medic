@@ -61,6 +61,25 @@ public sealed class SettingsSaveTests : IDisposable
     }
 
     [Fact]
+    public void Prowlarr_s_address_and_key_are_put_back_too()
+    {
+        _plugin.Configuration.ProwlarrUrl = "http://old-prowlarr:9696";
+        _store.SetKey(ArrApp.Prowlarr, "old-prowlarr-key");
+
+        var result = _controller.SaveSettings(new ProfilesController.SettingsRequest
+        {
+            SonarrUrl = "http://old-sonarr:8989",
+            RadarrUrl = string.Empty,
+            ProwlarrUrl = "http://new-prowlarr:9696",
+            ProwlarrKey = "new-prowlarr-key"
+        });
+
+        AssertNothingWasChanged(result);
+        Assert.Equal("http://old-prowlarr:9696", _plugin.Configuration.ProwlarrUrl);
+        Assert.Equal("old-prowlarr-key", _store.GetKey(ArrApp.Prowlarr));
+    }
+
+    [Fact]
     public void A_new_key_for_the_same_server_is_put_back_too()
     {
         var result = _controller.SaveSettings(new ProfilesController.SettingsRequest

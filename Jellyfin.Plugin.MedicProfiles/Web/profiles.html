@@ -48,7 +48,7 @@
 
             <!-- Indexers -->
             <section class="mp-panel" data-panel="indexers" role="tabpanel" hidden>
-                <p class="mp-muted">Each indexer Sonarr and Radarr search, and whether they've paused it after failures. Indexers added by Prowlarr show here too.</p>
+                <p class="mp-muted">Each indexer Sonarr and Radarr search, and whether they've paused it after failures. Indexers added by Prowlarr show here too, and with Prowlarr set up on the Settings tab, Prowlarr's own list.</p>
                 <ul id="mp-indexer-warnings" class="mp-list"></ul>
                 <ul id="mp-indexers" class="mp-list"></ul>
                 <p id="mp-indexers-empty" class="mp-muted" hidden>No indexers found.</p>
@@ -103,6 +103,20 @@
                             <button type="button" class="mp-btn mp-btn-plain" data-test="radarr">Test Radarr</button>
                             <button type="button" class="mp-btn mp-btn-plain" data-clear="radarr">Remove key</button>
                             <span class="mp-small" data-test-result="radarr" aria-live="polite"></span>
+                        </div>
+                    </fieldset>
+                    <fieldset>
+                        <legend>Prowlarr (optional)</legend>
+                        <p class="mp-muted mp-small">Only for the Indexers tab: lists Prowlarr's own indexers, including ones it hasn't synced to Sonarr or Radarr, and which it has paused after failures.</p>
+                        <label class="mp-field"><span>Address</span>
+                            <input type="text" id="mp-prowlarr-url" class="mp-input" placeholder="http://192.168.1.10:9696" autocomplete="off" spellcheck="false"></label>
+                        <label class="mp-field"><span>API key</span>
+                            <input type="password" id="mp-prowlarr-key" class="mp-input" autocomplete="off" spellcheck="false"></label>
+                        <p class="mp-muted mp-small">In Prowlarr: Settings → General → API Key. <span id="mp-prowlarr-keystate"></span></p>
+                        <div class="mp-row">
+                            <button type="button" class="mp-btn mp-btn-plain" data-test="prowlarr">Test Prowlarr</button>
+                            <button type="button" class="mp-btn mp-btn-plain" data-clear="prowlarr">Remove key</button>
+                            <span class="mp-small" data-test-result="prowlarr" aria-live="polite"></span>
                         </div>
                     </fieldset>
                     <fieldset>
@@ -289,7 +303,7 @@
                 return 'done around ' + (sameDay ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : when(iso)) + ' (' + left + ')';
             }
 
-            function appName(app) { return app === 'sonarr' ? 'Sonarr' : app === 'qbittorrent' ? 'qBittorrent' : 'Radarr'; }
+            function appName(app) { return app === 'sonarr' ? 'Sonarr' : app === 'qbittorrent' ? 'qBittorrent' : app === 'prowlarr' ? 'Prowlarr' : 'Radarr'; }
 
             function init(page) {
                 const $ = function (id) { return page.querySelector('#' + id); };
@@ -756,7 +770,8 @@
                 // ---------- Indexers ----------
                 function loadIndexers() {
                     getJson('Indexers').then(function (data) {
-                        showSetup(data.configured);
+                        const c = data.configured || {};
+                        showSetup({ sonarr: c.sonarr || c.prowlarr, radarr: c.radarr });
                         showErrors(data.errors);
                         const warn = $('mp-indexer-warnings');
                         warn.textContent = '';
@@ -875,6 +890,11 @@
                         $('mp-radarr-key').placeholder = st.radarr.keySet ? 'Saved. Type a new one to replace it.' : 'Paste the API key';
                         $('mp-sonarr-keystate').textContent = st.sonarr.keySet ? 'A key is saved.' : 'No key saved yet.';
                         $('mp-radarr-keystate').textContent = st.radarr.keySet ? 'A key is saved.' : 'No key saved yet.';
+                        const pr = st.prowlarr || {};
+                        $('mp-prowlarr-url').value = pr.url || '';
+                        $('mp-prowlarr-key').value = '';
+                        $('mp-prowlarr-key').placeholder = pr.keySet ? 'Saved. Type a new one to replace it.' : 'Paste the API key';
+                        $('mp-prowlarr-keystate').textContent = pr.keySet ? 'A key is saved.' : 'No key saved yet.';
                         $('mp-stuck').value = st.stuckAfterHours;
                         const q = st.qbit || {};
                         $('mp-qbit-url').value = q.url || '';
@@ -926,6 +946,8 @@
                         radarrUrl: $('mp-radarr-url').value,
                         sonarrKey: $('mp-sonarr-key').value,
                         radarrKey: $('mp-radarr-key').value,
+                        prowlarrUrl: $('mp-prowlarr-url').value,
+                        prowlarrKey: $('mp-prowlarr-key').value,
                         stuckAfterHours: parseInt($('mp-stuck').value, 10) || 6,
                         qbitUrl: $('mp-qbit-url').value,
                         qbitUser: $('mp-qbit-user').value,
@@ -961,7 +983,8 @@
                 page.querySelectorAll('[data-clear]').forEach(function (b) {
                     b.addEventListener('click', function () {
                         const app = b.getAttribute('data-clear');
-                        const extra = app === 'sonarr' ? { clearSonarrKey: true, sonarrKey: '' } : { clearRadarrKey: true, radarrKey: '' };
+                        const extra = app === 'sonarr' ? { clearSonarrKey: true, sonarrKey: '' }
+                            : app === 'prowlarr' ? { clearProwlarrKey: true, prowlarrKey: '' } : { clearRadarrKey: true, radarrKey: '' };
                         post('Settings', settingsBody(extra), false).then(loadSettings)
                             .catch(function () { settingsNote('The key wasn’t removed. Try again.'); });
                     });

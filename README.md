@@ -142,7 +142,7 @@ Sonarr and Radarr, from your Jellyfin dashboard, under **Plugins → Medic Profi
 - **Import manually.** For downloads that finished but weren't imported: see each file, what Sonarr or Radarr thinks it is and why it refused, fix the film, series or episodes if the match is wrong, and import.
 - **Blocked.** What Sonarr and Radarr won't grab again, with Unblock.
 - **Block unsafe files.** Tell qBittorrent to skip program files (.exe and similar) inside film and series torrents, with archives optional.
-- **Indexers.** Each indexer Sonarr and Radarr search and whether it's enabled, paused after failures or switched off, with their own indexer warnings.
+- **Indexers.** Each indexer Sonarr and Radarr search and whether it's enabled, paused after failures or switched off, with their own indexer warnings. Optionally, add Prowlarr's address and API key too, and its own indexers are listed from Prowlarr itself, including ones it hasn't synced to Sonarr or Radarr.
 - **Profiles.** Advice on your quality profiles and custom formats, from what your server actually plays (with Jellyfin Medic installed, from the files it caught being transcoded and why) and from the profiles themselves. For example: avoid DTS-only audio if your TVs can't play it, avoid 4K for devices that can't show it, or untick cinema recordings. Read-only for now: you make the changes in Sonarr or Radarr.
 - **History** of what was removed, blocked, unblocked or imported, and by whom.
 

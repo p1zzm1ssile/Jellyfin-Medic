@@ -1,4 +1,4 @@
-// A pretend Sonarr for the Medic Profiles tests: answers the API calls Medic Profiles makes with
+// A pretend Sonarr (and Prowlarr) for the Medic Profiles tests: answers the API calls Medic Profiles makes with
 // fixed data, and remembers what was sent to it.
 import http from 'node:http';
 
@@ -83,6 +83,18 @@ const routes = {
     '/api/v3/manualimport': manualImport,
     '/api/v3/qualityprofile': () => [],
     '/api/v3/customformat': () => [],
+    // The same address answers as Prowlarr on its v1 routes, for the Prowlarr check.
+    '/api/v1/system/status': () => ({ appName: 'Prowlarr', version: '1.24.3.4754' }),
+    '/api/v1/indexer': () => [
+        { id: 11, name: 'Prowlarr Good', protocol: 'torrent', enable: true },
+        { id: 12, name: 'Prowlarr Paused', protocol: 'usenet', enable: true },
+        { id: 13, name: 'Prowlarr Off', protocol: 'torrent', enable: false }
+    ],
+    '/api/v1/indexerstatus': () => [{
+        indexerId: 12, disabledTill: new Date(Date.now() + 3600000).toISOString(),
+        initialFailure: new Date(Date.now() - 600000).toISOString(), mostRecentFailure: new Date().toISOString()
+    }],
+    '/api/v1/health': () => [{ source: 'IndexerStatusCheck', type: 'warning', message: 'Indexers unavailable due to failures: Prowlarr Paused' }],
     '/api/v3/downloadclient': () => [{ id: 1, name: 'qBittorrent', implementation: 'QBittorrent', protocol: 'torrent', enable: true, fields: [{ name: 'host', value: 'qbit' }, { name: 'port', value: 8080 }] }]
 };
 

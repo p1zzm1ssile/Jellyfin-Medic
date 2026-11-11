@@ -3,6 +3,11 @@
 All notable changes to Medic Profiles are recorded here. The newest version is at the top.
 Jellyfin Medic and Medic Picks have their own changelogs.
 
+## [1.2.0] – 2026-11-10
+
+### Added
+- **Prowlarr on the Indexers tab.** Add Prowlarr's address and API key on the Settings tab (optional), and the Indexers tab lists Prowlarr's own indexers from Prowlarr itself: the ones it hasn't synced to Sonarr or Radarr too, which it has switched off, and which it has paused after failures and when it will try them again. Prowlarr's indexer warnings show with Sonarr's and Radarr's. Test Prowlarr checks the address and key. Medic Profiles only reads from Prowlarr.
+
 ## [1.1.5] – 2026-10-17
 
 ### Fixed
